@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { Quote } from "../../types/financials";
 import { awaitingFirstDelayedPrint, couldQuoteHavePrintedSince, isQuoteBeforeLatestSession, isQuoteStaleForCurrentSession, noPrintsTodayText } from "./freshness";
 import { quoteSessionLabel } from "../market/status";
+import { venueSessionNow } from "../market/venue-session";
 import { createDailyNavQuote } from "../../test-support/daily-nav";
 
 function quote(overrides: Partial<Quote>): Quote {
@@ -196,6 +197,97 @@ describe("quote freshness", () => {
     }
   });
 
+  // Fri 2026-11-27: the cash session closed at 13:00 New York (18:00Z) and the late sessions at 17:00 (22:00Z).
+  // The fields are Gloom Cloud's COHR quote read at 19:24 New York that evening.
+  test("after an early close the late session ends at 17:00 where the listing's tape documents it, and only a print from it stands", () => {
+    const at = (stamp: string) => Date.parse(stamp);
+    const printed = at("2026-11-27T21:59:58.499Z");
+    const evening = at("2026-11-28T00:24:00Z");
+    // CTA's abbreviated-day schedule covers NYSE, Arca and Cboe listings; UTP2026-34 covers Nasdaq's on this day.
+    for (const listingExchangeName of ["NYSE", "NASDAQ", "ARCA", "BATS"]) {
+      const cohr = quote({ symbol: "COHR", currency: "USD", listingExchangeName, exchangeName: listingExchangeName, price: 225.25,
+        regularClose: 223.79, lastTradePrice: 225.25, lastTradeTime: printed, lastUpdated: printed, marketState: "POSTPOST",
+        regularCloseSessionDate: "2026-11-27", changeSessionDate: "2026-11-27", stale: false });
+      const stale = (fields: Partial<Quote>, now: number) => isQuoteStaleForCurrentSession({ ...cohr, ...fields }, now);
+      expect(stale({}, evening), listingExchangeName).toBe(false);
+      expect(stale({}, at("2026-11-27T22:00:00Z")), listingExchangeName).toBe(false);
+      // Before 17:00 the late session still trades: a POSTPOST label is behind it, a POST one with its print is current.
+      expect(stale({}, at("2026-11-27T21:59:59Z")), listingExchangeName).toBe(true);
+      expect(stale({ marketState: "POST", postMarketPrice: 225.25 }, at("2026-11-27T21:59:59Z")), listingExchangeName).toBe(false);
+      // Wednesday's close is a session behind Friday's, and a server flag or an unusable stamp is never cleared.
+      expect(stale({ lastUpdated: at("2026-11-25T21:00:00Z"), lastTradeTime: undefined }, evening), listingExchangeName).toBe(true);
+      expect(stale({ stale: true }, evening), listingExchangeName).toBe(true);
+      expect(stale({ lastUpdated: Number.NaN }, evening), listingExchangeName).toBe(true);
+      // On Thanksgiving, Wednesday's late print is the price; Tuesday's is not.
+      expect(stale({ lastUpdated: at("2026-11-26T00:59:00Z") }, at("2026-11-27T00:24:00Z")), listingExchangeName).toBe(false);
+      expect(stale({ lastUpdated: at("2026-11-25T00:59:00Z") }, at("2026-11-27T00:24:00Z")), listingExchangeName).toBe(true);
+      // A full day's late session still runs to 20:00 (Wednesday, 19:24): a POSTPOST label then is behind it.
+      expect(stale({ lastUpdated: at("2026-11-25T21:59:00Z") }, at("2026-11-26T00:24:00Z")), listingExchangeName).toBe(true);
+      expect(venueSessionNow(listingExchangeName, at("2026-11-27T21:59:59Z"))?.phase).toBe("after-hours");
+      expect(venueSessionNow(listingExchangeName, at("2026-11-27T22:00:00Z"))?.phase).toBe("closed");
+      expect(venueSessionNow(listingExchangeName, at("2026-11-26T00:24:00Z"))?.phase).toBe("after-hours");
+      // A feed that stopped after 17:00 has missed nothing; one that stopped at 16:30 has.
+      expect(couldQuoteHavePrintedSince({ ...cohr, dataSource: "live" }, at("2026-11-27T22:30:00Z"), evening)).toBe(false);
+      expect(couldQuoteHavePrintedSince({ ...cohr, dataSource: "live" }, at("2026-11-27T21:30:00Z"), evening)).toBe(true);
+    }
+    // Where no tape documents a shortened late session, it is expected to run to 20:00 as before: Nasdaq listings on
+    // Christmas Eve 2026 (no UTP notice) and NYSE listings on 28 Nov 2025 (before CTA's abbreviated-day schedule).
+    // CTA's schedule does cover the NYSE listing on Christmas Eve 2026.
+    for (const [listingExchangeName, day, shortened] of [["NASDAQ", "2026-12-24", false], ["NYSE", "2025-11-28", false], ["NYSE", "2026-12-24", true]] as const) {
+      const late = quote({ symbol: "LATE", currency: "USD", listingExchangeName, exchangeName: listingExchangeName, price: 101,
+        regularClose: 100, lastTradePrice: 101, lastTradeTime: at(`${day}T21:59:00Z`), lastUpdated: at(`${day}T21:59:00Z`), marketState: "POSTPOST",
+        regularCloseSessionDate: day, changeSessionDate: day, stale: false });
+      const label = `${listingExchangeName} ${day}`;
+      expect(isQuoteStaleForCurrentSession(late, at(`${day}T23:00:00Z`)), label).toBe(!shortened);
+      expect(venueSessionNow(listingExchangeName, at(`${day}T22:30:00Z`))?.phase, label).toBe(shortened ? "closed" : "after-hours");
+      expect(couldQuoteHavePrintedSince({ ...late, dataSource: "live" }, at(`${day}T22:30:00Z`), at(`${day}T23:00:00Z`)), label).toBe(!shortened);
+    }
+  });
+
+  // Held at 19:24 New York on Fri 2026-11-27, after the 17:00 late close: a quote whose last print is that morning's
+  // 08:00 pre-market trade has nothing from the cash or late session since, though its date is the day's. That holds
+  // until the next session opens, across midnight and the weekend.
+  test("after the late close a print from the morning's pre-market is no price for the day until the next session; the cash and late sessions' prints are", () => {
+    const at = (stamp: string) => Date.parse(stamp);
+    const evening = at("2026-11-28T00:24:00Z");
+    for (const listingExchangeName of ["NYSE", "NASDAQ"]) {
+      const held = (printed: string, fields: Partial<Quote> = {}) => quote({ symbol: "COHR", currency: "USD", listingExchangeName,
+        exchangeName: listingExchangeName, price: 205, lastUpdated: at(printed), marketState: "POSTPOST", stale: false, ...fields });
+      const stale = (printed: string, fields: Partial<Quote> = {}, now = evening) => isQuoteStaleForCurrentSession(held(printed, fields), now);
+      expect(stale("2026-11-27T13:00:00Z", { preMarketPrice: 205, regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }), listingExchangeName).toBe(true);
+      // The cash session's last print (12:59, no late trade), its open, and a late print (16:59) are the day's price.
+      expect(stale("2026-11-27T17:59:00Z", { regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }), listingExchangeName).toBe(false);
+      expect(stale("2026-11-27T14:30:00Z", { regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }), listingExchangeName).toBe(false);
+      expect(stale("2026-11-27T21:59:58Z", { regularClose: 223.79, regularCloseSessionDate: "2026-11-27", postMarketPrice: 225.25 }), listingExchangeName).toBe(false);
+      // That morning the same print is the pre-market's price.
+      expect(stale("2026-11-27T13:00:00Z", { marketState: "PRE", preMarketPrice: 205 }, at("2026-11-27T14:00:00Z")), listingExchangeName).toBe(false);
+      // A full day, after its 20:00 late close (Wed 25 Nov, 20:30): its 08:00 print is no price either, its 15:59 close is.
+      expect(stale("2026-11-25T13:00:00Z", {}, at("2026-11-26T01:30:00Z")), listingExchangeName).toBe(true);
+      expect(stale("2026-11-25T20:59:00Z", { regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }, at("2026-11-26T01:30:00Z")), listingExchangeName).toBe(false);
+      // No session opens again until Monday: past midnight (Sat 00:01), over the weekend and before Monday's pre-market
+      // (03:00), labelled as the evening left it or as closed, Friday's 08:00 print stays no price and its cash and late
+      // prints stay the price.
+      for (const now of ["2026-11-28T05:01:00Z", "2026-11-29T17:00:00Z", "2026-11-30T08:00:00Z"]) {
+        for (const marketState of ["POSTPOST", "CLOSED"] as const) {
+          const label = `${listingExchangeName} ${now} ${marketState}`;
+          expect(stale("2026-11-27T13:00:00Z", { marketState, preMarketPrice: 205, regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }, at(now)), label).toBe(true);
+          expect(stale("2026-11-27T17:59:00Z", { marketState, regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }, at(now)), label).toBe(false);
+          expect(stale("2026-11-27T14:30:00Z", { marketState, regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }, at(now)), label).toBe(false);
+          expect(stale("2026-11-27T21:59:58Z", { marketState, regularClose: 223.79, regularCloseSessionDate: "2026-11-27", postMarketPrice: 225.25 }, at(now)), label).toBe(false);
+        }
+      }
+      // Monday's pre-market (07:00): Friday's close is its price before a trade, Monday's own pre-market print is, and
+      // Friday's pre-market print is not.
+      const monday = at("2026-11-30T12:00:00Z");
+      expect(stale("2026-11-27T17:59:00Z", { marketState: "PRE", regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }, monday), listingExchangeName).toBe(false);
+      expect(stale("2026-11-30T11:30:00Z", { marketState: "PRE", preMarketPrice: 226, regularClose: 223.79, regularCloseSessionDate: "2026-11-27" }, monday), listingExchangeName).toBe(false);
+      expect(stale("2026-11-27T13:00:00Z", { marketState: "PRE", preMarketPrice: 205 }, monday), listingExchangeName).toBe(true);
+      // Thanksgiving (Thu 26 Nov, 12:00) opens no session: Wednesday's 08:00 print is still no price, its close still is.
+      expect(stale("2026-11-25T13:00:00Z", { marketState: "CLOSED" }, at("2026-11-26T17:00:00Z")), listingExchangeName).toBe(true);
+      expect(stale("2026-11-25T20:59:00Z", { marketState: "CLOSED", regularClose: 196.18, regularCloseSessionDate: "2026-11-25" }, at("2026-11-26T17:00:00Z")), listingExchangeName).toBe(false);
+    }
+  });
+
   test("recorded NasdaqGM alias preserves active-session and old-date guards", () => {
     const active = Date.parse("2026-09-11T22:00:00Z");
     for (const listingExchangeName of ["NGM", "NasdaqGM", "NASDAQGM"]) {
@@ -221,7 +313,9 @@ describe("quote freshness", () => {
     expect(isQuoteStaleForCurrentSession({ ...retained, postMarketPrice: 168 }, preNow)).toBe(true);
     expect(isQuoteStaleForCurrentSession({ ...retained, preMarketPrice: 168 }, preNow)).toBe(false);
     expect(isQuoteStaleForCurrentSession({ ...retained, marketState: undefined, preMarketPrice: 168 }, preNow)).toBe(true);
-    expect(isQuoteStaleForCurrentSession({ ...retained, marketState: undefined }, Date.parse("2026-09-15T03:00:00Z"))).toBe(false);
+    // After the late close an unknown state is not stale by itself: the day's cash print stands, its 05:00 pre-market one does not.
+    expect(isQuoteStaleForCurrentSession({ ...retained, marketState: undefined, lastUpdated: Date.parse("2026-09-14T19:00:00Z") }, Date.parse("2026-09-15T03:00:00Z"))).toBe(false);
+    expect(isQuoteStaleForCurrentSession({ ...retained, marketState: undefined }, Date.parse("2026-09-15T03:00:00Z"))).toBe(true);
   });
 
   test("overnight labels cannot bypass explicit stale or the existing prior-session date check", () => {

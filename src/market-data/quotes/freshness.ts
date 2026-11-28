@@ -17,6 +17,7 @@ import {
   nextRegularSessionOpen,
   preMarketOpenOn,
   readIndexSession,
+  usLateSessionCloseOn,
 } from "../market/freshness";
 import { indexSessionVenue } from "../market/index-session-venues";
 
@@ -250,9 +251,6 @@ export function dailyCloseSessionLabel(quote: Pick<Quote, "dailyClose"> | null |
   return formatSessionLabel(quote?.dailyClose?.session, "daily close");
 }
 
-/** A US listing's after-hours session ends four hours past its regular close (17:00 New York after an early close). */
-const US_AFTER_HOURS_MS = 4 * 60 * 60_000;
-
 /**
  * Whether a quote's market could have printed between `since` and `now`, so
  * a feed that stopped carrying it then has left it behind. The window is
@@ -278,7 +276,9 @@ export function couldQuoteHavePrintedSince(quote: Quote, since: number, now = Da
 
   if (isUsListingExchange(venue)) {
     const latest = latestRegularSessionClose(venue, to);
-    if (latest && latest.close + US_AFTER_HOURS_MS > from) return true;
+    // That session's after-hours, to its published late close (17:00 New York after an early close).
+    const lateClose = latest ? usLateSessionCloseOn(venue, latest.date) : null;
+    if (lateClose != null && lateClose > from) return true;
     // The next session's pre-market has opened.
     const next = nextRegularSessionOpen(venue, latest?.close ?? to);
     const preMarket = next ? preMarketOpenOn(venue, next.date) : null;

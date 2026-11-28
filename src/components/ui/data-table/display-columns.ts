@@ -16,6 +16,18 @@ function columnTexts<T, C extends DataTableColumn>(props: DisplayColumnProps<T, 
 
 const isBlank = (text: string) => text === "" || text === MISSING_VALUE;
 
+/**
+ * The columns `dataTableDisplayColumns` left out as empty whose cells still say what a report reads
+ * (`DataTableCell.reportText`): FDA's Drug column when every report is of the drug the search names, blank under
+ * the search box that names it. A capture of the drawn rows, which has no search box, still reads them.
+ */
+export function dataTableReportTextColumns<T, C extends DataTableColumn>(props: DisplayColumnProps<T, C>, shown: readonly C[]): C[] {
+  const shownIds = new Set(shown.map((column) => column.id));
+  return props.columns.filter((column) => column.omitWhenEmpty && !shownIds.has(column.id)
+    && props.items.some((item, index) => !props.renderSectionHeader?.(item, index)
+      && !!props.renderCell(item, column, index, { selected: props.isSelected(item, index) }).reportText?.trim()));
+}
+
 export function dataTableDisplayColumns<T, C extends DataTableColumn>(
   props: DisplayColumnProps<T, C>,
   visibleRange?: DataTableVisibleRange | null,

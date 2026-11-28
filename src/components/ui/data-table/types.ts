@@ -73,6 +73,11 @@ export type DataTableColumn = Pick<
 
 export interface DataTableCell {
   text: string;
+  /**
+   * What a report, an export or a rendered-view capture reads for the cell where the drawn `text` leans on
+   * the pane around it: FDA's Drug cell, blank under the drug the search names, reports that drug's name.
+   */
+  reportText?: string;
   /** Muted context after `text`, shown whole only when both fit on one line. Does not change the exported value. */
   note?: string;
   /**
@@ -312,6 +317,13 @@ export interface DataTableProps<
   onShowAllColumns?: () => void;
   /** Set by `DataTable`: the column to scroll sideways into view, each time `version` changes. */
   scrollToColumn?: { id: string; version: number };
+  /**
+   * Set by `DataTable`: the columns it left out because every drawn cell is blank beside the context that names
+   * it while the cells still carry a `reportText` (FDA's Drug column when every report is of the drug the search
+   * names), each with the index among the drawn columns it would sit at. No renderer draws them; a row the DOM
+   * draws carries their report text for a rendered-view capture (`data-gloom-row-report-cells`).
+   */
+  reportTextColumns?: ReadonlyArray<{ column: C; at: number }>;
   /** Set by `DataTableView`: the table's fit, for the keys that step it sideways. */
   columnFitRef?: RefObject<DataTableColumnFit | null>;
   headerScrollRef: RefObject<ScrollBoxRenderable | null>;

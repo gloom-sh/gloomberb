@@ -17,7 +17,7 @@ import { useTranslationRevision } from "../../../i18n/react";
 import { figureColumnCells } from "./render-cell";
 import { mutedRowCells } from "./muted-row";
 import { useDataTableColumnOrder } from "./use-column-order";
-import { dataTableDisplayColumns } from "./display-columns";
+import { dataTableDisplayColumns, dataTableReportTextColumns } from "./display-columns";
 import { sameVisibleRange } from "./visible-range";
 import { useDataTableColumnFit } from "./column-fit";
 import { isAsOfColumn, markHiddenTableColumns } from "../table-layout";
@@ -199,6 +199,16 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
       .map((column) => fitted.widths.has(column.id) ? { ...column, width: fitted.widths.get(column.id)! } : column);
     return markHiddenTableColumns(headerColumns, drawn, { restorable: true });
   }, [columnFit.fitted, headerColumns]);
+  // The columns left out as drawn-blank whose cells still carry a report text, at the drawn index each would take.
+  const reportTextColumns = useMemo(() => {
+    const left = dataTableReportTextColumns(props, shownColumns);
+    if (left.length === 0) return undefined;
+    const drawnIds = new Set(columns.map((column) => column.id));
+    return left.map((column) => ({
+      column,
+      at: props.columns.slice(0, props.columns.indexOf(column)).filter((before) => drawnIds.has(before.id)).length,
+    }));
+  }, [props.columns, props.items, props.renderCell, props.renderSectionHeader, props.isSelected, shownColumns, columns]);
   const HostDataTable = useUiHost().DataTable as
     | ComponentType<DataTableProps<T, C>>
     | undefined;
@@ -219,6 +229,7 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     onViewportWidthChange: columnFit.onViewportWidthChange,
     onShowAllColumns: columnFit.fit.hidden > 0 ? columnFit.fit.showAll : undefined,
     scrollToColumn: columnFit.scrollToColumn,
+    reportTextColumns,
   };
   if (HostDataTable) {
     return <HostDataTable {...displayProps} />;
@@ -258,7 +269,7 @@ function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>)
         return {
           columnId: column.id,
           columnLabel: column.label,
-          text: normalize(cell.text),
+          text: normalize(cell.reportText ?? cell.text),
           ...(cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? { instant: cell.value.toISOString() } : {}),
           ...(typeof cell.value === "number" && Number.isFinite(cell.value) ? { value: cell.value } : {}),
           ...(cell.reportValueUnit ? { unit: cell.reportValueUnit, ...cell.value == null ? { value: null } : {} } : {}),

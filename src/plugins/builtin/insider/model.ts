@@ -138,6 +138,8 @@ export interface InsiderSummaryFigures {
    * day inside the 90 days to today. A total is by trade date, not filing date.
    */
   window: { from: string; to: string };
+  /** The newest trade date among the counted buys and sales (YYYY-MM-DD): the window runs to today, not to a trade. */
+  latestTradeDate: string | null;
   /** The loaded filings the totals were read from, each counted once. */
   filings: number;
 }
@@ -172,6 +174,7 @@ export function buildInsiderSummaryFigures(parsed: readonly ParsedInsiderFiling[
   });
   const cutoff = insiderSummaryCutoff(now);
   const totals = new Map<string, InsiderSideTotal>();
+  let latestTrade = -Infinity;
   // Shares under each spelling of a class, so a total is named the way most of its shares were filed.
   const spellings = new Map<string, Map<string, number>>();
   for (const entry of parsed) {
@@ -180,6 +183,7 @@ export function buildInsiderSummaryFigures(parsed: readonly ParsedInsiderFiling[
     const date = transaction.filingDate?.getTime();
     if (date == null || !Number.isFinite(date) || date < cutoff || date > now) continue;
     if (transaction.transactionType !== "P" && transaction.transactionType !== "S") continue;
+    latestTrade = Math.max(latestTrade, date);
     const security = transaction.securityTitle;
     const key = `${securityClassKey(security)}:${transaction.transactionType}`;
     const total = totals.get(key) ?? { security, side: transaction.transactionType, shares: 0, value: 0, knownValue: true, unreconciled: false };
@@ -197,7 +201,8 @@ export function buildInsiderSummaryFigures(parsed: readonly ParsedInsiderFiling[
     total.security = filed.reduce((best, entry) => (entry[1] > best[1] ? entry : best), filed[0]!)[0];
   }
   const filings = new Set(parsed.map(({ filing }) => filing.accessionNumber)).size;
-  return { totals: [...totals.values()], incomplete, window: insiderSummaryWindow(now), filings };
+  return { totals: [...totals.values()], incomplete, window: insiderSummaryWindow(now), filings,
+    latestTradeDate: Number.isFinite(latestTrade) ? new Date(latestTrade).toISOString().slice(0, 10) : null };
 }
 
 /** The oldest filing date that the 90-day totals need loaded before they cover the whole window. */
@@ -221,8 +226,10 @@ function insiderSummaryWindow(now = Date.now()): { from: string; to: string } {
 export function buildInsiderSummary(parsed: ParsedInsiderFiling[], now = Date.now(), context: readonly ParsedInsiderFiling[] = parsed): string | null {
   const figures = buildInsiderSummaryFigures(parsed, now, context);
   if (!figures) return null;
-  // What the totals count, said before them: the filings read, and the trade dates, not the filing dates.
-  const prefix = `${figures.filings} loaded ${figures.filings === 1 ? "filing" : "filings"}, trades dated ${figures.window.from} to ${figures.window.to}: `;
+  // What the totals count, said before them: the filings read, the 90 days of trade dates (not filing dates) to today,
+  // and the newest trade among them, which a quiet week leaves days before today.
+  const latest = figures.latestTradeDate ? ` (latest ${figures.latestTradeDate})` : "";
+  const prefix = `${figures.filings} loaded ${figures.filings === 1 ? "filing" : "filings"}, trades in the 90 days ${figures.window.from} to ${figures.window.to}${latest}: `;
   const coverage = figures.incomplete ? " | Some transactions unavailable or incomplete." : "";
   if (figures.totals.length === 0) return `${prefix}no parsed non-derivative buys/sales.${coverage}`;
   return prefix + figures.totals.map((total) => total.unreconciled

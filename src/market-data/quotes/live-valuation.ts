@@ -1,12 +1,12 @@
 import type { AnalystResearchData, CorporateActionsData, Fundamentals, Quote, TickerFinancials } from "../../types/financials";
-import { atRegularSessionPrice, regularSessionValuationPrice } from "./regular-session-valuation";
+import { atRegularSessionPrice, regularSessionValuationPrice, withBridgeAtMarketCap } from "./regular-session-valuation";
 import { isIndexLevel } from "../market/index-level";
 import { isYieldIndexSymbol } from "../../tickers/index-roots";
 import { hasLikelyQuoteUnitMismatch, resolveCurrencyUnit } from "../../utils/currency-units";
 import { cashInMajorUnits } from "../../utils/dividend-cash";
 import { cashDistribution, dividendReferencePrice, trailingDividendYield, type CashDistribution } from "../../utils/trailing-dividend";
 import { priceEarningsEps } from "../../utils/fundamentals";
-import { selectMarketCapitalization, type MarketCapitalization } from "../../utils/market-capitalization";
+import { selectMarketCapitalization, viewMarketCapitalization, type MarketCapitalization } from "../../utils/market-capitalization";
 import { NOT_MEANINGFUL, priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
 import { isPositiveNumber as positive } from "../../utils/guards";
 
@@ -86,20 +86,22 @@ export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fun
 /**
  * `financials` at the regular session price (atRegularSessionPrice) with the trailing and forward P/E the Overview,
  * the portfolio and EQS show (liveTrailingPE, liveForwardPE): one the source measured at an older print is the price
- * over its EPS. A P/E with no number (N/M, or none) stays as the block has it, for its reason.
+ * over its EPS. A P/E with no number (N/M, or none) stays as the block has it, for its reason. Gloom Cloud's EV bridge
+ * adds the market cap shown at that price (withBridgeAtMarketCap), so the cap and the EV read one price.
  */
 export function atLivePriceEarnings<T extends Pick<TickerFinancials, "quote" | "fundamentals">>(financials: T): T {
   const priced = atRegularSessionPrice(financials);
   if (!priced.fundamentals) return priced;
   const trailing = priced.fundamentals.scopedEarnings === undefined ? liveTrailingPE(financials.quote, financials.fundamentals) : priced.fundamentals.trailingPE;
   const forward = liveForwardPE(financials.quote, financials.fundamentals);
+  const cap = viewMarketCapitalization(priced.quote, priced.fundamentals, regularSessionValuationPrice(priced.quote));
   return {
     ...priced,
-    fundamentals: {
+    fundamentals: withBridgeAtMarketCap({
       ...priced.fundamentals,
       ...typeof trailing === "number" ? { trailingPE: trailing } : {},
       ...typeof forward === "number" ? { forwardPE: forward } : {},
-    },
+    }, cap),
   };
 }
 

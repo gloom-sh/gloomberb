@@ -5,7 +5,7 @@ import { hasPublishedCnCalendar, isPublishedCnClosure } from "../published-cn-se
 import { hasPublishedFuturesCalendar, isPublishedFuturesClosure, isPublishedFuturesVenue } from "../published-futures-sessions";
 import { hasPublishedJpxCalendar, isPublishedJpxClosure } from "../published-jpx-sessions";
 import { hasPublishedNseCalendar, isPublishedNseClosure, publishedNseSpecialSession } from "../published-nse-sessions";
-import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession } from "../published-us-sessions";
+import { getPublishedUsEquityCalendarDay, getPublishedUsEquityCalendarYears, getPublishedUsEquitySession, usEquityLateClose } from "../published-us-sessions";
 import { quoteFutureToleranceMs } from "../quotes/clock";
 import { zonedDateKey, zonedDateTimeParts, zonedWallClockToUtcMs } from "../../utils/zoned-date-time";
 import { isPerpetualExchange, PERPETUAL_EXCHANGES } from "../../tickers/perpetual-listing";
@@ -239,6 +239,7 @@ const MINUTE_CACHE_LIMIT = 4096;
 const localDateCache = new Map<string, string | null>();
 const localMinuteCache = new Map<string, number | null>();
 const usSessionCache = new Map<string, UsSessionState>();
+const usLatestOpenCache = new Map<string, number | null>();
 
 function perMinute<K, V>(cache: Map<K, V>, key: K, compute: () => V): V {
   const cached = cache.get(key);
@@ -477,6 +478,20 @@ export function regularSessionCloseOn(exchange: string | undefined, date: string
 const US_PRE_MARKET_OPEN_MINUTES = 4 * 60;
 
 /**
+ * When a US listing's late (after-hours) session on `date` (its New York
+ * `YYYY-MM-DD`) ended: 17:00 after an early close where the listing's tape
+ * documents it (usEquityLateClose), else 20:00 on a day the venue had a
+ * regular session. Null for any other venue and on a day without a session.
+ */
+export function usLateSessionCloseOn(exchange: string | undefined, date: string): number | null {
+  const venue = canonicalExchange(exchange);
+  if (!isUsListingExchange(venue) || isoLocalDateToUtcDay(date) == null) return null;
+  if (getPublishedUsEquitySession(venue, date)) return usEquityLateClose(venue, date);
+  return regularSessionCloseOn(venue, date) == null ? null
+    : zonedWallClockToUtcMs("America/New_York", Number(date.slice(0, 4)), Number(date.slice(5, 7)), Number(date.slice(8, 10)), 20, 0, 0);
+}
+
+/**
  * When a US listing's pre-market opened on `date` (its New York
  * `YYYY-MM-DD`): 04:00 there. Null for any other venue, whose pre-market
  * hours are not known, and for a date that does not parse.
@@ -696,7 +711,9 @@ function formatUsSessionState(timestampMs: number, venue: string): UsSessionStat
   if (totalMinutes < US_PRE_MARKET_OPEN_MINUTES) return "PREPRE";
   if (published ? timestampMs < published.open : totalMinutes < 9 * 60 + 30) return "PRE";
   if (published ? timestampMs < published.close : totalMinutes < 16 * 60) return "REGULAR";
-  if (totalMinutes < 20 * 60) return "POST";
+  // The documented late close (17:00 after some early closes, usEquityLateClose); otherwise 20:00.
+  const lateClose = published ? usEquityLateClose(venue, date) : null;
+  if (lateClose != null ? timestampMs < lateClose : totalMinutes < 20 * 60) return "POST";
   return "POSTPOST";
 }
 
@@ -773,7 +790,7 @@ export function isUsRegularCloseQuoteInPostSession(
 /**
  * Whether a US print belongs to the extended-hours session the source labels,
  * or to the regular session it extends. POST, after today's regular close (a
- * published early close included) and before 20:00: a print from today's
+ * published early close included) and before the late close: a print from today's
  * regular session or its after-hours. PRE, before today's open: a print from
  * the previous regular session or since, so its after-hours or this morning's
  * pre-market. An earlier print is not, and neither is any print on a day
@@ -812,6 +829,28 @@ export function isTimestampStaleForExchangeSession(
   } catch { /* Intentional ignore: Invalid session dates are conservatively stale, never fresh. */ return true; }
 }
 
+/**
+ * Once the late session of the latest US regular session has ended (POSTPOST
+ * that day: 17:00 after an early close where the listing's tape documents it,
+ * else 20:00; or any later day before the next session opens), a print from
+ * that session's day before its regular open is its pre-market. The regular
+ * and late sessions since are not in it, and no session has opened since to
+ * carry it: an 08:00 print on Fri 27 Nov 2026 is no price for that day at 19:24,
+ * at midnight or over the weekend. A print from that day's own regular or late
+ * session is not one, nor is a print from the day before (the prior-session
+ * rules below read those).
+ */
+function isUsPremarketPrintOfEndedSession(timestampMs: number, canonical: string, now: number): boolean {
+  if (!isUsListingExchange(canonical)) return false;
+  const minute = Math.floor(now / 60_000);
+  const open = perMinute(usLatestOpenCache, `${canonical}:${minute}`, () => latestRegularSessionOpen(canonical, minute * 60_000));
+  if (open == null || timestampMs >= open) return false;
+  const sessionDate = exchangeLocalDate(canonical, open);
+  const today = exchangeLocalDate(canonical, now);
+  if (!sessionDate || !today || exchangeLocalDate(canonical, timestampMs) !== sessionDate) return false;
+  return today > sessionDate || usSessionState(now, canonical) === "POSTPOST";
+}
+
 function isTimestampStaleForExchangeSessionUnsafe(
   timestampMs: number,
   exchange?: string,
@@ -828,7 +867,9 @@ function isTimestampStaleForExchangeSessionUnsafe(
 
   const timestampDate = exchangeLocalDate(canonical, timestampMs);
   const currentDate = exchangeLocalDate(canonical, now);
-  if (!timestampDate || !currentDate || timestampDate === currentDate) return false;
+  if (!timestampDate || !currentDate) return false;
+  if (isUsPremarketPrintOfEndedSession(timestampMs, canonical, now)) return true;
+  if (timestampDate === currentDate) return false;
   if (marketState === "REGULAR" && !isPublishedEquityHoliday(canonical, now, weekendDays)
     && !isBeforeKnownRegularOpen(canonical, now)) return true;
 

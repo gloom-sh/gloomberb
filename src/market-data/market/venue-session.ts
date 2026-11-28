@@ -10,6 +10,7 @@ import {
   middayBreakOn,
   nextRegularSessionOpen,
   regularSessionCloseOn,
+  usLateSessionCloseOn,
 } from "./freshness";
 
 /**
@@ -29,8 +30,6 @@ export interface VenueSessionNow {
   opensAt?: number;
 }
 
-/** A US listing's after-hours session runs four hours past the regular close (to 20:00, 17:00 after a 13:00 close). */
-const US_AFTER_HOURS_MS = 4 * 60 * 60_000;
 /** The US pre-market opens at 04:00 New York, five and a half hours before the regular open. */
 const US_PRE_MARKET_MS = 5.5 * 60 * 60_000;
 
@@ -67,7 +66,8 @@ export function venueSessionNow(exchange: string | undefined, now: number): Venu
   if (isUsListingExchange(venue)) {
     if (next.date === today && now >= next.open - US_PRE_MARKET_MS) return { phase: "pre-market", timeZone, ...opening };
     const closed = regularSessionCloseOn(venue, today);
-    if (closed != null && now >= closed && now < closed + US_AFTER_HOURS_MS) return { phase: "after-hours", timeZone, ...opening };
+    const late = usLateSessionCloseOn(venue, today);
+    if (closed != null && late != null && now >= closed && now < late) return { phase: "after-hours", timeZone, ...opening };
   }
   return { phase: "closed", timeZone, ...opening };
 }

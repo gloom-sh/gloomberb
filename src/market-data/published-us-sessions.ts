@@ -75,6 +75,57 @@ export function getPublishedUsEquitySession(exchange: string, date: string): Pub
   return session;
 }
 
+/**
+ * Where a shortened late session after an early close is documented, by the
+ * consolidated tape that carries a listing's prints. A quote's after-hours
+ * price is the listing's last sale on its tape, from whichever venue printed
+ * it, so one venue's own late hours do not bound it; neither does the shared
+ * 13:00 regular close.
+ * - CTA, Tapes A and B (listings on NYSE, NYSE American, NYSE Arca, NYSE
+ *   National, NYSE Texas, formerly NYSE Chicago, and Cboe): its Extended
+ *   Trading Hours FAQ (v1.3, 2026-11-20) puts End of Day at 5:01 PM on
+ *   abbreviated schedule days such as the day after Thanksgiving and the day
+ *   before Christmas, on the schedule it runs from 2026-11-08 (Q8, Q30). NYSE
+ *   Group's calendar lists those days (NYSE_EARLY_CLOSES) and closes the NYSE
+ *   American, Arca, National and Texas late sessions at 5:00 PM on each.
+ *   Earlier early closes ran on CTA's previous schedule, which states no time.
+ * - UTP, Tape C (Nasdaq listings): vendor alert UTP2026-34 ends the
+ *   2026-11-27 post-market at 5:00 PM for the UTP Plan participants. No notice
+ *   covers another early close yet.
+ *
+ * Sources:
+ * - https://www.ctaplan.com/publicdocs/ctaplan/CTA_Extended_Trading_Hours_FAQ.pdf
+ * - https://www.nyse.com/trade/hours-calendars
+ * - https://www.nasdaqtrader.com/TraderNews.aspx?id=UTP2026-34
+ */
+const CTA_TAPE_LISTINGS = new Set(["NYSE", "AMEX", "ARCA", "NYSE NATIONAL", "NYSE CHICAGO", "NYSE TEXAS", "BATS", "CBOE"]);
+const CTA_ABBREVIATED_SCHEDULE_FROM = "2026-11-08";
+const UTP_SHORTENED_LATE_SESSIONS = new Set(["2026-11-27"]);
+
+/** Whether `date`'s late session for a listing on `venue` is documented to end at 17:00 (sources above). */
+function documentedEarlyLateClose(venue: string, date: string): boolean {
+  if (!NYSE_EARLY_CLOSES.has(date)) return false;
+  if (CTA_TAPE_LISTINGS.has(venue)) return date >= CTA_ABBREVIATED_SCHEDULE_FROM;
+  return venue === "NASDAQ" && UTP_SHORTENED_LATE_SESSIONS.has(date);
+}
+
+/**
+ * When the late (after-hours) session on a published session day ends for a
+ * listing: 17:00 New York where its tape documents the shortened session
+ * after an early close (documentedEarlyLateClose), else 20:00, the full late
+ * session, so a day whose shortened hours are not established keeps expecting
+ * late prints as before. Null for a day with no published session (a holiday,
+ * a weekend, an OTC venue or an uncovered year).
+ */
+export function usEquityLateClose(exchange: string, date: string): number | null {
+  const venue = canonicalExchange(exchange);
+  const session = getPublishedUsEquitySession(venue, date);
+  const day = calendarDate(date);
+  if (session?.kind !== "session" || !day) return null;
+  return zonedWallClockToUtcMs("America/New_York", day.getUTCFullYear(), day.getUTCMonth() + 1, day.getUTCDate(),
+    documentedEarlyLateClose(venue, date) ? 17 : 20, 0, 0);
+}
+
 function publishedSession(venue: string, date: string): PublishedUsEquitySession | null {
   const day = calendarDate(date);
   if (!day) return null;

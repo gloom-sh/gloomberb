@@ -10,7 +10,7 @@ import { evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, suppl
 import { fetchSupplyGraph, graphOptions } from "./graph-client";
 import { entityTicker, exposureLabel, graphDisclosureDates, pathLabel, supplyDisplayName } from "./graph-model";
 import { graphEvidenceRow } from "./graph-evidence";
-import { counterpartyKind, counterpartyName, disclosedValue, disclosureText, earlierRows, isRelatedParty, isTaggedFact, lockedDisclosures, nativeValue, periodText, relationshipLabel, shareParts, supplyEmptyText, supplyPreviewNote,
+import { counterpartyKind, counterpartyName, disclosedValue, disclosureText, earlierRows, isRelatedParty, isTaggedFact, knownSupplyPeriod, lockedDisclosures, nativeValue, periodText, relationshipLabel, shareParts, supplyEmptyText, supplyPreviewNote,
   supplyRoleCounts } from "./model";
 
 /**
@@ -103,7 +103,7 @@ function graphReport(data: GraphPayload, target: string): HeadlessBundleResult {
     statement: graphStatement(item, link.evidence, false), share: graphShare(item),
     reporter: item.reporter.name, from: item.from.name, to: item.to.name, role: item.role, relatedParty: isRelatedParty(item), pct: item.pctOfRevenue ?? null,
     denominator: item.pctBasis && !(item.sourceKind === "xbrl" && item.pctScope) ? `${item.reporter.name} ${item.pctBasis}${item.pctScope ? ` (${item.pctScope})` : ""}` : null,
-    pctBasis: item.pctBasis, pctScope: item.pctScope, period: item.period, periodMonths: item.periodMonths ?? null, filed: item.filedDate, asOf: item.asOf,
+    pctBasis: item.pctBasis, pctScope: item.pctScope, period: knownSupplyPeriod(item.period), periodMonths: item.periodMonths ?? null, filed: item.filedDate, asOf: item.asOf,
     confidence: item.confidence, quote: item.quote, quoteLanguage: item.quoteLanguage, quoteGloss: item.quoteGloss ?? null,
     quoteGlossKind: item.quoteGloss ? "machine_translation" : null, nativeAmount: item.nativeAmount ?? null,
     nativeCurrency: item.nativeCurrency ?? null, nativeScale: item.nativeScale ?? null, jurisdiction: item.jurisdiction,
@@ -177,7 +177,7 @@ export const supplyChainHeadless: HeadlessPaneDefinition<"bundle"> = {
       .map(([scope, views]) => [scope, Object.fromEntries(supplyRoleCounts(data, views, options).filter((entry) => entry[key] > 0).map((entry) => [entry.role, entry[key]]))]));
     const shareOf = (row: SupplyRow) => { const share = shareParts(row, data.entity?.id, { displayNames: false }); return share ? `% ${share.basis}` : null; };
     const record = (row: SupplyRow) => sourced(row, { counterparty: row.counterparty.name, ticker: entityTicker(row.counterparty), aggregate: row.counterparty.aggregate, role: row.role, direction: row.direction,
-      pct: row.pctOfRevenue, shareUnit: shareOf(row), pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: row.period, periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
+      pct: row.pctOfRevenue, shareUnit: shareOf(row), pctBasis: row.pctBasis, pctScope: row.pctScope, usd: row.usd, usdBasis: row.usdBasis, period: knownSupplyPeriod(row.period), periodMonths: row.periodMonths ?? null, fiscalYear: row.fiscalYear,
       nativeAmount: row.nativeAmount ?? null, nativeCurrency: row.nativeCurrency ?? null, nativeScale: row.nativeScale ?? null,
       jurisdiction: row.jurisdiction ?? null, entityScope: row.entityScope ?? null, relatedParty: isRelatedParty(row),
       evidenceTier: evidenceLabel(row), tier: trustTier(row), claimType: row.claimType, corroboration: row.corroboration ?? 1,

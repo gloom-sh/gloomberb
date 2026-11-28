@@ -8,8 +8,13 @@ import { isNotMeaningful, NOT_MEANINGFUL_TEXT, revenueMargin } from "../../../ut
 import { BANK_OR_INSURER_EBITDA, ebitdaLacksDepreciation, ebitdaOperatingIncomeBasis, isBankOrInsurerIndustry } from "../../../utils/ebitda";
 import { fiscalPeriodLabel, fiscalYearEndMonth } from "../../../utils/fiscal-period";
 import { latestFinancialPeriod } from "../../../utils/latest-financial-period";
+import { financialAvailabilityTime, statementFieldAvailability } from "../../../utils/financial-statements";
+import { listingOwnsRow, listingOwnsSeries } from "../../../utils/statement-scope";
 import { listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
+import { regularSessionValuationTime } from "../../../market-data/quotes/regular-session-valuation";
 import { currentTrailingValuation, latestTrailingStatement, listingStatementConversion } from "../../../time-series/fundamentals";
+import { valuationQuoteIssue } from "../../../time-series/valuation-price";
+import { selectFinancialStatements } from "../ticker-detail/financials/model";
 import { refusedLock } from "../shared/cloud-denied";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadShortInterest } from "../short-interest/client";
@@ -326,6 +331,84 @@ function grossMarginFields(financials: TickerFinancials): HeadlessPaneRow {
   };
 }
 
+/**
+ * The latest quarter when it carries no income statement yet: an earnings
+ * release read for its EPS before the 10-Q files revenue, gross profit and
+ * D&A (NVDA's quarter to 2026-10-31 beside its filed quarters to 2026-07-26).
+ */
+function incompleteIncomeQuarter(financials: TickerFinancials): FinancialStatement | undefined {
+  const latest = latestFinancialPeriod(financials.quarterlyStatements, (row) => row.date);
+  return latest && ![latest.totalRevenue, latest.operatingIncome, latest.netIncome].some(Number.isFinite) ? latest : undefined;
+}
+
+/**
+ * The latest complete twelve months before such a quarter, as DES's
+ * Financials heads its columns with them (selectFinancialStatements): four
+ * filed quarters, or the fiscal year when the quarters since add none, dated
+ * by the period they end. None more than five months before the incomplete
+ * quarter, which would be a year behind rather than a quarter.
+ */
+function earlierIncomeTtm(financials: TickerFinancials, incomplete: FinancialStatement): FinancialStatement | undefined {
+  if (!listingOwnsSeries(financials)) return undefined;
+  const { statements: [trailing] } = selectFinancialStatements("annual", "income", financials.annualStatements,
+    financials.quarterlyStatements, 1, financials.trailingStatement);
+  const end = (trailing?.aggregation?.periodEnd ?? trailing?.date)?.slice(0, 10);
+  if (!trailing || !end || !listingOwnsRow(financials.statementScope, trailing)) return undefined;
+  const lag = Date.parse(incomplete.date) - Date.parse(end);
+  if (!(lag > 0 && lag <= 150 * DAY_MS)) return undefined;
+  return { ...trailing, date: end };
+}
+
+/** Why a valuation cell has no price to read: the quote is stale, or has no usable price or time. */
+function quoteGap(financials: TickerFinancials): string | undefined {
+  const quote = financials.quote;
+  if (!quote) return "no quote";
+  const issue = valuationQuoteIssue(quote);
+  return issue ? issue.reason === "stale" ? "quote stale" : "no current quote" : undefined;
+}
+
+/**
+ * Gross margin and EV/EBITDA while the latest quarter carries no income
+ * statement (incompleteIncomeQuarter): both over the twelve months the
+ * filings complete before it, dated by their end, so neither borrows the
+ * newer quarter's period. EV/EBITDA still divides the EV at the current
+ * quote. With no such twelve months the cell names the period it lacks.
+ */
+function incompleteQuarterFields(financials: TickerFinancials, incomplete: FinancialStatement, wanted: readonly ExtraColumnId[]) {
+  const trailing = earlierIncomeTtm(financials, incomplete);
+  const gap = `no complete TTM to ${incomplete.date.slice(0, 10)}`;
+  const asOf = trailing?.date.slice(0, 10);
+  const margin = trailing ? revenueMargin(trailing.grossProfit, trailing.totalRevenue) : undefined;
+  const fields: HeadlessPaneRow = !wanted.includes("grossMargin") ? {}
+    : typeof margin === "number" ? { grossMarginPercent: margin * 100, grossMarginAsOf: asOf, grossMarginSource: STATEMENTS_SOURCE }
+      : isNotMeaningful(margin) ? { grossMarginNotMeaningful: GROSS_MARGIN_NOT_MEANINGFUL, grossMarginAsOf: asOf }
+        : { grossMarginGap: gap };
+  if (!wanted.includes("evEbitda")) return fields;
+  if (isBankOrInsurerIndustry(financials.profile?.industry)) return { ...fields, ...evEbitdaFields(financials) };
+  const unpriced = quoteGap(financials);
+  if (unpriced) return { ...fields, evEbitdaGap: unpriced };
+  if (!trailing || !Number.isFinite(trailing.ebitda)) return { ...fields, evEbitdaGap: gap };
+  // Twelve months published after the price the EV is read at are no basis for it. After the close that price is the
+  // close, dated by the session's end (or its day when the calendar gives no hour), not by a later after-hours print.
+  // The sum is dated only when every quarter's operating income and D&A is (computeTTM, withStatementEbitda): one
+  // undated quarter leaves no evidence the twelve months were out by then, so the cell names it rather than divide.
+  const published = statementFieldAvailability(trailing, "ebitda");
+  const priced = regularSessionValuationTime(financials.quote)?.time;
+  if (priced == null) return { ...fields, evEbitdaGap: "no current quote" };
+  if (!published) return { ...fields, evEbitdaGap: `no filing date for TTM to ${asOf}` };
+  if (Date.parse(trailing.date) > priced || financialAvailabilityTime(published) > priced) return { ...fields, evEbitdaGap: gap };
+  const ev = listingEnterpriseValue(financials);
+  if (ev.kind === "not-meaningful") return { ...fields, evEbitdaNotMeaningful: ev.reason };
+  if (ev.kind !== "value") return { ...fields, evEbitdaGap: "EV unavailable" };
+  const currency = trailing.currency ?? financials.financialCurrency;
+  const rate = currency === ev.currency ? 1 : listingStatementConversion(financials, trailing)?.rate;
+  if (rate == null) return { ...fields, evEbitdaGap: currency ? `statements in ${currency}` : "statement currency unknown" };
+  if (trailing.ebitda! <= 0) return { ...fields, evEbitdaNotMeaningful: "EBITDA is not positive", evEbitdaAsOf: asOf };
+  const { source, detail } = evEbitdaSource(financials, ev, trailing);
+  return { ...fields, evEbitda: ev.value / (trailing.ebitda! * rate), evEbitdaAsOf: asOf, evEbitdaSource: source,
+    ...(detail ? { evEbitdaNote: detail } : {}) };
+}
+
 const DAY_MS = 86_400_000;
 
 /**
@@ -386,6 +469,9 @@ function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow & { evEbi
   if (isBankOrInsurerIndustry(financials.profile?.industry)) {
     return { evEbitda: null, evEbitdaNotMeaningful: BANK_OR_INSURER_EBITDA, evEbitdaNote: `N/M, ${BANK_OR_INSURER_EBITDA}` };
   }
+  // An EV is read at the current quote: a stale one prices no multiple.
+  const unpriced = quoteGap(financials);
+  if (unpriced) return { evEbitdaGap: unpriced };
   const enterpriseValue = listingEnterpriseValue(financials);
   // EV/S's note already says why the EV is not meaningful.
   if (enterpriseValue.kind === "not-meaningful") return { evEbitda: null, evEbitdaNotMeaningful: enterpriseValue.reason };
@@ -426,8 +512,12 @@ async function loadStatementFields(ids: readonly ExtraColumnId[], symbols: reado
     try {
       const { symbol: ticker, exchange } = await resolveHeadlessInstrument(ctx, symbol);
       const financials = await ctx.marketData.getTickerFinancials(ticker, exchange ?? "", { statementHistory: "extended" });
-      const { evEbitdaNote, ...evEbitda } = wanted.includes("evEbitda") ? evEbitdaFields(financials) : {};
-      Object.assign(out.fields.get(symbol)!, wanted.includes("grossMargin") ? grossMarginFields(financials) : {}, evEbitda);
+      const incomplete = incompleteIncomeQuarter(financials);
+      const { evEbitdaNote, ...fields } = incomplete ? incompleteQuarterFields(financials, incomplete, wanted) : {
+        ...(wanted.includes("grossMargin") ? grossMarginFields(financials) : {}),
+        ...(wanted.includes("evEbitda") ? evEbitdaFields(financials) : {}),
+      };
+      Object.assign(out.fields.get(symbol)!, fields);
       // Said under the table: why a cell is N/M, an ADR's rate, operating income derived from other lines.
       if (evEbitdaNote) notes.set(symbol, `${symbol}: EV/EBITDA ${evEbitdaNote}.`);
     } catch (error) {

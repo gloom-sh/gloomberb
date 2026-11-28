@@ -1,6 +1,6 @@
 import type { GloomPlugin } from "../../../types/plugin";
 import { createQueryPaneTemplate } from "../shared/ticker-surface";
-import { OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID } from "./types";
+import { OPENFDA_DATASETS, OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID } from "./types";
 
 export const openFdaPlugin: GloomPlugin = {
   id: OPENFDA_PLUGIN_ID,
@@ -18,6 +18,10 @@ export const openFdaPlugin: GloomPlugin = {
     {
       id: OPENFDA_PANE_ID,
       reportFreshness: { source: "US FDA", status: "not-a-feed", basis: "published reports" },
+      // The pane's Dataset control, for a report: drug reports unless told otherwise.
+      reportOptions: [{ key: "dataset", type: "enum", placeholder: "dataset",
+        values: OPENFDA_DATASETS.map(({ value }) => ({ value, aliases: [`${value}s`] })),
+        description: "Drug adverse event reports (default), device adverse event reports or drug recalls", example: "--dataset device" }],
       name: "FDA Reports",
       icon: "F",
       get component(): typeof import("./pane").OpenFdaPane { const { OpenFdaPane } = require("./pane"); return OpenFdaPane; },
