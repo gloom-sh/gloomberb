@@ -1,10 +1,12 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, spyOn, test } from "bun:test";
 import type { PricePoint, Quote } from "../types/financials";
+import { createIdleEntry } from "../market-data/result-types";
 import { createTestDataProvider } from "../test-support/data-provider";
 import type { HistorySession } from "../types/price-history";
 import { LiveBarAccumulator } from "./live-bars";
 import { appendLiveQuotePoint } from "./chart-data";
-import { chartQuoteOverrideKeyForSource } from "./live-quotes";
+import { mergeHistory } from "./base-series";
+import { chartQuoteOverrideKeyForSource, observeLiveChartQuotes } from "./live-quotes";
 import { resolveChartSpecData } from "./resolve";
 import { ChartResolveCache, type ChartResolveSources } from "./resolve-context";
 import { reconcileChartTail } from "./tail-reconcile";
@@ -60,9 +62,14 @@ describe("LiveBarAccumulator", () => {
     expect(apply({ ...post, lastUpdated: bell + 60_000 })).toEqual([{ ...cash, close: 33.86, high: 33.86, volume: 823_376 }]);
   });
 
-  test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("cash and extended prints at %s keep separate bars in either order", (stamp) => {
+  test.each([
+    { stamp: "2026-09-22T20:00:00Z", resolution: "5m", cashMinutes: 5 },
+    { stamp: "2026-11-27T18:00:00Z", resolution: "5m", cashMinutes: 5 },
+    { stamp: "2026-09-22T20:00:00Z", resolution: "1h", cashMinutes: 30 },
+    { stamp: "2026-11-27T18:00:00Z", resolution: "1h", cashMinutes: 30 },
+  ] as const)("cash and extended $resolution bars at $stamp stay separate in either order", ({ stamp, resolution, cashMinutes }) => {
     const bell = Date.parse(stamp);
-    const cash = { date: new Date(bell - 300_000), open: 33.77, high: 33.83, low: 33.73, close: 33.82, volume: 1_000 };
+    const cash = { date: new Date(bell - cashMinutes * 60_000), open: 33.77, high: 33.83, low: 33.73, close: 33.82, volume: 1_000 };
     const auction = quote("00:00:00", 33.86, 1_060, { instrumentType: "ETF", lastUpdated: bell, extendedSessionPrint: false });
     const extended = { ...auction, marketState: "POST" as const, postMarketPrice: 33.85, extendedSessionPrint: true, volume: 1_070 };
     const updatedCash = { ...cash, high: 33.86, close: 33.86, volume: 1_060 };
@@ -70,17 +77,35 @@ describe("LiveBarAccumulator", () => {
     for (const [first, second] of [[auction, extended], [extended, auction]] as const) {
       const accumulator = new LiveBarAccumulator();
       const apply = (next: Quote, now = next.lastUpdated) => accumulator.apply([cash], next, {
-        resolution: "5m", exchange: "NASDAQ", extendedHours: true, liveSince: +cash.date, now,
+        resolution, exchange: "NASDAQ", extendedHours: true, liveSince: +cash.date, now,
       });
       const beforeBell = { ...auction, lastUpdated: bell - 60_000, price: 33.82, volume: 1_000 };
       apply(beforeBell);
       apply(first);
       expect(apply(second)).toEqual([updatedCash, postBar]);
       const nextExtended = { ...extended, postMarketPrice: 33.88, volume: 1_090, lastUpdated: bell + 60_000 };
-      expect(apply(nextExtended)).toEqual([updatedCash, { ...postBar, high: 33.88, close: 33.88, volume: 30 }]);
+      const updatedExtended = { ...postBar, high: 33.88, close: 33.88, volume: 30 };
+      expect(apply(nextExtended)).toEqual([updatedCash, updatedExtended]);
       expect(apply({ ...auction, price: 33.70, volume: 1_065 }, nextExtended.lastUpdated))
-        .toEqual([updatedCash, { ...postBar, high: 33.88, close: 33.88, volume: 30 }]);
+        .toEqual([updatedCash, updatedExtended]);
+      const refreshedCash = { ...updatedCash, volume: 1_064 };
+      expect(accumulator.apply([refreshedCash], null, { resolution, exchange: "NASDAQ", extendedHours: true, now: nextExtended.lastUpdated }))
+        .toEqual([refreshedCash, updatedExtended]);
     }
+  });
+
+  test("an hourly history can keep a source bar starting at the bell beside its shortened cash bar", () => {
+    const history = [bar("18:30:00", 100, 101, 99, 100, 5_000), bar("19:30:00", 100, 101, 99.5, 101, 800),
+      bar("20:00:00", 97, 98, 96, 97.5, 30)];
+    const bars = new LiveBarAccumulator();
+    const options = { now: at("20:10:00"), resolution: "1h" as const, exchange: "NASDAQ", extendedHours: true };
+    expect(bars.apply(history, null, options)).toEqual(history);
+    const quiet = quote("20:10:00", 101, 1_050, { marketState: "POST", postMarketPrice: 97.5, extendedSessionPrint: true });
+    expect(bars.apply(history, quiet, options)).toEqual(history);
+    const changed = { ...quiet, postMarketPrice: 96.5, volume: 1_060, lastUpdated: at("20:11:00") };
+    expect(bars.apply(history, changed, { ...options, now: changed.lastUpdated })).toEqual([
+      ...history.slice(0, -1), { ...history.at(-1)!, close: 96.5, volume: 40 },
+    ]);
   });
 
   test("an early-close ETF's late print cannot extend regular history, even when labelled CLOSED", () => {
@@ -375,7 +400,9 @@ describe("LiveBarAccumulator", () => {
     test("a declared closing print ends the last bar instead of opening one", () => {
       const close = [bar("19:50:00", 100, 101, 99.5, 100.5, 4_000), bar("19:55:00", 100.5, 101, 100, 100.8, 3_000),
         bar("20:00:00", 100.7, 100.7, 100.7, 100.7, 0)];
-      const points = new LiveBarAccumulator().apply(close, null, { now: at("20:05:00"), resolution: "5m", session });
+      const points = new LiveBarAccumulator().apply(close, null, {
+        now: at("20:05:00"), resolution: "5m", session, exchange: "NASDAQ", extendedHours: true,
+      });
       expect(points).toHaveLength(2);
       expect(points[1]).toMatchObject({ date: new Date(at("19:55:00")), close: 100.7, volume: 3_000 });
     });
@@ -396,6 +423,62 @@ describe("LiveBarAccumulator", () => {
       expect(mergePriceHistoryWindows(history, window.slice(0, 1), "5m")).toHaveLength(3);
     });
   });
+});
+
+test.each(["2026-09-22T20:00:00Z", "2026-11-27T18:00:00Z"])("the chart observer delivers both tied bell prints at %s to a coalesced resolve", (stamp) => {
+  const bell = Date.parse(stamp);
+  const source = { kind: "security" as const, instrument: { symbol: "LIVE", exchange: "NASDAQ" }, fieldId: "market.ohlcv" };
+  const spec: ChartSpec = {
+    version: CHART_SPEC_VERSION, viewport: { range: "1D", resolution: "1h", extendedHours: true },
+    panels: [{ id: "main" }], studies: [],
+    series: [{ id: "price", source, style: "candles", transform: "raw", axis: "left", panelId: "main", interpolation: "none" }],
+  };
+  const cash = { ...bar("19:30:00", 100, 101, 99, 100, 1_000), date: new Date(bell - 30 * 60_000) };
+  for (const receivedAt of [undefined, bell + 10]) {
+    const auction = quote("00:00:00", 102, 1_060, { instrumentType: "ETF", lastUpdated: bell, receivedAt,
+      marketState: "POST", regularClose: 102, regularCloseSessionDate: stamp.slice(0, 10), extendedSessionPrint: false });
+    const extended = { ...auction, postMarketPrice: 98, volume: 1_070, extendedSessionPrint: true };
+    for (const [first, second] of [[auction, extended], [extended, auction]] as const) {
+      const initial = { ...auction, price: 100, volume: 1_000, marketState: "REGULAR" as const, lastUpdated: bell - 60_000 };
+      let current = initial;
+      let notify = () => {};
+      const updates: ReadonlyMap<string, Quote>[] = [];
+      const clock = spyOn(Date, "now").mockReturnValue(bell + 100);
+      let stop: (() => void) | undefined;
+      try {
+        stop = observeLiveChartQuotes({ readSpec: () => spec, store: {
+          getQuoteEntry: () => ({ ...createIdleEntry<Quote>(), phase: "ready", data: current }),
+          subscribeKeys: (_keys, listener) => { notify = listener; return () => {}; },
+        }, onChange: (overrides) => updates.push(overrides) });
+        const bars = new LiveBarAccumulator();
+        const merge = (now = bell + 100) => {
+          const override = updates.at(-1)?.get(chartQuoteOverrideKeyForSource(source));
+          return mergeHistory(null, [cash], override, now, "1h", "NASDAQ", true, undefined,
+            { bars, extendedHours: true, since: +cash.date }).priceHistory;
+        };
+        const publish = (next: Quote) => { current = next; notify(); };
+        expect(merge(initial.lastUpdated)).toEqual([cash]);
+        publish(first);
+        publish({ ...first, volume: 5_000 });
+        publish(second);
+        publish({ ...first });
+        publish({ ...second });
+        publish({ ...initial, price: 94, receivedAt: bell + 50 });
+        expect(updates).toHaveLength(3);
+        const expected = [{ ...cash, close: 102, high: 102, volume: 1_060 },
+          { date: new Date(bell), open: 98, high: 98, low: 98, close: 98, volume: 10 }];
+        if (receivedAt !== undefined) {
+          publish({ ...extended, postMarketPrice: 97, volume: 1_090, lastUpdated: bell + 50, receivedAt: bell + 60 });
+          expected[1] = { ...expected[1]!, low: 97, close: 97, volume: 30 };
+        }
+        expect(merge()).toEqual(expected);
+        expect(merge()).toEqual(expected);
+      } finally {
+        stop?.();
+        clock.mockRestore();
+      }
+    }
+  }
 });
 
 describe("reconcileChartTail", () => {

@@ -511,7 +511,7 @@ export function useChartResolution(
     }
 
     const stopQuotes = observeLiveChartQuotes({
-      spec: latestRequestRef.current.spec,
+      readSpec: () => latestRequestRef.current.spec,
       store: coordinator,
       onChange: (quoteOverrides) => {
         liveQuoteOverridesRef.current = quoteOverrides;

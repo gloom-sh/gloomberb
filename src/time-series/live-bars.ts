@@ -2,15 +2,18 @@ import type { PricePoint, Quote } from "../types/financials";
 import type { HistorySession } from "../types/price-history";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
+import { latestRegularSessionClose } from "../market-data/market/freshness";
 import {
   calendarBarStart,
   intradayQuoteBarTime,
   isCalendarResolution,
+  isUsCashListing,
   liveQuoteObservation,
   MIN_LIVE_QUOTE_TAIL_GAP_MS,
   onSameVenueDay,
   quoteBelongsToLatestBar,
   quoteSessionRange,
+  regularBellForAfterHoursTrade,
 } from "./chart-data";
 import { CHART_RESOLUTION_STEP_MS, type ManualChartResolution } from "./resolution";
 import { isFiniteNumber } from "../utils/guards";
@@ -46,6 +49,7 @@ interface FormedBar {
   volumeStart: number | null;
   /** Cumulative session volume when the next bar opened. */
   volumeEnd: number | null;
+  afterHoursStart?: number;
   bellBoundary?: { beforeVolume: number | null; extendedVolumeKnown: boolean };
   point: PricePoint | null;
 }
@@ -104,15 +108,18 @@ function foldFinalObservation(
   history: PricePoint[],
   stepMs: number,
   session?: Pick<HistorySession, "timestampConvention">,
+  extendedCashVenue?: string,
 ): PricePoint[] {
   const last = history.at(-1);
   const previous = history.at(-2);
   if (!last || !previous || !isFiniteNumber(last.close) || !isFiniteNumber(previous.close) || pricePointIntegrity(previous)) return history;
   if (last.sessionClose || previous.sessionClose) return history;
   const previousTime = pointTime(previous);
-  const gap = pointTime(last) - previousTime;
+  const lastTime = pointTime(last);
+  const gap = lastTime - previousTime;
   if (!(gap > 0)) return history;
   const declared = session?.timestampConvention === "bar-open-with-final-observation";
+  if (!declared && extendedCashVenue && gap < stepMs && latestRegularSessionClose(extendedCashVenue, lastTime)?.close === lastTime) return history;
   let barTime: number;
   if (gap % stepMs !== 0) {
     if (!declared) {
@@ -147,6 +154,7 @@ export class LiveBarAccumulator {
   private lastQuote: Quote | undefined;
   private lastTime = Number.NEGATIVE_INFINITY;
   private lastMembershipTime = Number.NEGATIVE_INFINITY;
+  private lastReplayedBell = Number.NEGATIVE_INFINITY;
   private lastPrice = Number.NaN;
   /** The last observation was a pre-market quote, whose count is still the previous session's. */
   private lastPreMarket = false;
@@ -156,24 +164,30 @@ export class LiveBarAccumulator {
   private folded: { source: PricePoint[]; key: string; value: PricePoint[] } | null = null;
   private reported: { source: PricePoint[]; value: boolean } | null = null;
 
-  apply(history: PricePoint[], quote: Quote | null | undefined, options: LiveBarOptions): PricePoint[] {
-    const bars = this.onGrid(history, options);
+  apply(history: PricePoint[], quote: Quote | null | undefined, options: LiveBarOptions, bellPair?: readonly [Quote, Quote]): PricePoint[] {
+    const exchange = options.exchange || quote?.listingExchangeName || quote?.exchangeName;
+    const extendedCashVenue = options.extendedHours && !quote?.symbol.startsWith("^") && isUsCashListing(exchange, quote?.instrumentType || options.assetCategory)
+      ? exchange : undefined;
+    const bars = this.onGrid(history, options, extendedCashVenue);
     const latest = bars.at(-1);
     if (!latest) return bars;
     const latestTime = pointTime(latest);
     if (!Number.isFinite(latestTime)) return bars;
-    const exchange = options.exchange || quote?.listingExchangeName || quote?.exchangeName;
     this.syncAnchor(latest, latestTime, options, exchange);
+    if (bellPair && extendedCashVenue && !isCalendarResolution(options.resolution) && bellPair[0].lastUpdated > this.lastReplayedBell) {
+      this.lastReplayedBell = bellPair[0].lastUpdated;
+      for (const print of bellPair) this.observe(latest, print, options, exchange);
+    }
     if (quote) this.observe(latest, quote, options, exchange);
     return this.project(bars, latest);
   }
 
   /** The history with any trailing observation folded into its bar, computed once per loaded history. */
-  private onGrid(history: PricePoint[], options: LiveBarOptions): PricePoint[] {
+  private onGrid(history: PricePoint[], options: LiveBarOptions, extendedCashVenue?: string): PricePoint[] {
     if (isCalendarResolution(options.resolution)) return history;
-    const key = `${options.resolution}|${options.session?.timestampConvention ?? ""}`;
+    const key = `${options.resolution}|${options.session?.timestampConvention ?? ""}|${extendedCashVenue ?? ""}`;
     if (this.folded?.source === history && this.folded.key === key) return this.folded.value;
-    const value = foldFinalObservation(history, CHART_RESOLUTION_STEP_MS[options.resolution], options.session);
+    const value = foldFinalObservation(history, CHART_RESOLUTION_STEP_MS[options.resolution], options.session, extendedCashVenue);
     this.folded = { source: history, key, value };
     return value;
   }
@@ -195,11 +209,12 @@ export class LiveBarAccumulator {
     return quoteBelongsToLatestBar(barTime, time, resolution, exchange);
   }
 
-  private sameBar(barTime: number, anchorTime: number, resolution: ManualChartResolution, exchange?: string): boolean {
+  private sameBar(bar: FormedBar, anchorTime: number, resolution: ManualChartResolution, exchange?: string): boolean {
     if (isCalendarResolution(resolution)) {
-      return calendarBarStart(barTime, resolution, exchange) === calendarBarStart(anchorTime, resolution, exchange);
+      return calendarBarStart(bar.time, resolution, exchange) === calendarBarStart(anchorTime, resolution, exchange);
     }
-    return barTime >= anchorTime && barTime - anchorTime < CHART_RESOLUTION_STEP_MS[resolution];
+    return bar.time >= anchorTime && bar.time - anchorTime < CHART_RESOLUTION_STEP_MS[resolution]
+      && (bar.afterHoursStart === undefined || anchorTime >= bar.afterHoursStart);
   }
 
   private syncAnchor(latest: PricePoint, latestTime: number, options: LiveBarOptions, exchange?: string): void {
@@ -207,8 +222,8 @@ export class LiveBarAccumulator {
     const key = anchorKey(latest, latestTime);
     if (this.anchor?.key === key) return;
     const previous = this.anchor?.time === latestTime ? this.anchor : null;
-    const formed = this.bars.find((bar) => this.sameBar(bar.time, latestTime, resolution, exchange));
-    const later = this.bars.filter((bar) => bar.time > latestTime && !this.sameBar(bar.time, latestTime, resolution, exchange));
+    const formed = this.bars.find((bar) => this.sameBar(bar, latestTime, resolution, exchange));
+    const later = this.bars.filter((bar) => bar.time > latestTime && !this.sameBar(bar, latestTime, resolution, exchange));
     // A newest bar that is still forming keeps what was watched live; a
     // completed one is the provider's final version.
     const forming = later.length === 0;
@@ -300,11 +315,12 @@ export class LiveBarAccumulator {
 
     const anchor = this.anchor!;
     const forming = this.bars.at(-1);
+    const latestBarTime = forming?.time ?? anchor.time;
     if (options.extendedHours && forming?.time === time && time === this.lastTime && membershipTime === time - 1) {
       this.applyCashPrintAtBoundary(latest, forming, price, volume, membershipTime, options, quote.currency);
       return;
     }
-    if (!calendar && membershipTime < (forming?.time ?? anchor.time)) return;
+    if (!calendar && membershipTime < latestBarTime) return;
     const latestClose = forming?.close ?? anchor.close ?? latest.close;
     if (hasLikelyQuoteUnitMismatch(
       { currency: quote.currency, price: latestClose },
@@ -342,7 +358,9 @@ export class LiveBarAccumulator {
     this.lastPreMarket = preMarket;
     this.version += 1;
 
-    if (forming && this.inBar(membershipTime, forming.time, options, exchange)) {
+    const afterHoursStart = !calendar && options.extendedHours ? regularBellForAfterHoursTrade(quote, exchange) : null;
+    const crossesBell = afterHoursStart !== null && latestBarTime < afterHoursStart && onSameVenueDay(latestBarTime, afterHoursStart, exchange);
+    if (forming && !crossesBell && this.inBar(membershipTime, forming.time, options, exchange)) {
       if (forming.bellBoundary && time === forming.time && volume !== null) forming.bellBoundary.extendedVolumeKnown = true;
       forming.high = Math.max(forming.high, price, range?.high ?? price);
       forming.low = Math.min(forming.low, price, range?.low ?? price);
@@ -350,14 +368,13 @@ export class LiveBarAccumulator {
       forming.point = null;
       return;
     }
-    if (!forming && this.inBar(membershipTime, anchor.time, options, exchange)) {
+    if (!forming && !crossesBell && this.inBar(membershipTime, anchor.time, options, exchange)) {
       if (range?.open !== undefined) anchor.open = range.open;
       anchor.high = Math.max(anchor.high ?? price, price, range?.high ?? price);
       anchor.low = Math.min(anchor.low ?? price, price, range?.low ?? price);
       anchor.close = price;
       return;
     }
-    const latestBarTime = forming?.time ?? anchor.time;
     if (membershipTime < latestBarTime) return;
 
     let barTime = time;
@@ -380,7 +397,8 @@ export class LiveBarAccumulator {
           return;
         }
       }
-      barTime = latestBarTime + Math.floor((membershipTime - latestBarTime) / step) * step;
+      const gridStart = crossesBell ? afterHoursStart : latestBarTime;
+      barTime = gridStart + Math.floor((membershipTime - gridStart) / step) * step;
     }
 
     this.closeFormingVolume(previous);
@@ -396,7 +414,8 @@ export class LiveBarAccumulator {
       close: price,
       volumeStart: sessionCount ? 0 : previous ?? volume,
       volumeEnd: null,
-      ...(!calendar && !cashArrivedFirst && quote.extendedSessionPrint === true && barTime === time ? {
+      ...(afterHoursStart !== null ? { afterHoursStart } : {}),
+      ...(!cashArrivedFirst && afterHoursStart === time && barTime === time ? {
         bellBoundary: { beforeVolume, extendedVolumeKnown: volume !== null },
       } : {}),
       point: null,

@@ -168,6 +168,13 @@ export function isUsCashListing(exchange: string | undefined, instrumentType?: s
   return isUsListingExchange(exchange) && (!instrumentType || /^(?:EQUITY|STOCK|STK|ETF|ETN|FUND)$/i.test(instrumentType.trim()));
 }
 
+export function regularBellForAfterHoursTrade(quote: Quote, exchange: string | undefined): number | null {
+  if (quote.extendedSessionPrint !== true || quote.symbol.startsWith("^") || !isUsCashListing(exchange, quote.instrumentType)
+    || quote.marketState === "PREPRE" || quote.marketState === "POSTPOST" || quote.overnightPrice != null
+    || activeUsMarketSession(quote.lastUpdated, exchange) !== "POST") return null;
+  return latestRegularSessionClose(exchange, quote.lastUpdated)?.close ?? null;
+}
+
 export function intradayQuoteBarTime(quote: Quote, exchange: string | undefined, extendedHours: boolean): number | null {
   const time = quote.lastUpdated;
   if (!isUsCashListing(exchange, quote.instrumentType) || quote.symbol.startsWith("^")) return time;

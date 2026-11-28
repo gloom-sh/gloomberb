@@ -23,7 +23,7 @@ import { extractSecuritySeries } from "./market";
 import type { ValuationCurrencyContext } from "./valuation-currency";
 import { activeStudyInputSeriesIds } from "./studies/resolve";
 import { reportingCurrencySeries } from "./reporting-currency";
-import { compareChartQuoteRecency } from "./live-quotes";
+import { chartBellPairOf, compareChartQuoteRecency } from "./live-quotes";
 import { marketSeriesFrequency } from "./market";
 import { canonicalExchange, resolveExchangeTimeZone } from "../utils/exchanges";
 import { futuresGenericCaption, futuresGenericListing, futuresListingPriceBasis } from "../utils/futures-generic";
@@ -116,7 +116,7 @@ export function mergeHistory(
   // price their latest point from the current quote alone.
   const priceHistory = live?.bars && liveBarResolution
     ? live.bars.apply(history, quote, { now, resolution: liveBarResolution, exchange, assetCategory, liveSince: live.since, session: live.session,
-      extendedHours: live.extendedHours })
+      extendedHours: live.extendedHours }, chartBellPairOf(quote))
     : appendLiveQuotePoint(history, quote, liveBarResolution
       ? { now, mode: "ohlc", resolution: liveBarResolution, exchange, extendedHours: live?.extendedHours, assetCategory }
       : { now });
