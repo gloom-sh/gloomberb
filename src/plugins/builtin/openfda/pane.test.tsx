@@ -125,3 +125,15 @@ test("a ticker whose company could not be looked up shows the failure, and a ref
   expect(tui.frame()).toContain("ASTRAZENECA COVID-19 VACCINE");
   expect(searched.some((search) => /AstraZeneca/.test(search))).toBe(true);
 });
+
+// Every report is of the drug the search names: the title and Labeler line say it, so the terminal draws no Drug column.
+test("every report of the searched drug leaves the Drug column out of the terminal view", async () => {
+  const ozempic = (id: number, reaction: string) => ({ ...VACCINE_REPORT, safetyreportid: `3100000${id}`, patient: {
+    reaction: [{ reactionmeddrapt: reaction }], drug: [{ medicinalproduct: "OZEMPIC", drugcharacterization: "1", openfda: { manufacturer_name: ["Novo Nordisk A/S"] } }] } });
+  setHttpFetchTransport(async () => Response.json({ meta: { results: { skip: 0, limit: 50, total: 2 } }, results: [ozempic(1, "Nausea"), ozempic(2, "Vomiting")] }));
+  await act(async () => { await tui.render(<Harness query="ozempic" />, { width: 110, height: 10 }); });
+  await settleFrame(tui.setup(), 12);
+  expect(tui.frame()).toContain("Nausea");
+  expect(tui.frame()).not.toContain("DRUG");
+  expect(tui.frame()).not.toContain("OZEMPIC");
+});

@@ -14,7 +14,9 @@ interface RenderedTableColumn {
  * or the cell's (`DataTableCell.mayBeBlank`, drawn as
  * `data-gloom-cell-may-be-blank`), and `--strict` reads a blank column by it,
  * leaving a marked cell out whatever its text. A cell drawn with
- * `data-gloom-cell-report-text` is read as that text.
+ * `data-gloom-cell-report-text` is read as that text, and a row's
+ * `data-gloom-row-report-cells` puts back the cells of a column the table
+ * left out as drawn-blank (DataTableProps.reportTextColumns).
  * A cell with no text is left out, and a row with none.
  *
  * `clipped` is set when a cell shows an ellipsis or holds text wider than itself.
@@ -65,14 +67,30 @@ export function readRenderedTableRows(
         ...(instant ? { instant } : {}),
         ...(Number.isFinite(exact) ? { value: exact } : {}),
       };
-    }).filter((cell) => cell.text.length > 0);
-    if (cells.length === 0) return;
+    });
+    // A column the table left out as drawn-blank, whose cells still say what a report reads (FDA's Drug under the
+    // drug its search names), goes back at the drawn index it would take.
+    let leftOut: Array<{ at?: unknown; columnId?: unknown; columnLabel?: unknown; text?: unknown }> = [];
+    try { leftOut = JSON.parse(row.getAttribute("data-gloom-row-report-cells") || "[]"); } catch { /* Intentional ignore: an unreadable attribute adds no cell. */ }
+    let inserted = 0;
+    for (const extra of Array.isArray(leftOut) ? leftOut : []) {
+      const text = normalize(extra && extra.text);
+      if (!text || typeof extra.at !== "number") continue;
+      cells.splice(Math.min(cells.length, extra.at + inserted), 0, {
+        ...(typeof extra.columnId === "string" ? { columnId: extra.columnId } : {}),
+        columnLabel: typeof extra.columnLabel === "string" ? extra.columnLabel : String(extra.at + 1),
+        text,
+      });
+      inserted += 1;
+    }
+    const kept = cells.filter((cell) => cell.text.length > 0);
+    if (kept.length === 0) return;
     rows.push({
       tableIndex,
       rowIndex,
       ...(rowKey ? { key: rowKey } : {}),
       selected: row.getAttribute("data-selected") === "true",
-      cells,
+      cells: kept,
     });
   });
   return { rows, clipped };

@@ -170,6 +170,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
   onViewportWidthChange,
   onShowAllColumns,
   scrollToColumn,
+  reportTextColumns,
 }: DataTableProps<T, C>) {
   const paneInstanceId = usePaneInstance()?.instanceId ?? null;
   const focusPane = useFocusOwningPane();
@@ -646,6 +647,7 @@ export function WebDataTable<T, C extends DataTableColumn = DataTableColumn>({
                     onSelectRow={selectRow}
                     getRowBackgroundColor={getRowBackgroundColor}
                     renderCell={renderCell}
+                    reportTextColumns={reportTextColumns}
                     renderSectionHeader={renderSectionHeader}
                     rowContextMenuSurface={rowContextMenuSurface}
                     rowVersion={getRowVersion?.(item, row.index)}

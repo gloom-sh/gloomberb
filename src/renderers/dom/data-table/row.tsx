@@ -236,6 +236,7 @@ function WebDataTableRowInner<
   gridTemplateColumns,
   getRowBackgroundColor,
   renderCell,
+  reportTextColumns,
   renderSectionHeader,
   rowSize,
   rowStart,
@@ -265,6 +266,7 @@ function WebDataTableRowInner<
   gridTemplateColumns: string;
   getRowBackgroundColor?: DataTableProps<T, C>["getRowBackgroundColor"];
   renderCell: DataTableProps<T, C>["renderCell"];
+  reportTextColumns?: DataTableProps<T, C>["reportTextColumns"];
   renderSectionHeader?: DataTableProps<T, C>["renderSectionHeader"];
   rowSize: number;
   rowStart: number;
@@ -373,6 +375,11 @@ function WebDataTableRowInner<
     ? CSS_SELECTED
     : rowBackgroundColor ?? CSS_BG;
   const cells: DataTableCell[] = columns.map((column) => renderCell(item, column, index, rowState));
+  // A column left out as drawn-blank still says what this row reports there (DataTableProps.reportTextColumns).
+  const reportCells = (reportTextColumns ?? []).flatMap(({ column, at }) => {
+    const text = renderCell(item, column, index, rowState).reportText?.trim();
+    return text ? [{ at, columnId: column.id, columnLabel: column.label, text }] : [];
+  });
   // A cut name reads on into the blank of the figure after it in its row (tableCellSpill), between two columns that
   // both show whole: the frozen column, one sliding under it and one the body's edge cuts keep their cells. Its cell
   // spans the figure's column too, its text stopping a blank before the figure, which draws over it on no fill of its own.
@@ -389,6 +396,7 @@ function WebDataTableRowInner<
       ref={ref}
       data-gloom-role="data-table-row"
       data-gloom-row-key={itemKey}
+      data-gloom-row-report-cells={reportCells.length > 0 ? JSON.stringify(reportCells) : undefined}
       data-gloom-context-menu-surface={rowContextMenuSurface ? "true" : undefined}
       data-selected={selected ? "true" : undefined}
       style={{
