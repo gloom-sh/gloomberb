@@ -3,7 +3,6 @@ import {
   exportConfig,
   importConfig,
   resetAllData,
-  saveConfig,
 } from "../../../../data/config/store";
 import type { UpdateProgress } from "../../../../updater";
 import type {
@@ -13,9 +12,10 @@ import type {
 import { encodeRpcValue } from "../../shared/rpc-codec";
 import { logFailure } from "../../../../utils/log-failure";
 import { desktopBootFramePath, removeDesktopBootFrame } from "../window/boot-frame";
-import { MAIN_WINDOW_RPC_KEY, paneIdFromDetachedRpcKey } from "../window/focus";
+import { paneIdFromDetachedRpcKey } from "../window/focus";
 import type { DesktopBackend, DesktopRpc } from "./backend";
 import { createElectrobunDesktopUpdater } from "./update";
+import { handleDesktopConfigSave } from "./workspace/requests";
 
 const desktopUpdater = createElectrobunDesktopUpdater(Electrobun.Updater);
 
@@ -78,22 +78,8 @@ export async function handleDesktopBackendRequest(
     case "ticker.delete":
       await backend.requireServices().tickerRepository.deleteTicker(request.payload.symbol);
       return null;
-    case "config.save": {
-      const desktopWorkspace = backend.workspace;
-      if (desktopWorkspace) {
-        // A popped-out window's save counts only for its own pane; a full
-        // window's for what it changed, among its own tabs.
-        const senderKey = backend.rpcs.getRpcWindowKey(rpc);
-        const senderDetachedPaneId = paneIdFromDetachedRpcKey(senderKey);
-        await backend.commitDesktopSnapshot(senderDetachedPaneId
-          ? desktopWorkspace.replaceConfigFromDetachedPane(senderDetachedPaneId, request.payload.config)
-          : desktopWorkspace.replaceConfigFromWindow(senderKey ?? MAIN_WINDOW_RPC_KEY, request.payload.config));
-        return null;
-      }
-      backend.setConfig(request.payload.config);
-      await saveConfig(backend.requireConfig());
-      return null;
-    }
+    case "config.save":
+      return handleDesktopConfigSave(backend, rpc, request);
     case "config.resetAllData":
       closeDesktopSession(backend);
       // No config, no session: a frame the closing window still sends is dropped.

@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { syncConfigActiveLayoutState } from "../../../../../core/state/app/state";
-import { cloneLayout, createDefaultConfig, type AppConfig } from "../../../../../types/config";
+import { addPaneFloating, removePane } from "../../../../../layout/pane-manager";
+import { cloneLayout, createDefaultConfig, createPaneInstance, findPaneInstance, type AppConfig } from "../../../../../types/config";
 import type { DesktopSharedStateSnapshot } from "../../../../../types/desktop-window";
 import { decodeRpcValue } from "../../../shared/rpc-codec";
 import { createDetachedSnapshotFilter } from "../../../view/desktop/window/snapshot";
@@ -8,7 +9,7 @@ import type { DesktopBackend, DesktopRpc } from "../backend";
 import { createDesktopRpcRegistry } from "../rpc-registry";
 import { DesktopStateBroadcaster } from "../state-broadcaster";
 import { createDesktopWorkspace } from "./index";
-import { handleDesktopWorkspaceRequest } from "./requests";
+import { handleDesktopConfigSave, handleDesktopWorkspaceRequest } from "./requests";
 
 interface TestWindow {
   rpc: DesktopRpc;
@@ -24,9 +25,19 @@ interface TestPopout extends TestWindow {
 
 function setup() {
   const rpcs = createDesktopRpcRegistry<DesktopRpc>();
-  const stateBroadcaster = new DesktopStateBroadcaster<DesktopRpc>({ forEachReadyWindowRpc: rpcs.forEachReadyWindowRpc });
   const workspace = createDesktopWorkspace(createDefaultConfig("/tmp/gloomberb-desktop-state-echo"), null);
+  const stateBroadcaster = new DesktopStateBroadcaster<DesktopRpc>({
+    forEachReadyWindowRpc: rpcs.forEachReadyWindowRpc,
+    delivered: (rpc, snapshot) => {
+      const key = rpcs.getRpcWindowKey(rpc);
+      if (key && snapshot.stateSeq !== undefined && workspace.windowIds().length > 1) {
+        workspace.noteDelivered(key, snapshot.stateSeq, snapshot);
+      }
+    },
+  });
   const backend = {
+    workspace,
+    rpcs,
     requireWorkspace: () => workspace,
     setConfig: () => {},
     reconcileWindows: () => {},
@@ -35,6 +46,7 @@ function setup() {
       return key && !key.startsWith("detached:") ? key : null;
     },
     detachedWindows: { reconcile: () => {} },
+    commitDesktopSnapshot: async (snapshot: DesktopSharedStateSnapshot) => stateBroadcaster.sendDesktopState(snapshot),
     stateBroadcaster,
   } as unknown as DesktopBackend;
   const open = (key: string, onState?: (snapshot: DesktopSharedStateSnapshot) => void): TestWindow => {
@@ -62,17 +74,20 @@ function setup() {
     });
     return { ...window, taken, config: () => (taken.at(-1) ?? initial).config };
   };
-  const syncMain = (window: TestWindow, snapshot: DesktopSharedStateSnapshot) => handleDesktopWorkspaceRequest(
+  const syncMain = (window: TestWindow, snapshot: DesktopSharedStateSnapshot, baseSeq?: number) => handleDesktopWorkspaceRequest(
     backend,
     window.rpc,
-    { method: "desktop.syncMainState", payload: { snapshot } },
+    { method: "desktop.syncMainState", payload: { snapshot, baseSeq } },
   );
   const syncPopout = (window: TestWindow, paneId: string, paneState: Record<string, unknown>) => handleDesktopWorkspaceRequest(
     backend,
     window.rpc,
     { method: "desktop.replaceDetachedPaneState", payload: { paneId, paneState } },
   );
-  return { workspace, stateBroadcaster, open, openPopout, syncMain, syncPopout };
+  const save = (window: TestWindow, config: AppConfig) => handleDesktopConfigSave(
+    backend, window.rpc, { method: "config.save", payload: { config } },
+  );
+  return { workspace, stateBroadcaster, open, openPopout, syncMain, syncPopout, save };
 }
 
 /** A cursor move as the main window sends it: its reducer mirrors pane state into the open layout the same way. */
@@ -83,6 +98,171 @@ function withCursor(snapshot: DesktopSharedStateSnapshot, cursorSymbol: string, 
 }
 
 describe("desktop state fan-out", () => {
+  test("an ordinary edit still applies after its delivered base is evicted", async () => {
+    const { workspace, stateBroadcaster, open, syncMain } = setup();
+    workspace.openWindow("second");
+    const main = open("main");
+    stateBroadcaster.sendDesktopState(workspace.getSnapshot());
+    const shown = main.received.at(-1)!;
+    for (let fontSize = 13; fontSize <= 21; fontSize += 1) {
+      stateBroadcaster.sendDesktopState(workspace.replaceConfig({ ...workspace.getSnapshot().config, fontSize }));
+    }
+    const edited = withCursor({ ...shown, config: { ...shown.config, theme: "paper" } }, "MSFT", 1);
+    expect(await syncMain(main, edited, shown.stateSeq)).toBeNull();
+    expect(workspace.getSnapshot().paneState["portfolio-list:main"]?.cursorSymbol).toBe("MSFT");
+    expect(workspace.getSnapshot().config.theme).toBe("paper");
+  });
+
+  test("a late sync from before pop-out does not reopen Layouts as a floating pane", async () => {
+    const { workspace, stateBroadcaster, open, syncMain } = setup();
+    const main = open("main");
+    const publish = (snapshot: DesktopSharedStateSnapshot) => stateBroadcaster.sendDesktopState(snapshot);
+    publish(workspace.getSnapshot());
+    const initial = main.received[0]!;
+    const pane = createPaneInstance("layout-marketplace", { instanceId: "layout-marketplace:floating" });
+    const layout = addPaneFloating(initial.config.layout, pane, 160, 48);
+    const opened = {
+      ...initial,
+      config: syncConfigActiveLayoutState({ ...initial.config, layout }, initial.paneState, pane.instanceId),
+      focusedPaneId: pane.instanceId,
+      mainStateRevision: 1,
+    };
+    await syncMain(main, opened, initial.stateSeq);
+    expect(main.received).toHaveLength(1);
+    publish(workspace.popOutPane(pane.instanceId, { x: 100, y: 120, width: 800, height: 540 }));
+    publish(workspace.closeDetachedPane(pane.instanceId));
+    await syncMain(main, {
+      ...opened,
+      config: { ...opened.config, theme: "paper" },
+      mainStateRevision: 2,
+    }, initial.stateSeq);
+
+    const current = workspace.getSnapshot();
+    expect(current.config.theme).toBe("paper");
+    expect(findPaneInstance(current.config.layout, pane.instanceId)).toBeUndefined();
+    expect(current.focusedPaneId).not.toBe(pane.instanceId);
+  });
+
+  test.each(["single window", "known delivery", "evicted delivery"] as const)("a late sync (%s) keeps ordinary edits without reopening Layouts", async (timing) => {
+    const { workspace, stateBroadcaster, open, syncMain } = setup();
+    if (timing !== "single window") workspace.openWindow("second");
+    const main = open("main");
+    const pane = createPaneInstance("layout-marketplace", { instanceId: "layout-marketplace:late" });
+    const initial = workspace.getSnapshot();
+    await syncMain(main, {
+      ...initial,
+      config: { ...initial.config, fontSize: 12, layout: addPaneFloating(initial.config.layout, pane, 160, 48) },
+      focusedPaneId: pane.instanceId,
+      mainStateRevision: 1,
+    });
+    const publish = (snapshot: DesktopSharedStateSnapshot) => stateBroadcaster.sendDesktopState(snapshot);
+    workspace.popOutPane(pane.instanceId, { x: 100, y: 120, width: 800, height: 540 });
+    publish(workspace.replaceConfig({ ...workspace.getSnapshot().config, fontSize: 14 }));
+    const held = main.received.at(-1)!;
+    expect(held.config.layout.detached.map((entry) => entry.instanceId)).toContain(pane.instanceId);
+    expect(held.stateSeq).toBeGreaterThan(0);
+
+    const closed = workspace.closeDetachedPane(pane.instanceId);
+    expect(findPaneInstance(closed.config.layout, pane.instanceId)).toBeUndefined();
+    publish(closed);
+    if (timing === "evicted delivery") {
+      for (let fontSize = 13; fontSize <= 21; fontSize += 1) {
+        publish(workspace.replaceConfig({ ...workspace.getSnapshot().config, fontSize }));
+      }
+    } else if (timing === "known delivery") {
+      publish(workspace.replaceConfig({ ...workspace.getSnapshot().config, fontSize: 21 }));
+    }
+    const cursorEdit = withCursor(held, "MSFT", 2);
+    const ordinaryId = "portfolio-list:main";
+    const titleEdit = {
+      ...cursorEdit.config.layout,
+      instances: cursorEdit.config.layout.instances.map((entry) => entry.instanceId === ordinaryId ? { ...entry, title: "My portfolio" } : entry),
+    };
+    expect(await syncMain(main, {
+      ...cursorEdit,
+      config: { ...cursorEdit.config, theme: "paper", layout: titleEdit },
+      paneState: { ...cursorEdit.paneState, [pane.instanceId]: { activeTabId: "team" } },
+      focusedPaneId: pane.instanceId,
+    }, held.stateSeq)).toBeNull();
+
+    const current = workspace.getSnapshot();
+    expect(current.config.theme).toBe("paper");
+    if (timing === "known delivery") expect(current.config.fontSize).toBe(21);
+    expect({
+      cursor: current.paneState[ordinaryId]?.cursorSymbol,
+      title: findPaneInstance(current.config.layout, ordinaryId)?.title,
+    }).toEqual({ cursor: "MSFT", title: "My portfolio" });
+    expect(findPaneInstance(current.config.layout, pane.instanceId)).toBeUndefined();
+    expect(current.paneState[pane.instanceId]).toBeUndefined();
+    expect(current.focusedPaneId).not.toBe(pane.instanceId);
+    const saved = current.config.layouts[current.config.activeLayoutIndex]!;
+    expect(saved.focusedPaneId).not.toBe(pane.instanceId);
+    expect(saved.paneState?.[ordinaryId]?.cursorSymbol).toBe("MSFT");
+    expect(findPaneInstance(saved.layout, ordinaryId)?.title).toBe("My portfolio");
+
+    const shown = main.received.at(-1)!;
+    const reopened = createPaneInstance("layout-marketplace");
+    const live = addPaneFloating(shown.config.layout, reopened, 160, 48);
+    const opened = {
+      ...shown,
+      config: syncConfigActiveLayoutState({ ...shown.config, layout: live }, shown.paneState, reopened.instanceId),
+      focusedPaneId: reopened.instanceId,
+      mainStateRevision: 3,
+    };
+    const broadcastsBeforeOpen = main.received.length;
+    await syncMain(main, opened, shown.stateSeq);
+    expect(findPaneInstance(workspace.getSnapshot().config.layout, reopened.instanceId)).toBeDefined();
+    expect(main.received).toHaveLength(broadcastsBeforeOpen);
+    await syncMain(main, {
+      ...opened,
+      config: { ...opened.config, layout: removePane(live, reopened.instanceId) },
+      focusedPaneId: shown.focusedPaneId,
+      mainStateRevision: 4,
+    }, shown.stateSeq);
+    expect(findPaneInstance(workspace.getSnapshot().config.layout, reopened.instanceId)).toBeUndefined();
+    expect(workspace.getSnapshot().focusedPaneId).toBe(shown.focusedPaneId);
+  });
+
+  test("config.save cannot reopen a detached Layouts pane after the renderer synced the native close", async () => {
+    const { workspace, stateBroadcaster, open, syncMain, save } = setup();
+    const main = open("main");
+    const pane = createPaneInstance("layout-marketplace", { instanceId: "layout-marketplace:save" });
+    const initial = workspace.getSnapshot();
+    await syncMain(main, {
+      ...initial,
+      config: { ...initial.config, layout: addPaneFloating(initial.config.layout, pane, 160, 48) },
+      focusedPaneId: pane.instanceId,
+      mainStateRevision: 1,
+    });
+    stateBroadcaster.sendDesktopState(workspace.popOutPane(pane.instanceId, { x: 100, y: 120, width: 800, height: 540 }));
+    const pendingConfig = main.received.at(-1)!.config;
+    expect(pendingConfig.layout.detached[0]?.instanceId).toBe(pane.instanceId);
+    stateBroadcaster.sendDesktopState(workspace.closeDetachedPane(pane.instanceId));
+    const closed = main.received.at(-1)!;
+    await syncMain(main, { ...closed, mainStateRevision: 2 }, closed.stateSeq);
+    expect(findPaneInstance(workspace.getSnapshot().config.layout, pane.instanceId)).toBeUndefined();
+
+    await save(main, { ...pendingConfig, theme: "paper" });
+    const saved = workspace.getSnapshot();
+    expect(saved.config.theme).toBe("paper");
+    expect(findPaneInstance(saved.config.layout, pane.instanceId)).toBeUndefined();
+    expect(findPaneInstance(main.received.at(-1)!.config.layout, pane.instanceId)).toBeUndefined();
+
+    const shown = main.received.at(-1)!;
+    const freshPane = createPaneInstance("layout-marketplace");
+    await syncMain(main, {
+      ...shown,
+      config: { ...shown.config, layout: addPaneFloating(shown.config.layout, freshPane, 160, 48) },
+      focusedPaneId: freshPane.instanceId,
+      mainStateRevision: 3,
+    }, shown.stateSeq);
+    await save(main, { ...saved.config, theme: "green" });
+    const reopened = workspace.getSnapshot();
+    expect(reopened.config.theme).toBe("green");
+    expect(reopened.config.layout.floating.map((entry) => entry.instanceId)).toContain(freshPane.instanceId);
+    expect(reopened.focusedPaneId).toBe(freshPane.instanceId);
+  });
+
   test("position sync failures and recovery reach a detached pane without a layout or config change", async () => {
     const { workspace, open, openPopout, syncMain } = setup();
     const main = open("main");

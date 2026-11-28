@@ -1,5 +1,6 @@
-import type { DesktopWorkspaceRequest } from "../../../shared/protocol";
-import { MAIN_WINDOW_RPC_KEY } from "../../window/focus";
+import { saveConfig } from "../../../../../data/config/store";
+import type { DesktopCoreRequest, DesktopWorkspaceRequest } from "../../../shared/protocol";
+import { MAIN_WINDOW_RPC_KEY, paneIdFromDetachedRpcKey } from "../../window/focus";
 import type { DesktopBackend, DesktopRpc } from "../backend";
 
 type DockEdge = "left" | "right" | "top" | "bottom";
@@ -15,6 +16,26 @@ function normalizeDockEdge(edge: unknown): DockEdge | undefined {
   return edge === "left" || edge === "right" || edge === "top" || edge === "bottom"
     ? edge
     : undefined;
+}
+
+export async function handleDesktopConfigSave(
+  backend: DesktopBackend,
+  rpc: DesktopRpc,
+  request: Extract<DesktopCoreRequest, { method: "config.save" }>,
+): Promise<null> {
+  const { config } = request.payload;
+  const workspace = backend.workspace;
+  if (workspace) {
+    const senderKey = backend.rpcs.getRpcWindowKey(rpc);
+    const detachedPane = paneIdFromDetachedRpcKey(senderKey);
+    await backend.commitDesktopSnapshot(detachedPane
+      ? workspace.replaceConfigFromDetachedPane(detachedPane, config)
+      : workspace.replaceConfigFromWindow(senderKey ?? MAIN_WINDOW_RPC_KEY, config));
+  } else {
+    backend.setConfig(config);
+    await saveConfig(backend.requireConfig());
+  }
+  return null;
 }
 
 export async function handleDesktopWorkspaceRequest(

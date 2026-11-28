@@ -3,6 +3,7 @@ import { clonePaneStateMap, type PaneRuntimeState } from "../../../../../core/st
 import { cloneLayout, findPaneInstance, type AppConfig, type LayoutConfig, type SavedLayout } from "../../../../../types/config";
 import type { DesktopSharedStateSnapshot, OtherWindowTab } from "../../../../../types/desktop-window";
 import { detachPaneToFrame, dockPane, insertAtRootEdge, removePane } from "../../../../../layout/pane-manager";
+import { isTransientPane } from "../../../../../layout/pane-manager/transient";
 import { MAIN_WINDOW_ID, type ExtraWindowRecord } from "../../../../desktop/screen-setup";
 import {
   activateLayout,
@@ -88,13 +89,15 @@ function keepMainDetachedFrames(state: WindowLayouts, current: LayoutConfig): Wi
   if (current.detached.length === 0) return state;
   const layout = keepDetachedFrames(state.config.layout, current);
   if (layout === state.config.layout) return state;
+  const view = state.views[MAIN_WINDOW_ID]!;
   return {
     ...state,
+    views: { ...state.views, [MAIN_WINDOW_ID]: { ...view, liveLayout: view.liveLayout ? layout : undefined } },
     config: {
       ...state.config,
       layout,
       layouts: state.config.layouts.map((entry, index) => (
-        index === state.config.activeLayoutIndex ? { ...entry, layout: cloneLayout(layout) } : entry
+        index === state.config.activeLayoutIndex ? { ...entry, layout: keepDetachedFrames(entry.layout, current) } : entry
       )),
     },
   };
@@ -226,7 +229,7 @@ export function createDesktopWorkspace(
   let layoutChanged: boolean | undefined;
   const sent = new Map<string, Map<number, DesktopSharedStateSnapshot>>();
   /** What each window last sent: what its next sync is built on unless it took a newer state since. */
-  const received = new Map<string, DesktopSharedStateSnapshot>();
+  const received = new Map<string, { snapshot: DesktopSharedStateSnapshot; baseSeq?: number | null }>();
   /**
    * The other windows' tabs as the main window was last told them. A config
    * it saves after a cloud pull carries them; one counts as changed only
@@ -260,7 +263,10 @@ export function createDesktopWorkspace(
   /** Takes a whole config the backend built from the shared state, keeping the main window's pane state. */
   const updateConfig = (nextConfig: AppConfig, options?: { layoutChanged?: boolean }) => {
     const view = mainView();
-    state = replaceSharedConfig(state, nextConfig, view);
+    const focused = view.focusedPaneId && findPaneInstance(state.config.layout, view.focusedPaneId);
+    const focusedPaneId = focused && isTransientPane(focused.paneId) && !findPaneInstance(nextConfig.layout, focused.instanceId)
+      ? null : view.focusedPaneId;
+    state = replaceSharedConfig(state, nextConfig, { ...view, focusedPaneId });
     state = {
       ...state,
       views: {
@@ -274,7 +280,7 @@ export function createDesktopWorkspace(
 
   const baseFor = (windowId: string, baseSeq: number | null | undefined): DesktopSharedStateSnapshot | null => {
     if (typeof baseSeq === "number") return sent.get(windowId)?.get(baseSeq) ?? null;
-    return received.get(windowId) ?? null;
+    return received.get(windowId)?.snapshot ?? null;
   };
 
   const syncWindowState = (
@@ -288,11 +294,14 @@ export function createDesktopWorkspace(
     }
     if (!state.views[windowId]) return getSnapshot();
     const base = baseFor(windowId, baseSeq);
+    const previous = received.get(windowId);
+    const transientBase = typeof snapshot.mainStateRevision === "number" && previous?.baseSeq === baseSeq
+      && typeof previous?.snapshot.mainStateRevision === "number" ? previous.snapshot : undefined;
     const detachedBefore = state.config.layout;
-    state = mergeWindowSnapshot(state, windowId, base, snapshot);
+    state = mergeWindowSnapshot(state, windowId, base, snapshot, { transientBase });
     if (windowId === MAIN_WINDOW_ID) state = keepMainDetachedFrames(state, detachedBefore);
     revisions.set(windowId, snapshot.mainStateRevision ?? currentRevision);
-    received.set(windowId, snapshot);
+    received.set(windowId, { snapshot, baseSeq });
     // The states it was sent before the one it built on will not be built on again.
     const history = sent.get(windowId);
     if (history && typeof baseSeq === "number") {
@@ -342,7 +351,7 @@ export function createDesktopWorkspace(
     replaceConfigFromWindow(windowId, nextConfig) {
       const view = state.views[windowId];
       if (!view) return getSnapshot();
-      let base = received.get(windowId) ?? null;
+      let base = received.get(windowId)?.snapshot ?? null;
       if (windowId === MAIN_WINDOW_ID && otherTabsTold.length > 0) {
         const own = base ?? projectWindow(state, MAIN_WINDOW_ID)!;
         base = { ...own, config: { ...own.config, layouts: [...own.config.layouts, ...otherTabsTold] } };
@@ -354,7 +363,7 @@ export function createDesktopWorkspace(
         focusedPaneId: base?.focusedPaneId ?? view.focusedPaneId,
         statusBarVisible: base?.statusBarVisible ?? view.statusBarVisible,
         brokerSyncErrors: base?.brokerSyncErrors ?? state.brokerSyncErrors,
-      });
+      }, { configOnly: true });
       if (windowId === MAIN_WINDOW_ID) state = keepMainDetachedFrames(state, detachedBefore);
       layoutChanged = true;
       return getSnapshot();
@@ -377,7 +386,7 @@ export function createDesktopWorkspace(
         ...current,
         config: { ...nextConfig, layout },
         paneState: sameTab ? current.paneState : nextConfig.layouts[nextConfig.activeLayoutIndex]?.paneState ?? {},
-      });
+      }, { configOnly: true });
       state = keepMainDetachedFrames(state, detachedBefore);
       layoutChanged = true;
       return getSnapshot();

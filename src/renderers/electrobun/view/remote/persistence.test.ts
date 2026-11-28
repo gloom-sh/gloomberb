@@ -1,4 +1,7 @@
 import { beforeEach, expect, mock, test } from "bun:test";
+import { APP_SESSION_ID, APP_SESSION_SCHEMA_VERSION, buildAppSessionSnapshot } from "../../../../core/state/session-persistence";
+import { addPaneFloating } from "../../../../layout/pane-manager";
+import { createDefaultConfig, createPaneInstance } from "../../../../types/config";
 
 // The real module reaches the webview's `window` on load. This stands in for the Bun process: what it has saved,
 // whether its requests fail, and a gate that holds them in flight.
@@ -46,6 +49,34 @@ beforeEach(() => {
   saved.sessions.clear();
   failing = false;
   gate = null;
+});
+
+test("session.set omits the live Layouts pane but keeps ordinary pane state and focus", async () => {
+  const config = createDefaultConfig(":memory:");
+  const pane = createPaneInstance("layout-marketplace", { instanceId: "layout-marketplace:session" });
+  const ordinaryId = "portfolio-list:main";
+  const ordinaryState = { collectionId: "main", cursorSymbol: "MSFT" };
+  const view = new RemotePersistence();
+  config.layout = addPaneFloating(config.layout, pane, 160, 48);
+  const state = {
+    config,
+    paneState: { [pane.instanceId]: { activeTabId: "team" }, [ordinaryId]: ordinaryState },
+    statusBarVisible: true,
+    recentTickers: [],
+    tickers: new Map(),
+  };
+
+  for (const focusedPaneId of [pane.instanceId, ordinaryId]) {
+    view.sessions.set(APP_SESSION_ID, buildAppSessionSnapshot({ ...state, focusedPaneId }), APP_SESSION_SCHEMA_VERSION);
+    await view.sessions.flush();
+    const payload = saved.sessions.get(APP_SESSION_ID);
+    expect(payload).toMatchObject({
+      focusedPaneId: focusedPaneId === ordinaryId ? ordinaryId : null,
+      paneState: { [ordinaryId]: ordinaryState },
+      openPaneIds: expect.arrayContaining([ordinaryId]),
+    });
+    expect(JSON.stringify(payload)).not.toContain(pane.instanceId);
+  }
 });
 
 test("a failed sign-in save goes out with the next save, so the next launch is still signed in", async () => {

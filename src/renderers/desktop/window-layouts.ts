@@ -3,8 +3,11 @@ import {
   syncConfigActiveLayoutState,
   type PaneRuntimeState,
 } from "../../core/state/app/state";
+import { getPaneOrder, getTopFloatingPaneId } from "../../core/state/app/layout";
 import { createSavedLayoutId } from "../../layout/pane-layout-move";
-import { dockPane, floatAtRect, insertAtRootEdge, removePane } from "../../layout/pane-manager";
+import { dockPane, floatAtRect, getDockedPaneIds, insertAtRootEdge, removePane, withoutTransientPanes } from "../../layout/pane-manager";
+import { finalizeLayout } from "../../layout/pane-manager/layout-state";
+import { isTransientPane } from "../../layout/pane-manager/transient";
 import {
   cloneLayout,
   createBlankLayout,
@@ -32,6 +35,7 @@ import { applyProfileEdits, diffProfile, type ProfileJson } from "../../data/pro
 
 export interface WindowView {
   activeLayoutId: string;
+  liveLayout?: LayoutConfig;
   paneState: Record<string, PaneRuntimeState>;
   focusedPaneId: string | null;
   statusBarVisible: boolean;
@@ -46,6 +50,8 @@ export interface WindowLayouts {
   views: Record<string, WindowView>;
   /** The window showing a tab, by tab id. A tab with no entry is the main window's. */
   owners: Record<string, string>;
+  /** Live instance ids are single-use, even if a late snapshot outlives its merge base. */
+  openedTransientIds: ReadonlySet<string>;
 }
 
 const LAYOUT_KEYS = new Set<string>(["layout", "layouts", "activeLayoutIndex"]);
@@ -126,7 +132,8 @@ function viewFromTab(tab: SavedLayout, statusBarVisible: boolean): WindowView {
 /**
  * Settles a state after a change: every window shows tabs it owns, a window
  * left without tabs is gone, the main window keeps at least one, and the
- * config's active layout is the main window's.
+ * config's active layout is the main window's. A live layout with transient
+ * panes belongs to this window and this active tab, never to the saved tab.
  */
 function settle(state: WindowLayouts): WindowLayouts {
   const ids = new Set(state.config.layouts.map(layoutId));
@@ -142,22 +149,78 @@ function settle(state: WindowLayouts): WindowLayouts {
   }
   const views: Record<string, WindowView> = {};
   const windowIds: string[] = [];
+  let openedTransientIds = state.openedTransientIds;
   for (const windowId of next.windowIds) {
     const view = next.views[windowId];
     if (!view) continue;
     const tabs = windowTabs(next, windowId);
     if (tabs.length === 0) continue;
     windowIds.push(windowId);
-    views[windowId] = tabs.some((tab) => tab.id === view.activeLayoutId)
-      ? view
-      : viewFromTab(tabs[0]!, view.statusBarVisible);
+    const active = tabs.find((tab) => tab.id === view.activeLayoutId);
+    if (!active) views[windowId] = viewFromTab(tabs[0]!, view.statusBarVisible);
+    else if (view.liveLayout) {
+      const liveLayout = withTransientPanes(active.layout, view.liveLayout);
+      const newIds = transientIds(view.liveLayout).filter((id) => !openedTransientIds.has(id));
+      if (newIds.length) openedTransientIds = new Set([...openedTransientIds, ...newIds]);
+      views[windowId] = { ...view, liveLayout };
+    }
+    else views[windowId] = view;
   }
-  next = { ...next, views, windowIds };
+  next = { ...next, views, windowIds, openedTransientIds };
   const main = views[MAIN_WINDOW_ID]!;
   const mainIndex = next.config.layouts.findIndex((entry) => entry.id === main.activeLayoutId);
   const active = next.config.layouts[mainIndex]!;
-  // The saved copy of the main window's active tab is kept current, so it is the live layout.
-  return { ...next, config: { ...next.config, activeLayoutIndex: mainIndex, layout: cloneLayout(active.layout) } };
+  return { ...next, config: { ...next.config, activeLayoutIndex: mainIndex, layout: main.liveLayout ?? cloneLayout(active.layout) } };
+}
+
+function transientIds(layout: LayoutConfig): string[] {
+  return layout.instances.filter((instance) => isTransientPane(instance.paneId)).map((instance) => instance.instanceId);
+}
+
+function transientLayout(layout: LayoutConfig): LayoutConfig | undefined {
+  return withoutTransientPanes(layout) === layout ? undefined : layout;
+}
+
+/** Rebase the window's transient panes onto the latest saved copy of the same tab. */
+function withTransientPanes(saved: LayoutConfig, live: LayoutConfig): LayoutConfig | undefined {
+  const kept = withoutTransientPanes(live);
+  if (kept === live) return undefined;
+  if (deepEqual(kept, saved)) return live;
+  const instances = live.instances.filter((instance) => isTransientPane(instance.paneId));
+  const ids = new Set(instances.map((instance) => instance.instanceId));
+  const layout = {
+    ...saved,
+    instances: [...saved.instances, ...instances],
+    floating: [...saved.floating, ...live.floating.filter((entry) => ids.has(entry.instanceId))],
+    detached: [...saved.detached, ...live.detached.filter((entry) => ids.has(entry.instanceId))],
+  };
+  if (deepEqual(kept.dockRoot, saved.dockRoot)) return { ...layout, dockRoot: live.dockRoot };
+  return getDockedPaneIds(live).filter((id) => ids.has(id)).reduce((next, id) => dockPane(next, id), layout);
+}
+
+/** Apply only the transient part of a full-window upload. Native windows keep their backend placement. */
+function mergeTransientProjection(
+  current: LayoutConfig | undefined,
+  before: LayoutConfig,
+  after: LayoutConfig,
+  opened: ReadonlySet<string>,
+): LayoutConfig | undefined {
+  const beforeIds = new Set(transientIds(before));
+  const afterIds = transientIds(after);
+  if (beforeIds.size === 0 && afterIds.length === 0) return current;
+  const native = new Set(current?.detached.map((entry) => entry.instanceId));
+  const stale = afterIds.some((id) => (opened.has(id) && !(current && findPaneInstance(current, id)))
+    || (after.detached.some((entry) => entry.instanceId === id) && !native.has(id)));
+  if (stale) return current;
+  const saved = withoutTransientPanes(after);
+  if (deepEqual(withTransientPanes(saved, before), transientLayout(after))) return current;
+
+  if (!current) return transientLayout(after);
+  const incoming = afterIds.reduce((layout, id) => native.has(id) ? removePane(layout, id) : layout, after);
+  const retained = transientIds(current).reduce((layout, id) => (
+    native.has(id) || (!beforeIds.has(id) && !afterIds.includes(id)) ? layout : removePane(layout, id)
+  ), current);
+  return withTransientPanes(incoming, retained) ?? transientLayout(incoming);
 }
 
 /**
@@ -176,6 +239,7 @@ export function createWindowLayouts(
   const views: Record<string, WindowView> = {
     [MAIN_WINDOW_ID]: {
       activeLayoutId: mainActiveId,
+      liveLayout: transientLayout(config.layout),
       paneState: main.paneState,
       focusedPaneId: main.focusedPaneId,
       statusBarVisible: main.statusBarVisible,
@@ -198,6 +262,7 @@ export function createWindowLayouts(
     windowIds,
     views,
     owners,
+    openedTransientIds: new Set(),
   });
 }
 
@@ -221,7 +286,7 @@ function paneTicker(state: WindowLayouts, paneId: string, seen: Set<string>): st
   const view = state.views[located.windowId];
   const tab = state.config.layouts.find((entry) => layoutId(entry) === located.layoutId)!;
   const shown = view?.activeLayoutId === located.layoutId;
-  const layout = shown && located.windowId === MAIN_WINDOW_ID ? state.config.layout : tab.layout;
+  const layout = (shown ? view.liveLayout : undefined) ?? tab.layout;
   const instance = findPaneInstance(layout, paneId);
   if (!instance) return null;
   const cursor = (shown ? view!.paneState : tab.paneState ?? {})[paneId]?.cursorSymbol;
@@ -272,7 +337,7 @@ export function projectWindow(state: WindowLayouts, windowId: string): DesktopSh
   const tabs = windowTabs(state, windowId);
   const activeIndex = Math.max(0, tabs.findIndex((entry) => entry.id === view.activeLayoutId));
   const active = tabs[activeIndex]!;
-  const layout = windowId === MAIN_WINDOW_ID ? state.config.layout : active.layout;
+  const layout = view.liveLayout ?? active.layout;
   const linkedTickers = state.windowIds.length > 1 ? linkedTickersFor(state, windowId, layout) : {};
   return {
     config: {
@@ -333,6 +398,46 @@ function mergedPluginConfig(shared: AppConfig["pluginConfig"], before: AppConfig
   return applyProfileEdits(json(shared), diffProfile(json(before), json(after)), { conflicts: "take" }) as AppConfig["pluginConfig"];
 }
 
+/** Apply a pure pane close against the held layout, not the renderer's older copy. */
+function keepConcurrentPanesOnClose(current: SavedLayout, before: SavedLayout, after: SavedLayout): SavedLayout {
+  const closed = before.layout.instances.filter(({ instanceId }) => !findPaneInstance(after.layout, instanceId));
+  if (closed.length === 0) return after;
+  const removeClosed = (layout: LayoutConfig) => closed.reduce((next, { instanceId }) => removePane(next, instanceId), layout);
+  if (!deepEqual(removeClosed(before.layout), after.layout)) return after;
+  const layout = removeClosed(current.layout);
+  const paneState = { ...after.paneState };
+  for (const [id, value] of Object.entries(current.paneState ?? {})) {
+    if (deepEqual(before.paneState?.[id], after.paneState?.[id]) && findPaneInstance(layout, id)) paneState[id] = value;
+  }
+  const focused = current.focusedPaneId;
+  return {
+    ...after,
+    layout,
+    paneState,
+    focusedPaneId: focused && focused !== before.focusedPaneId && findPaneInstance(layout, focused) ? focused : after.focusedPaneId,
+  };
+}
+
+/** A tab as it saves with only its focus left out. */
+function sameExceptFocus(before: SavedLayout, after: SavedLayout): boolean {
+  const { focusedPaneId: _before, ...beforeRest } = before;
+  const { focusedPaneId: _after, ...afterRest } = after;
+  return deepEqual(beforeRest, afterRest) || deepEqual({ ...beforeRest, layout: finalizeLayout(before.layout) }, afterRest);
+}
+
+/**
+ * Where focus goes when a window closes its focused transient pane and changes
+ * nothing else in the tab: where it is now if that pane is still placed, else
+ * where the window put it, else, when that pane has gone since, where the
+ * reducer would.
+ */
+function overlayCloseFocus(layout: LayoutConfig, current: string | null, sent: string | null): string | null {
+  const placed = getPaneOrder(layout);
+  if (current && placed.includes(current)) return current;
+  if (sent === null || placed.includes(sent)) return sent;
+  return getTopFloatingPaneId(layout) ?? placed[0] ?? null;
+}
+
 /**
  * Applies what `windowId` sent on top of the shared state, counting only what
  * changed since `base`, the state the window drew from. Settings and lists
@@ -342,18 +447,22 @@ function mergedPluginConfig(shared: AppConfig["pluginConfig"], before: AppConfig
  * that another window owns, which only a pulled or imported config does,
  * takes the content and stays where it is.
  *
- * With no base, everything the window sends counts as its change.
+ * With no base, compare to the current view. A config save only writes saved
+ * tab content; the window's live transient panes come from state syncs.
  */
 export function mergeWindowSnapshot(
   state: WindowLayouts,
   windowId: string,
   base: DesktopSharedStateSnapshot | null,
   sent: DesktopSharedStateSnapshot,
+  options?: { configOnly?: boolean; transientBase?: DesktopSharedStateSnapshot },
 ): WindowLayouts {
   const view = state.views[windowId];
   if (!view) return state;
   const before = normalize(base ?? projectWindow(state, windowId)!);
-  const after = normalize(sent);
+  const beforeIds = transientIds(before.config.layout);
+  const after = normalize(options?.configOnly && sent.focusedPaneId && beforeIds.includes(sent.focusedPaneId)
+    ? { ...sent, focusedPaneId: null } : sent);
 
   const config: AppConfig = { ...state.config };
   const configRecord = config as unknown as Record<string, unknown>;
@@ -385,6 +494,24 @@ export function mergeWindowSnapshot(
     return entry.id === id ? entry : { ...entry, id };
   });
   const sentActiveId = sentTabs[after.config.activeLayoutIndex]?.id;
+  const baseActiveId = activeTabId(before);
+  const afterIds = transientIds(after.config.layout);
+  const sameActiveTab = sentActiveId === baseActiveId && sentActiveId === view.activeLayoutId;
+  const lastUpload = options?.transientBase;
+  const transientBase = lastUpload && activeTabId(lastUpload) === sentActiveId ? lastUpload : before;
+  const liveLayout = sameActiveTab && !options?.configOnly
+    ? mergeTransientProjection(view.liveLayout, transientBase.config.layout, after.config.layout, state.openedTransientIds)
+    : view.liveLayout;
+  const transientFocus = after.focusedPaneId !== null && afterIds.includes(after.focusedPaneId);
+  const isTransientId = (id: string) => beforeIds.includes(id) || afterIds.includes(id) || state.openedTransientIds.has(id);
+  const closed = (id: string) => isTransientId(id) && !(liveLayout && findPaneInstance(liveLayout, id));
+  const closeFallback = !options?.configOnly && sameActiveTab && transientFocus
+    && before.focusedPaneId !== null && !findPaneInstance(after.config.layout, before.focusedPaneId);
+  const closesFocusedOverlay = sameActiveTab && !options?.configOnly && transientBase.focusedPaneId !== null
+    && !!view.liveLayout && !!findPaneInstance(view.liveLayout, transientBase.focusedPaneId)
+    && closed(transientBase.focusedPaneId);
+  // Set when that close moved focus to an ordinary pane and left the tab as it was.
+  let overlayFocus: string | null | undefined;
   const baseTabs = new Map(before.config.layouts.filter((entry) => entry.id).map((entry) => [entry.id!, entry] as const));
 
   let layouts = state.config.layouts.filter((entry) => {
@@ -400,7 +527,28 @@ export function mergeWindowSnapshot(
     const index = layouts.findIndex((entry) => entry.id === id);
     const previous = baseTabs.get(id);
     if (index >= 0) {
-      if (!previous || !deepEqual(previous, tab)) layouts = layouts.map((entry, at) => (at === index ? tab : entry));
+      if (closesFocusedOverlay && !transientFocus && id === sentActiveId && previous && sameExceptFocus(previous, tab)) {
+        // Only the overlay closed: the tab keeps what it holds now, and its focus
+        // stays where it is when that pane is still there.
+        const current = layouts[index]!;
+        overlayFocus = overlayCloseFocus(current.layout, view.focusedPaneId, after.focusedPaneId);
+        if (current.focusedPaneId !== overlayFocus) layouts[index] = { ...current, focusedPaneId: overlayFocus };
+      } else if (!previous || !deepEqual(previous, tab)) {
+        const current = layouts[index]!;
+        let updated = tab;
+        if (sameActiveTab && id === sentActiveId && previous && transientFocus) {
+          if (closeFallback) updated = keepConcurrentPanesOnClose(current, previous, tab);
+          else if (deepEqual(previous.paneState, tab.paneState)
+            && (!deepEqual(current.layout, previous.layout) || !deepEqual(current.paneState, previous.paneState))
+            && (deepEqual(previous.layout, tab.layout) || deepEqual(finalizeLayout(previous.layout), tab.layout))) {
+            updated = { ...tab, layout: current.layout, paneState: current.paneState };
+          }
+          if (closed(after.focusedPaneId!) && current.focusedPaneId && findPaneInstance(updated.layout, current.focusedPaneId)) {
+            updated = { ...updated, focusedPaneId: current.focusedPaneId };
+          }
+        }
+        layouts = layouts.map((entry, at) => (at === index ? updated : entry));
+      }
       continue;
     }
     // Sent before, and gone from the shared state since: another window deleted it.
@@ -418,15 +566,47 @@ export function mergeWindowSnapshot(
 
   layouts = inSentOrder(layouts, sentTabs.map(layoutId), owns);
 
-  const activeChanged = sentActiveId !== undefined && sentActiveId !== activeTabId(before) && owns(sentActiveId);
+  const activeChanged = sentActiveId !== undefined && sentActiveId !== baseActiveId && owns(sentActiveId);
   const activeLayoutId = activeChanged ? sentActiveId : view.activeLayoutId;
   // Pane state and focus belong to a tab: a window that sent them for a tab it
   // no longer shows (one just moved away) has them kept in that tab only.
   const sameTab = sentActiveId === activeLayoutId;
+  const sameView = activeLayoutId === view.activeLayoutId;
+  const saved = layouts.find((tab) => tab.id === activeLayoutId);
+  let paneState = sameTab && (activeChanged || !deepEqual(after.paneState, before.paneState)) ? after.paneState : view.paneState;
+  let focusedPaneId = sameTab && (activeChanged || closesFocusedOverlay || after.focusedPaneId !== before.focusedPaneId)
+    ? after.focusedPaneId : view.focusedPaneId;
+  if (sameTab && saved && (beforeIds.length || afterIds.length || view.liveLayout)) {
+    if (options?.configOnly) {
+      ({ paneState, focusedPaneId } = sameView ? view : viewFromTab(saved, view.statusBarVisible));
+    } else if (closeFallback && saved.focusedPaneId === view.focusedPaneId && view.focusedPaneId) {
+      focusedPaneId = view.focusedPaneId;
+      paneState = { ...paneState, ...saved.paneState };
+    } else if (sameActiveTab) {
+      const ordinaryState = (snapshot: Pick<WindowView, "paneState">) => Object.fromEntries(
+        Object.entries(snapshot.paneState).filter(([id]) => !isTransientId(id)),
+      );
+      const beforeState = ordinaryState(before);
+      const afterState = ordinaryState(after);
+      paneState = overlayFocus !== undefined || deepEqual(beforeState, afterState) ? ordinaryState(view) : afterState;
+      if (overlayFocus !== undefined) focusedPaneId = overlayFocus;
+      for (const id of liveLayout ? transientIds(liveLayout) : []) {
+        const value = !afterIds.includes(id) || deepEqual(after.paneState[id], transientBase.paneState[id])
+          ? view.paneState[id] : after.paneState[id];
+        if (value) paneState[id] = value;
+      }
+    }
+    const keep = (id: string) => sameView ? !closed(id) : !isTransientId(id);
+    paneState = Object.fromEntries(Object.entries(paneState).filter(([id]) => keep(id)));
+    if (focusedPaneId && !keep(focusedPaneId)) {
+      focusedPaneId = sameView && view.focusedPaneId && keep(view.focusedPaneId) ? view.focusedPaneId : saved.focusedPaneId ?? null;
+    }
+  }
   const nextView: WindowView = {
     activeLayoutId,
-    paneState: sameTab && (activeChanged || !deepEqual(after.paneState, before.paneState)) ? after.paneState : view.paneState,
-    focusedPaneId: sameTab && (activeChanged || after.focusedPaneId !== before.focusedPaneId) ? after.focusedPaneId : view.focusedPaneId,
+    liveLayout: sameView ? liveLayout : undefined,
+    paneState,
+    focusedPaneId,
     statusBarVisible: after.statusBarVisible !== before.statusBarVisible ? after.statusBarVisible : view.statusBarVisible,
   };
   const brokerSyncErrors = deepEqual(after.brokerSyncErrors ?? {}, before.brokerSyncErrors ?? {})
@@ -464,6 +644,7 @@ export function replaceSharedConfig(
       ...state.views,
       [MAIN_WINDOW_ID]: {
         activeLayoutId: activeId,
+        liveLayout: activeId === previous.activeLayoutId ? transientLayout(config.layout) : undefined,
         paneState: main.paneState,
         focusedPaneId: main.focusedPaneId,
         statusBarVisible: main.statusBarVisible ?? previous.statusBarVisible,
