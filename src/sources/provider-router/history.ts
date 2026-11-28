@@ -20,7 +20,7 @@ import {
 import { subtractTimeRange } from "../../time-series/date-window";
 import { clipPriceHistoryToRange } from "../../time-series/history-window";
 import { repairIsolatedIntradayOhlcOutliers } from "../../time-series/history-quality";
-import { canonicalExchange, parsePublicTickerKey, resolveExchangeTimeZone } from "../../utils/exchanges";
+import { canonicalExchange, displayTickerKey, parsePublicTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../utils/exchanges";
 import { isRoundTheClockCoin } from "../../utils/crypto-pair";
 import { zonedDateKey } from "../../utils/zoned-date-time";
 import { resolvePriceHistoryCurrencyUnit } from "../../utils/currency-units";
@@ -778,6 +778,7 @@ export class ProviderRouterHistoryRoutes {
       && [...attempts.outcomes.values()].some((outcome) => outcome.outcome === "stale")) {
       throw new Error(`Latest history for ${target.symbol} is behind`);
     }
+    const listing = displayTickerKey(publicTickerKey(target.symbol, target.exchange || request.target.exchange));
     if (!providerResult && request.missingProviderError && !reportedGaps.some((value) => value.points.length > 0)) {
       // A reason the service gave ("ADX listings have daily bars only.") says why; one that has no
       // listing for the symbol says it is not a ticker; otherwise no source answered. A coin trades
@@ -786,12 +787,12 @@ export class ProviderRouterHistoryRoutes {
       // history, and never reads as one ("No history provider available").
       const failed = coin || attempts.misses.failure !== undefined;
       throw noProviderError(failed ? `No source could load history for ${request.target.symbol} just now` : request.missingProviderError,
-        attempts.misses, request.target.symbol);
+        attempts.misses, listing);
     }
     // A window of dates no source could answer, because one failed rather than had nothing, is that failure:
     // an empty answer would read as no bars in the window (`history --from` printing "0 bars").
     if (!providerResult && attempts.misses.failure !== undefined && !reportedGaps.some((value) => value.points.length > 0)) {
-      throw noProviderError(`No source could load history for ${request.target.symbol} just now`, attempts.misses, request.target.symbol);
+      throw noProviderError(`No source could load history for ${request.target.symbol} just now`, attempts.misses, listing);
     }
     return withReportedGaps(providerResult?.value ?? { points: [], resolution: historyResolutionForInterval(request.interval) });
   }

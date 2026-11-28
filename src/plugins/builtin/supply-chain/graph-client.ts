@@ -1,19 +1,19 @@
 import { apiClient } from "../../../api-client";
 import { DEFAULT_GRAPH_OPTIONS, supplyGraphQuery, type GraphOptions, type GraphPayload, type GraphPath } from "../../../api-client/supply-chain-graph";
 import { dateOptionError, readCalendarDate } from "../../../utils/calendar-date";
-import { isFraction } from "../../../utils/guards";
+import { isCalendarDay, isFraction, isNullableCalendarDay } from "../../../utils/guards";
 import { batchReplyItems, createCloudBatchAhead, createCloudEndpoint } from "../shared/cloud-resource";
-import { normalizeSupplyRow, validPeriodMonths, validSupplyEntity, validSupplyRow } from "./client";
+import { laterSupplyEvidence, normalizeSupplyRow, validPeriodMonths, validSupplyEntity, validSupplyRow } from "./client";
 import { graphEvidenceRow } from "./graph-evidence";
 import { activeRelationship, isUnconfirmed } from "./trust";
 
 const id = (x: unknown): x is string => typeof x === "string" && x.length > 0;
-export function validateGraph(data: GraphPayload): GraphPayload {
+export function validateGraph(data: GraphPayload, requestedCutoff?: string): GraphPayload {
   try {
     if (!data || !id(data.symbol) || !["available", "unavailable"].includes(data.status) || !["full", "preview"].includes(data.access)
       || !Array.isArray(data.nodes) || !data.nodes.every(validSupplyEntity) || !Array.isArray(data.links)
       || typeof data.truncated !== "boolean" || typeof data.search?.complete !== "boolean" || !Array.isArray(data.search.reasons)
-      || !data.search.reasons.every(id) || !Number.isFinite(Date.parse(data.snapshotAt))) throw 0;
+      || !data.search.reasons.every(id) || !Number.isFinite(Date.parse(data.snapshotAt)) || !isNullableCalendarDay(data.asOf)) throw 0;
     const nodes = new Set(data.nodes.map(node => node.id));
     const links = new Map(data.links.map(link => [link.id, link]));
     if (nodes.size !== data.nodes.length || links.size !== data.links.length || (data.entity && !nodes.has(data.entity.id))
@@ -48,15 +48,31 @@ export function validateGraph(data: GraphPayload): GraphPayload {
     const o = data.options;
     if (!Number.isInteger(o.depth) || o.depth < 1 || o.depth > 4 || !["both", "upstream", "downstream"].includes(o.direction)
       || !isFraction(o.minConfidence) || !Number.isFinite(o.minPct) || o.minPct < 0 || o.minPct > 100 || !Number.isInteger(o.limit) || o.limit < 1 || o.limit > 50
-      || !["score", "shortest"].includes(o.ranking) || ![o.roles, o.sources, o.tiers].every(Array.isArray)) throw 0;
-    return { ...data, links: data.links.map(link => ({ ...link, evidence: link.evidence.map(item => {
-      const row = normalizeSupplyRow(graphEvidenceRow(item));
-      return { ...item, trustTier: row.tier, quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss,
-        pctOfRevenue: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope,
-        usd: row.usd, usdBasis: row.usdBasis, nativeAmount: row.nativeAmount, nativeCurrency: row.nativeCurrency, nativeScale: row.nativeScale,
-        lastConfirmedAt: row.lastConfirmedAt, evidence: row.evidence };
-    }) })) };
+      || !["score", "shortest"].includes(o.ranking) || ![o.roles, o.sources, o.tiers].every(Array.isArray)
+      || (o.asOf !== undefined && !isCalendarDay(o.asOf))) throw 0;
   } catch { throw new Error("The server returned an unreadable supply chain graph"); }
+  const echoed = data.options.asOf;
+  const latestPreview = data.access === "preview" && !echoed;
+  if (requestedCutoff && echoed !== requestedCutoff && !latestPreview) {
+    throw new Error(`Supply chain graph did not return the requested filing cutoff ${requestedCutoff}; none is shown.`);
+  }
+  const cutoff = latestPreview ? undefined : requestedCutoff ?? echoed;
+  if (cutoff) {
+    const futureExposure = ({ exposure }: GraphPath) => isCalendarDay(exposure?.period) && exposure.period > cutoff;
+    if ((data.asOf && data.asOf > cutoff)
+      || data.links.some(link => link.evidence.some(item => laterSupplyEvidence(graphEvidenceRow(item), cutoff)))
+      || data.paths.some(futureExposure)
+      || [...data.upstream, ...data.downstream, ...data.related].some(reach => futureExposure(reach.bestPath) || futureExposure(reach.shortestPath))) {
+      throw new Error(`Supply chain graph returned disclosures published after ${cutoff}; none are shown.`);
+    }
+  }
+  return { ...data, links: data.links.map(link => ({ ...link, evidence: link.evidence.map(item => {
+    const row = normalizeSupplyRow(graphEvidenceRow(item));
+    return { ...item, trustTier: row.tier, quote: row.quote, quoteLanguage: row.quoteLanguage, quoteGloss: row.quoteGloss,
+      pctOfRevenue: row.pctOfRevenue, pctBasis: row.pctBasis, pctScope: row.pctScope,
+      usd: row.usd, usdBasis: row.usdBasis, nativeAmount: row.nativeAmount, nativeCurrency: row.nativeCurrency, nativeScale: row.nativeScale,
+      lastConfirmedAt: row.lastConfirmedAt, evidence: row.evidence };
+  }) })) };
 }
 const key = (symbol: string, target: string, options: Partial<GraphOptions>, access = "") => `${access}:${symbol.toUpperCase()}:${target.toUpperCase()}:${supplyGraphQuery(options)}`;
 const graphEndpoint = createCloudEndpoint<{ symbol: string; target: string; options: Partial<GraphOptions>; access?: string }, GraphPayload, Pick<typeof apiClient, "getCloudSupplyGraph" | "getCloudSupplyPaths">>({
@@ -64,7 +80,7 @@ const graphEndpoint = createCloudEndpoint<{ symbol: string; target: string; opti
   key: ({ symbol, target, options, access }) => key(symbol, target, options, access),
   defaultClient: apiClient,
   fetch: ({ symbol, target, options }, client) => target ? client.getCloudSupplyPaths(symbol, target, options) : client.getCloudSupplyGraph(symbol, options),
-  validate: validateGraph, unavailableMessage: "Supply chain graph is not available yet.", unavailableStatuses: [404, 503],
+  validate: (data, { options }) => validateGraph(data, options.asOf), unavailableMessage: "Supply chain graph is not available yet.", unavailableStatuses: [404, 503],
 });
 export const graphCache = graphEndpoint.cache;
 export const fetchSupplyGraph = (symbol: string, options: Partial<GraphOptions> = {}, target = "", client: Pick<typeof apiClient, "getCloudSupplyGraph" | "getCloudSupplyPaths"> = apiClient) =>
@@ -73,10 +89,14 @@ export const cachedGraph = (symbol: string, target: string, options: GraphOption
   graphEndpoint.cached({ symbol, target, options, access });
 export const loadGraph = (symbol: string, target: string, options: GraphOptions, access: string, force = false) =>
   graphEndpoint.load({ symbol, target, options, access }, { force });
-export function graphOptions(input: Record<string, unknown>): GraphOptions {
-  const asOfText = String(input.asOf || input["as-of"] || "").trim();
+export function supplyCutoff(input: Record<string, unknown>, paneCutoff?: unknown): string | undefined {
+  const asOfText = String(input.asOf || input["as-of"] || paneCutoff || "").trim();
   const asOf = asOfText ? readCalendarDate(asOfText) : null;
   if (asOfText && !asOf) throw new Error(dateOptionError(asOfText, "", { subject: "a filing cutoff" }));
+  return asOf ?? undefined;
+}
+export function graphOptions(input: Record<string, unknown>): GraphOptions {
+  const asOf = supplyCutoff(input);
   const csv = (key: string) => String(input[key] ?? "").split(",").filter(Boolean);
   const options = { ...DEFAULT_GRAPH_OPTIONS, depth: Number(input.depth ?? 2), direction: String(input.direction ?? "both") as GraphOptions["direction"],
     roles: csv("roles") as GraphOptions["roles"], sources: csv("sources") as GraphOptions["sources"], tiers: csv("tiers") as GraphOptions["tiers"],
@@ -103,7 +123,7 @@ export function loadGraphsAhead(symbols: readonly string[], options: GraphOption
   if (!ahead) {
     ahead = createCloudBatchAhead(graphCache, {
       max: GRAPH_BATCH_MAX,
-      validate: validateGraph,
+      validate: data => validateGraph(data, options.asOf),
       read: async (ids) => batchReplyItems(await apiClient.getCloudSupplyGraphs(ids, options))
         .flatMap((item) => item.graph ? [{ id: item.symbol.toUpperCase(), payload: item.graph }] : []),
     });

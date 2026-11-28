@@ -220,6 +220,23 @@ test("a filed figure more than 1.5x Gloom Cloud's either way reads as another sh
   for (const served of [3, 5.5]) expect(headline({ eps: served, trailingPE: 30 })).toEqual(FILED);
 });
 
+test("an old annual match does not price a newer TTM or bypass the share-basis guard", () => {
+  const prior = financials({ eps: 1, trailingPE: 100, pegRatio: 4, trailingPeriodEnd: "2026-09-30" });
+  prior.annualStatements = [quarter("2025-12-31", "2026-02-10")];
+  const project = (value: TickerFinancials) => withShareMultiples(withFiledTrailingEps(value, NOW));
+  const priced = project(prior);
+  expect(priced.fundamentals?.eps).toBe(1);
+  expect(priced.fundamentals?.trailingPE).toBeUndefined();
+  expect(priced.fundamentals?.pegRatio).toBeUndefined();
+  expect(relativeValuationValues(priced).trailingPE).toBeNull();
+  const text = renderFundamentalsReport({ ...priced, symbol: "UNITTEST" }, "valuation");
+  expect(text).toContain("Served EPS matches the year ended 2025-12-31");
+  expect(project({ ...prior, fundamentals: { ...prior.fundamentals, eps: 4, trailingPE: 25 } }).fundamentals?.trailingPE).toBe(25);
+  const receipt = project({ ...prior, fundamentals: { ...prior.fundamentals, epsCurrency: "USD", isDepositaryReceipt: true, adrRatio: 4 } });
+  expect(receipt.fundamentals?.trailingPE).toBe(100);
+  expect(receipt.fundamentals?.trailingEpsSource).toBe("served");
+});
+
 test("a P/E served with no EPS, a fund's, is labelled Gloom Cloud's where it shows", () => {
   const fund = withFiledTrailingEps(financials({ trailingPE: 22.5 }, []), NOW);
   expect(fund.fundamentals?.trailingEpsSource).toBe("served");

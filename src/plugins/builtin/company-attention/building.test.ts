@@ -130,5 +130,6 @@ test("a HIRE report has Building: each shift with why, a company's mix, and a he
   const held = await attentionHeadless("hiring").load(createTestHeadlessArgs({ symbols: ["GM"] }),
     createTestHeadlessContext({ apiClient: { getCloudHiring: async () => hiring, getCloudHiringMoves: noMoves, getCloudHiringCompanySignals: noSignals,
       getCloudHiringCompanyBuilding: async () => ({ ...gm(), held: "short_watch", functions: [], themes: [], shifts: [] }) } as never }));
-  expect(held.notes).toContain("No mix to compare this week: too few measured weeks to compare.");
+  const buildingSection = held.sections.find(section => section.title === "Building: shifts");
+  expect(buildingSection && "empty" in buildingSection && buildingSection.empty).toBe("No mix to compare this week: too few measured weeks to compare.");
 });

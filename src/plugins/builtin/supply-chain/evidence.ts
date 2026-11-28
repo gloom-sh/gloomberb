@@ -7,7 +7,7 @@ import { fetchSupplyChain, validateSupplyChain } from "./client";
 import { directoryRows } from "./directories";
 import { earlierRows, openingSupplyView } from "./model";
 import { isUnconfirmed, matchesSupplyOptions, supplyOptions } from "./trust";
-import { fetchSupplyGraph, graphOptions, validateGraph } from "./graph-client";
+import { fetchSupplyGraph, graphOptions, supplyCutoff, validateGraph } from "./graph-client";
 
 type SupplyTab = "table" | "directories" | "flow" | "graph" | "path";
 interface SupplyEvidence {
@@ -24,6 +24,11 @@ interface SupplyEvidence {
   tiers?: SupplyTierFilter[];
 }
 const graphTab = (tab: unknown) => tab === "graph" || tab === "path";
+function requireGraphScreenshotCutoff(payload: GraphPayload, cutoff: string): void {
+  if (payload.options.asOf !== cutoff) {
+    throw new Error(`Supply chain graph did not return the requested filing cutoff ${cutoff}; no historical screenshot was captured.`);
+  }
+}
 export function useSupplyEvidence(payload: SupplyChainPayload | null, tab: string, view: string, rowIds: string[], evidenceId: string | null = null, tiers: SupplyTierFilter[] = supplyOptions().tiers) {
   useRemoteUiNode(graphTab(tab) ? null : { role: "chart-data", label: "Rendered supply chain disclosures", getMetadata: () => ({
     kind: "supply-chain", version: 1, complete: !!payload, ready: !!payload,
@@ -32,18 +37,21 @@ export function useSupplyEvidence(payload: SupplyChainPayload | null, tab: strin
 }
 export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence> = {
   paneId: "supply-chain", kind: "supply-chain", label: "supply chain",
-  async prepare({ resolved }) {
+  async prepare({ resolved, settings }) {
     const symbol = resolved.createOptions?.symbol ?? resolved.createOptions?.arg;
     if (!symbol) throw new Error("A supply chain screenshot requires a ticker");
+    const asOf = supplyCutoff(resolved.options, settings.asOf);
+    const cutoffSettings = asOf ? { asOf } : {};
     // A filing pane needs an identity, never fabricated prices or unrelated market requests.
     if (graphTab(resolved.options.tab)) {
       const target = String(resolved.options.to ?? "").trim();
       if (resolved.options.tab === "path" && !target) throw new Error("Path requires a target company: --to TICKER");
-      const payload = await fetchSupplyGraph(symbol, graphOptions(resolved.options), target);
-      return { settings: { graphSnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
+      const payload = await fetchSupplyGraph(symbol, graphOptions({ ...resolved.options, ...cutoffSettings }), target);
+      if (asOf) requireGraphScreenshotCutoff(payload, asOf);
+      return { settings: { ...cutoffSettings, graphSnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
     }
-    const payload = await fetchSupplyChain(symbol, undefined, { ...supplyOptions(resolved.options.tiers), asOf: typeof resolved.options.asOf === "string" ? resolved.options.asOf : undefined });
-    return { settings: { supplySnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
+    const payload = await fetchSupplyChain(symbol, undefined, { ...supplyOptions(resolved.options.tiers), asOf });
+    return { settings: { ...cutoffSettings, supplySnapshot: payload }, financials: [[payload.symbol, { annualStatements: [], quarterlyStatements: [], priceHistory: [] }]] };
   },
   read(value) {
     if (!isRecord(value) || value.kind !== "supply-chain" || value.version !== 1 || !isRecord(value.payload)
@@ -82,6 +90,16 @@ export const supplyScreenshotEvidence: PaneScreenshotEvidenceHook<SupplyEvidence
     const settings = payload.config.layout.instances.find(entry => entry.instanceId === payload.paneId)?.settings;
     const snapshot = settings?.[graphTab(evidence.tab) ? "graphSnapshot" : "supplySnapshot"];
     const mismatches: string[] = [];
+    const cutoff = supplyCutoff(resolved.options, resolved.instance.settings?.asOf);
+    if (cutoff) {
+      try {
+        if (graphTab(evidence.tab)) {
+          const graph = evidence.payload as GraphPayload;
+          requireGraphScreenshotCutoff(graph, cutoff);
+          validateGraph(graph, cutoff);
+        } else validateSupplyChain(evidence.payload as SupplyChainPayload, cutoff);
+      } catch { mismatches.push("Supply chain disclosures do not match the requested filing cutoff"); }
+    }
     if (JSON.stringify(evidence.payload) !== JSON.stringify(snapshot)) mismatches.push("Supply chain disclosures differ from the captured filing data");
     if (resolved.options.evidence === true && (!evidence.evidenceOpen || !evidence.evidenceId)) mismatches.push("Supply chain evidence detail was not opened");
     const expected = resolved.options.tab ?? "table";

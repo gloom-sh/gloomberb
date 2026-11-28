@@ -199,6 +199,23 @@ describe("EVT's Earnings view", () => {
 });
 
 describe("an earnings quarter's detail", () => {
+  test("DES Events shows the same filed quarter revenue in the table and open detail", async () => {
+    const fiscalPeriod = "2026-10";
+    await mount({ symbol: "DELL", estimates: async () => null as never,
+      actions: async () => ({ symbol: "DELL", splits: [], dividends: [], earnings: [{ date: "2026-11-24", fiscalPeriod,
+        dateType: "announcement", dateStatus: "reported", currency: "USD", epsActual: 9.45, epsBasis: "company-adjusted", epsActualSource: "filing",
+        reportedRevenue: { fiscalPeriod, periodKind: "quarter", source: "press-release", currency: "USD", amount: 54_937_000_000 } }] }),
+      financials: { annualStatements: [{ date: "2026-01-30" }], quarterlyStatements: [] },
+      content: (body) => <EventsResearchEarnings focused {...body} onCapture={() => {}} />,
+    });
+    expect(tui.frame()).toMatch(/24 Nov 2026\s+Q3 FY2027\s+9\.45[^\n]*54\.94B/);
+    await tui.emitKeypress({ name: "return" });
+    await settle();
+    expect(tui.frame()).toContain("Rev 54.94B USD");
+    expect(tui.frame()).toContain("company-adjusted");
+    expect(tui.frame()).not.toContain("Quarterly revenue unavailable");
+  });
+
   // TEST's Q2 results, filed the day it reported them, with the press release as its exhibit.
   const filing: SecFilingItem = { accessionNumber: "0000000001-26-000042", form: "8-K", filingDate: new Date("2026-07-30T00:00:00Z"),
     cik: "1", companyName: "Test Inc", primaryDocument: "results.htm", items: "2.02,9.01", primaryDocDescription: "Results of operations",

@@ -169,7 +169,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
     [postingKey, snapshot]);
   const postingResource = useAsyncResource(postingLoader);
   const posting = postingKey ? postingResource.data : null;
-  const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "apps" && !symbol ? "Companies" : "Peers", evidence: "Evidence" };
+  const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "hiring" ? "Peer postings" : !symbol ? "Companies" : "Peers", evidence: "Evidence" };
   const tabs = attentionPaneTabs(kind, symbol).map((value) => ({ value, label: value === "moves" ? "Moves" : value === "expansion" ? "Expansion" : value === "anomalies" ? "Anomalies" : value === "building" ? "Building" : tabLabels[value] }));
   const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip, rows: tabRows } = usePaneTabs(!signInWall && !openCompany && !app ? { tabs, activeValue: paneTab, onSelect: (value) => { setTab(value); setOpenEvidence(null); }, focused, dense: true } : null);

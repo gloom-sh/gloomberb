@@ -14,7 +14,7 @@ import { useOpenDescription } from "../shared/open-description";
 import { UpgradeLabel } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedGraph, graphOptions, loadGraph, validateGraph } from "./graph-client";
-import { entityKey, entityLabel, entityTicker, exposureLabel, pathLabel, relatedPartyLink } from "./graph-model";
+import { entityKey, entityLabel, entityTicker, exposureLabel, graphDisclosureDates, pathLabel, relatedPartyLink, supplyDisplayName } from "./graph-model";
 import { SupplyGraph } from "./graph";
 import { graphEvidenceRow } from "./graph-evidence";
 import { disclosedValue, dollars, nativeValue, periodText, relationshipLabel, ROLE_COLORS, roleLabel, shareParts } from "./model";
@@ -88,7 +88,7 @@ function PathEvidence({ data, path, width, focused, onRecenter }: { data: GraphP
           return <Box key={evidence.id} flexDirection="column" paddingBottom={1}>
             <Box flexDirection="row" gap={1}><Badge tone={isUnconfirmed(row) ? "neutral" : "accent"} label={evidenceLabel(row)} />
               {row.leadStatus === "verified" ? <Badge tone="positive" label="Verified" /> : null}</Box>
-            <KeyValueRow label="Disclosure" value={`${evidence.reporter.name} · ${relationshipLabel(row)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
+            <KeyValueRow label="Disclosure" value={`${supplyDisplayName(evidence.reporter.name)} · ${relationshipLabel(row)}`} color={ROLE_COLORS[evidence.role]} labelWidth={20} />
             <KeyValueRow label="Evidence class" value={`${TIER_LABELS[evidence.tier]} · ${SOURCE_LABELS[evidence.sourceKind]}`} detail={`${Math.round(evidence.confidence * 100)}% confidence`} labelWidth={20} />
             <KeyValueRow label="Period" value={periodText(row)} detail={trustTier(row) === 1 ? `filed ${row.filedDate ?? MISSING_VALUE}` : `published ${evidenceDate(row)}`} labelWidth={20} />
             {row.entityScope === "group" && !row.counterparty.aggregate ? <KeyValueRow label="Metric scope" value="Corporate group" labelWidth={20} /> : null}
@@ -126,7 +126,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
   const [visibleLinks, setVisibleLinks] = useState<string[]>([]);
   const [inputsOpen, setInputsOpen] = useState(false);
   const [snapshotSetting] = usePaneSettingValue<GraphPayload | null>("graphSnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateGraph(snapshotSetting) : null; } catch (error) { return logFailure("supply-chain.graph-pane", "Validate supply chain graph snapshot failed", null)(error); } }, [snapshotSetting]);
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateGraph(snapshotSetting, options.asOf) : null; } catch (error) { return logFailure("supply-chain.graph-pane", "Validate supply chain graph snapshot failed", null)(error); } }, [snapshotSetting, options.asOf]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadGraph(focus, target, options, accessKey, force), [focus, target, options, accessKey, snapshot]);
   const resource = usePaneResource(tab === "path" && !target ? null : loader, { focused: focused && !inputsOpen && !targetActive, initialData: () => cachedGraph(focus, target, options, accessKey), clearOnError: isAccessDenied });
   const data = resource.data?.payload ?? null;
@@ -159,8 +159,12 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
     ...(!openPath && (focus !== symbol || target) ? [{ id: "home", key: "z", label: "reset focus", title: "Reset Focus", onPress: () => { setFocus(symbol); applyTarget(""); setCollapsed([]); setSelected(null); } }] : []),
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", onPress: openUpgrade }] : []),
   ];
+  const shownLinks = new Set(openPath ? openPath.linkIds : tab === "graph" ? visibleLinks : paths.flatMap(path => path.linkIds));
+  const filedThrough = data ? graphDisclosureDates(data.links.filter(link => shownLinks.has(link.id))).latest : null;
   usePaneStatusFooter({ registrationId: "supply-graph", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, hints,
-    info: data?.asOf ? [{ id: "as-of", parts: [{ text: `as of ${data.asOf}`, tone: "muted" }] }] : [] });
+    info: [data?.options.asOf ? { id: "known-by", parts: [{ text: `known by ${data.options.asOf}`, tone: "muted" as const }] } : null,
+      filedThrough ? { id: "filed", parts: [{ text: `filed through ${filedThrough}`, tone: "muted" as const }] } : null,
+      data?.asOf ? { id: "graph-through", parts: [{ text: `focus coverage to ${data.asOf}`, tone: "muted" as const }] } : null].filter(entry => entry !== null) });
   usePaneNoticeFooter({ registrationId: "supply-graph:notices", focused, notices: [...(resource.data?.refreshError ? [resource.data.refreshError] : []),
     ...(data && !data.search.complete ? [`Search limited: ${data.search.reasons.join(", ").replaceAll("_", " ")}. Narrow filters or reduce depth to inspect more routes.`] : []),
     ...(data?.access === "preview" ? [`Pro preview: depth ${data.options.depth}. Upgrade for four hops and the full graph.`] : []),
@@ -195,7 +199,7 @@ export function SupplyGraphPane({ symbol, tab, width, height, focused }: { symbo
                   {route.flatMap((node, index) => [
                     index ? <Text key={`arrow:${index}`} fg={state.selected ? colors.selectedText : colors.textMuted}>→</Text> : null,
                     node.ticker ? <Badge key={node.id} label={entityTicker(node)!} tone="accent" color={state.selected ? colors.selectedText : undefined} />
-                      : <Text key={node.id} fg={state.selected ? colors.selectedText : node.aggregate || node.anonymous ? colors.textDim : ink}>{node.name}</Text>,
+                      : <Text key={node.id} fg={state.selected ? colors.selectedText : node.aggregate || node.anonymous ? colors.textDim : ink}>{supplyDisplayName(node.name)}</Text>,
                   ])}
                 </Box> : undefined };
               }

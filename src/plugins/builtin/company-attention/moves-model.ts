@@ -165,11 +165,15 @@ const postingRow = (closed: boolean) => (posting: HiringMovePosting): MovesRow =
     { label: "First seen", value: posting.firstSeenAt }, ...(posting.closedAt ? [{ label: "Closed", value: posting.closedAt }] : []), { label: "Board", value: posting.sourceTicker }],
 });
 
+const observedWeek = (week: HiringCompanyMoves["week"]) => week && (week.measured || week.reads > 0 || week.newRoles !== null || week.closedRoles !== null || week.openRoles !== null) ? week : null;
+const lockedMoveWeeks = (data: HiringCompanyMoves) => data.preview ? Math.max(0, data.locked.history - (data.week ? 1 : 0)) : 0;
+
 export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
   const latest = data.latest;
+  const current = observedWeek(data.week);
   const moves = new Map(data.history.map((row) => [row.week, row]));
   // A free read keeps the latest week; the rest are history.
-  const weeks = data.weeks.length ? data.weeks : data.week ? [data.week] : [];
+  const weeks = (data.weeks.length ? data.weeks : current ? [current] : []).filter(observedWeek);
   const tone = (signal: HiringMove["signal"]) => signal === "accelerating" ? "positive" as const : signal === "slowing" ? "negative" as const : undefined;
   const figures: StatItem[] = latest ? [
     { label: "New roles", value: count(latest.newRoles), detail: `week of ${weekLabel(latest.week)}`, detailVariants: [`wk ${weekLabel(latest.week)}`, ""] },
@@ -178,7 +182,7 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
     { label: "Peers", value: pace(latest.peers.medianRatio), detail: latest.peers.group === "universe" ? "all covered" : latest.peers.label, detailVariants: [""] },
     // A flagged move says what to check where the driver would be; its drivers keep their view.
     { label: "Signal", value: signalLabel(latest.signal), detail: (latest.flags?.length ? `${flagText(latest)}, no alert` : driverText(latest)) ?? undefined, detailVariants: [""], tone: tone(latest.signal) },
-  ] : data.week && !data.week.measured ? [
+  ] : current && data.week && !data.week.measured ? [
     { label: "New roles", value: count(data.week.newRoles), detail: `week of ${weekLabel(data.week.week)}`, detailVariants: [`wk ${weekLabel(data.week.week)}`, ""] },
     { label: "Not measured", value: exclusionText(data.week.excluded) || MISSING_VALUE, wide: true },
   ] : data.week && data.preview && data.locked.move ? [
@@ -188,11 +192,11 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
     { label: "Open", value: count(data.week.openRoles) },
     { label: "Move", value: "Pro", detail: "pace, peers, why", detailVariants: [""] },
   ] : [];
-  const historyLocked = data.preview ? Math.max(0, data.locked.history - weeks.length) : 0;
+  const historyLocked = lockedMoveWeeks(data);
   const noMove = data.preview && data.locked.move ? "This company's move is in Pro." : "No measured move for this company yet.";
   return {
     asOf: latest?.computedAt ?? data.history[0]?.computedAt ?? null,
-    week: latest?.week ?? data.week?.week ?? null,
+    week: latest?.week ?? current?.week ?? null,
     preview: data.preview,
     figures,
     latest,
@@ -222,8 +226,8 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
         locked: 0,
         empty: latest ? "No title repeats in this week's new roles." : noMove,
       },
-      added: { columns: POSTING_COLUMNS("First seen"), rows: data.evidence.added.map(postingRow(false)), locked: data.preview ? data.locked.added : 0, empty: "No posting was first seen this week." },
-      closed: { columns: POSTING_COLUMNS("Closed"), rows: data.evidence.closed.map(postingRow(true)), locked: data.preview ? data.locked.closed : 0, empty: "No posting closed this week." },
+      added: { columns: POSTING_COLUMNS("First seen"), rows: data.evidence.added.map(postingRow(false)), locked: data.preview ? data.locked.added : 0, empty: current?.measured ? "No posting was first seen this week." : "No first-seen posting evidence for this week." },
+      closed: { columns: POSTING_COLUMNS("Closed"), rows: data.evidence.closed.map(postingRow(true)), locked: data.preview ? data.locked.closed : 0, empty: current?.measured ? "No posting closed this week." : "No closure evidence for this week." },
     },
   };
 }
@@ -241,8 +245,10 @@ export function movesPreviewNote(data: HiringMovesBoard | HiringCompanyMoves, fi
     const shows = `${data.moves.length} of ${count(data.total)} moves${filter && filter !== "moves" ? `: ${previewCantFilter(["signal"])}` : ""}`;
     return data.locked > 0 ? freePreviewNote({ shows, adds: `the other ${count(data.locked)}` }) : null;
   }
-  const { history, added, closed, move = 0 } = data.locked;
+  const { added, closed, move = 0 } = data.locked;
+  const current = observedWeek(data.week);
+  const history = lockedMoveWeeks(data);
   if (history + added + closed + move <= 0) return null;
-  const adds = [move > 0 ? "its move" : "", history > 0 ? `${countOf(history, "week")} of history` : "", added + closed > 0 ? `${countOf(added + closed, "more posting")}` : ""].filter(Boolean);
-  return freePreviewNote({ shows: "the latest week and three postings each way", adds: list(adds) });
+  const adds = [move > 0 ? "its move analysis" : "", history > 0 ? `${countOf(history, "earlier week")} of posting moves` : "", added + closed > 0 ? `${countOf(added + closed, "more posting")}` : ""].filter(Boolean);
+  return current ? freePreviewNote({ shows: "this week's posting moves", adds: list(adds) }) : `Gloom Pro adds ${list(adds)}`;
 }

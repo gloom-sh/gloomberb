@@ -778,6 +778,7 @@ export interface FilingEpsDetails {
 export type EarningsDateStatus = "reported" | "confirmed" | "projected";
 
 export interface EarningsAction extends FilingEpsDetails {
+  reportedRevenue?: { amount: number; currency: string; source: "press-release"; periodKind: "quarter"; fiscalPeriod: string };
   date: string;
   /** Known release/acceptance timestamp, when the calendar has one. */
   reportedAt?: string;

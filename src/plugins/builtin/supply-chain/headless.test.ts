@@ -1,16 +1,34 @@
 import { describe, expect, test } from "bun:test";
+import { setCloudApiFetchTransport } from "../../../api-client";
 import { CloudDataApi } from "../../../api-client/data";
+import type { SupplyDirectory } from "../../../api-client/supply-chain";
 import { DEFAULT_GRAPH_OPTIONS, type GraphEvidence, type GraphPayload } from "../../../api-client/supply-chain-graph";
+import { renderReportCsv } from "../../../cli/report-tables";
 import { capabilityPaneSettings, getPaneFunctionCapability, normalizeCapabilityOptions } from "../../../cli/pane-functions/capabilities";
 import { deriveHeadlessFreshness } from "../../../cli/pane-functions/freshness";
-import { renderHeadlessPaneText } from "../../../cli/pane-functions/headless";
+import { headlessReportTables, renderHeadlessPaneText, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import type { ResolvedPaneFunction } from "../../../cli/pane-functions/resolver";
+import { paneEvidenceMismatches } from "../../../cli/pane-functions/screenshot-evidence";
+import { buildDesktopShotPayload } from "../../../cli/pane-functions/screenshot-payload";
+import type { MarketContext } from "../../../cli/types";
+import { createTestDataProvider } from "../../../test-support/data-provider";
 import { createTestHeadlessArgs, createTestHeadlessContext } from "../../../test-support/headless";
+import { createDefaultConfig } from "../../../types/config";
 import type { HeadlessPaneContext, PaneDef } from "../../../types/plugin";
+import { directoryRows } from "./directories";
 import { graphOptions, validateGraph } from "./graph-client";
 import { graphEvidenceRow } from "./graph-evidence";
 import { supplyScreenshotEvidence } from "./evidence";
 import { supplyChainHeadless } from "./headless";
 import { entity, supplyPayload, supplyRow } from "./test-fixture";
+import { graphPayload as supplierGraphFixture } from "./test-fixture-graph";
+import { supplyOptions } from "./trust";
+
+const directory = (day: string, names: { buyer: string; operator: string; parent: string }): SupplyDirectory => ({
+  buyer: names.buyer, buyerListing: "FOCUS", buyerView: true, url: "https://example.org/suppliers.pdf", page: "https://example.org/suppliers",
+  effectiveDay: day, observedAt: `${day}T06:00:00Z`, sha256: "a".repeat(64), total: 1,
+  entries: [{ operator: names.operator, parent: names.parent, kind: "Foundry", country: null, city: null, operatorListing: null, parentListing: null }],
+});
 
 function graphPayload(): GraphPayload {
   const a = entity("A"), b = entity("B"), c = entity("C");
@@ -39,6 +57,21 @@ const context = (payload: GraphPayload, requests: string[]) => createTestHeadles
 });
 
 describe("supply chain graph headless integration", () => {
+  test("a cutoff dates displayed evidence, preserves original names and rejects a future filing", async () => {
+    const payload = graphPayload();
+    const item = payload.links[0]!.evidence[0]!;
+    item.from = { ...item.from, name: "European Semiconductor\n Manufacturing\tCompany" };
+    payload.options.asOf = "2026-03-01";
+    payload.asOf = "2026-02-28";
+    const report = await supplyChainHeadless.load(args({ tab: "graph", "as-of": payload.options.asOf }), context(payload, []));
+    const rows = report.sections.find(section => section.title === "Disclosure evidence")!.rows!;
+    expect(rows[0]).toMatchObject({ from: item.from.name, evidence: { from: { name: item.from.name } } });
+    expect(deriveHeadlessFreshness(supplyChainHeadless, report, Date.parse("2026-11-28")).asOf).toBe("2026-02-25");
+    expect(report.metadata?.graphAsOf).toBe("2026-02-28");
+    item.filedDate = "2026-03-02";
+    await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": payload.options.asOf }), context(payload, [])))
+      .rejects.toThrow("returned disclosures published after 2026-03-01");
+  });
   test("scoped XBRL evidence exports its context without claiming a denominator", async () => {
     const payload = graphPayload();
     Object.assign(payload.links[0]!.evidence[0]!, { sourceKind: "xbrl", tier: "structured", pctScope: "Non Us" });
@@ -60,15 +93,15 @@ describe("supply chain graph headless integration", () => {
   test("CLI filters preserve validated values through settings and the graph request", async () => {
     const capability = getPaneFunctionCapability(undefined, { id: "supply-chain", name: "Supply Chain", headless: supplyChainHeadless } as PaneDef);
     const options = normalizeCapabilityOptions(capability, { tab: "graph", depth: "3", direction: "upstream", roles: "supplier", sources: "xbrl,filing_text",
-      tiers: "structured,primary", "min-pct": "2.5", "min-confidence": "0.85", limit: "12", "as-of": "2025-12-31", ranking: "shortest" }, { strict: true });
+      tiers: "structured,primary", "min-pct": "2.5", "min-confidence": "0.85", limit: "12", "as-of": "2026-02-25", ranking: "shortest" }, { strict: true });
     expect(graphOptions(capabilityPaneSettings(capability, options))).toEqual(graphOptions(options));
     const requests: string[] = [];
     // A server that reads the cutoff answers it in its options.
-    await supplyChainHeadless.load(args(options), context({ ...graphPayload(), options: { ...graphPayload().options, asOf: "2025-12-31" } }, requests));
+    await supplyChainHeadless.load(args(options), context({ ...graphPayload(), options: { ...graphPayload().options, asOf: "2026-02-25" } }, requests));
     const url = new URL(requests[0]!, "https://example.test");
     expect(url.pathname).toBe("/cloud/supply-chain/A/graph");
     expect(Object.fromEntries(url.searchParams)).toEqual({ depth: "3", direction: "upstream", roles: "supplier", sources: "xbrl,filing_text",
-      tiers: "structured,primary", minPct: "2.5", minConfidence: "0.85", limit: "12", ranking: "shortest", asOf: "2025-12-31" });
+      tiers: "structured,primary", minPct: "2.5", minConfidence: "0.85", limit: "12", ranking: "shortest", asOf: "2026-02-25" });
     expect(() => normalizeCapabilityOptions(capability, { depth: "5" }, { strict: true })).toThrow();
     expect(() => normalizeCapabilityOptions(capability, { limit: "1.5" }, { strict: true })).toThrow();
     const invalidFilters: Record<string, string>[] = [{ "min-pct": "101" }, { "min-confidence": "NaN" }, { tiers: "unknown" }, { "as-of": "2025-02-29" }];
@@ -78,7 +111,7 @@ describe("supply chain graph headless integration", () => {
     }
     expect(requests).toHaveLength(1);
     // The free preview reads the latest graph whatever the cutoff: said, never served as that day's.
-    await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": "2025-12-31" }), context(graphPayload(), requests)))
+    await expect(supplyChainHeadless.load(args({ tab: "graph", "as-of": "2025-12-31" }), context({ ...graphPayload(), access: "preview" }, requests)))
       .rejects.toThrow("--as-of 2025-12-31 on the Graph tab needs Gloom Pro; the free preview reads the latest disclosures.");
   });
 
@@ -136,6 +169,120 @@ describe("supply chain graph headless integration", () => {
 });
 
 describe("supply chain screenshot evidence", () => {
+  test("dated Table, Flow and Supplier Lists shots freeze and verify the historical reply, not the latest", async () => {
+    const cutoff = "2026-03-01";
+    const fixture = (id: string, day: string) => supplyPayload({
+      asOf: day, says: [supplyRow(id, { filedDate: day, asOf: day })], access: "preview", previewRowsPerRole: 3,
+      directories: [directory(day, { buyer: `${id} buyer`, operator: `${id} operator`, parent: `${id} parent` })],
+    });
+    const historical = fixture("Historical", "2026-02-25"), latest = fixture("Latest", "2026-04-01");
+    const requests: Array<string | null> = [];
+    setCloudApiFetchTransport(async (input) => {
+      const url = new URL(String(input));
+      const day = url.searchParams.get("asOf");
+      requests.push(day);
+      return Response.json(day === cutoff ? historical : latest);
+    });
+    try {
+      const pane = { id: "supply-chain", name: "Supply Chain", headless: supplyChainHeadless } as PaneDef;
+      const capability = getPaneFunctionCapability(undefined, pane);
+      const market = { config: createDefaultConfig(process.cwd()), dataProvider: createTestDataProvider(), store: { loadTicker: async () => null } } as unknown as MarketContext;
+      for (const [tab, flag] of [["table", "as-of"], ["flow", "asOf"], ["directories", "as-of"], ["table", null]] as const) {
+        const raw: Record<string, string> = { tab, ...(flag === "as-of" ? { "as-of": "1 March 2026" } : {}) };
+        const normalized = normalizeCapabilityOptions(capability, raw, { strict: true });
+        const settings = { ...capabilityPaneSettings(capability, normalized), ...(flag === "asOf" ? { asOf: "1 March 2026" } : {}) };
+        const resolved: ResolvedPaneFunction = { token: "SPLC", label: pane.name, description: "", pane, capability,
+          options: normalized, optionSettings: settings, createOptions: { symbol: "FOCUS" },
+          instance: { instanceId: `splc:${tab}`, paneId: pane.id, binding: { kind: "fixed", symbol: "FOCUS" }, settings } };
+        const shot = await buildDesktopShotPayload(resolved, market, "FOCUS", raw, 1200, 600, null, 1, null);
+        const captured = shot.config.layout.instances[0]!.settings!;
+        const expected = flag ? historical : latest;
+        expect(captured).toMatchObject({ ...(flag ? { asOf: cutoff } : {}), supplySnapshot: expected });
+        const assess = (payload: typeof expected) => {
+          const rowIds = tab === "directories" ? directoryRows(payload.directories![0]!).map(({ id }) => id) : payload.says.map(({ id }) => id);
+          return paneEvidenceMismatches(resolved, shot, { semanticUi: [{ id: "supply-evidence", role: "chart-data", label: "Disclosures", actions: [], metadata: {
+            kind: "supply-chain", version: 1, complete: true, payload, tab, view: "says", tiers: supplyOptions().tiers, rowIds, plottedValueCount: rowIds.length,
+          } }] });
+        };
+        expect(assess(expected)).toEqual([]);
+        if (flag) expect(assess(latest)).toContain("Supply chain disclosures do not match the requested filing cutoff");
+      }
+      expect(requests).toEqual([cutoff, cutoff, cutoff, null]);
+    } finally { setCloudApiFetchTransport(null); }
+  });
+
+  test.each(["graph", "path"] as const)("dated %s shots require a graph pinned to the requested filing cutoff", async (tab) => {
+    const cutoff = "2026-03-01";
+    const graph = supplierGraphFixture();
+    graph.nodes = graph.nodes.slice(0, 2);
+    graph.links = graph.links.slice(0, 1);
+    graph.links[0]!.evidence[0]!.filedDate = "2026-02-25";
+    graph.upstream = graph.upstream.slice(0, 1);
+    graph.options.depth = graph.requestedDepth = 1;
+    if (tab === "path") {
+      graph.target = graph.nodes[1]!;
+      graph.paths = [graph.upstream[0]!.bestPath];
+      graph.upstream = [];
+    }
+    const latest = { ...structuredClone(graph), access: "preview" as const, maxDepth: 1 };
+    latest.links[0]!.evidence[0]!.filedDate = "2026-04-01";
+    const historical = { ...graph, options: { ...graph.options, asOf: cutoff } };
+    const falselyPinned = { ...latest, options: historical.options };
+    const pane = { id: "supply-chain", name: "Supply Chain", headless: supplyChainHeadless } as PaneDef;
+    const capability = getPaneFunctionCapability(undefined, pane);
+    const market = { config: createDefaultConfig(process.cwd()), dataProvider: createTestDataProvider(), store: { loadTicker: async () => null } } as unknown as MarketContext;
+    const request = (dated: boolean) => {
+      const raw: Record<string, string> = { tab, depth: "1", ...(tab === "path" ? { to: "2" } : {}), ...(dated ? { "as-of": "1 March 2026" } : {}) };
+      const options = normalizeCapabilityOptions(capability, raw, { strict: true });
+      const settings = capabilityPaneSettings(capability, options);
+      const resolved: ResolvedPaneFunction = { token: "SPLC", label: pane.name, description: "", pane, capability,
+        options, optionSettings: settings, createOptions: { symbol: "FOCUS" },
+        instance: { instanceId: `splc:${tab}`, paneId: pane.id, binding: { kind: "fixed", symbol: "FOCUS" }, settings } };
+      const capture = () => buildDesktopShotPayload(resolved, market, "FOCUS", raw, 1200, 600, null, 1, null);
+      const assess = (shot: Awaited<ReturnType<typeof capture>>, payload: GraphPayload) => {
+        const rowIds = (tab === "path" ? payload.paths : payload.links).map(({ id }) => id);
+        return paneEvidenceMismatches(resolved, shot, { semanticUi: [{ id: "supply-evidence", role: "chart-data", actions: [], metadata: {
+          kind: "supply-chain", version: 1, complete: true, payload, tab, rowIds, plottedValueCount: rowIds.length,
+        } }] });
+      };
+      return { capture, assess };
+    };
+
+    let response: GraphPayload = historical;
+    const requested: Array<string | null> = [];
+    setCloudApiFetchTransport(async (input) => {
+      const url = new URL(String(input));
+      expect(url.pathname).toBe(tab === "path" ? "/cloud/supply-chain/paths" : "/cloud/supply-chain/FOCUS/graph");
+      requested.push(url.searchParams.get("asOf"));
+      return Response.json(response);
+    });
+    try {
+      const dated = request(true);
+      const shot = await dated.capture();
+      const settings = shot.config.layout.instances[0]!.settings!;
+      expect(settings).toMatchObject({ asOf: cutoff, graphSnapshot: validateGraph(historical) });
+      expect(dated.assess(shot, historical)).toEqual([]);
+
+      response = latest;
+      settings.graphSnapshot = validateGraph(latest);
+      const latestPrepare = await dated.capture().then(() => null, (error: Error) => error.message);
+      expect({ prepareError: latestPrepare, mismatches: dated.assess(shot, latest) }).toEqual({
+        prepareError: expect.stringContaining(`requested filing cutoff ${cutoff}`),
+        mismatches: ["Supply chain disclosures do not match the requested filing cutoff"],
+      });
+
+      response = falselyPinned;
+      await expect(dated.capture()).rejects.toThrow(`published after ${cutoff}`);
+      settings.graphSnapshot = falselyPinned;
+      expect(dated.assess(shot, falselyPinned)).toContain("rendered supply chain data evidence is missing or invalid");
+
+      response = latest;
+      const undated = request(false);
+      expect(undated.assess(await undated.capture(), latest)).toEqual([]);
+      expect(requested).toEqual([cutoff, cutoff, cutoff, null]);
+    } finally { setCloudApiFetchTransport(null); }
+  });
+
   test("graph and path IDs must belong to their frozen graph and cannot duplicate counts", () => {
     const payload = graphPayload();
     payload.paths = [payload.downstream[0]!.bestPath];
@@ -202,6 +349,49 @@ test("reports say how long a period is when the source states it, and keep older
   expect(() => validateGraph(malformed)).toThrow("unreadable");
 });
 
+test("plain SPLC tables join multiline company names without changing the row or evidence", async () => {
+  const raw = "European Semiconductor\n Manufacturing\tCompany";
+  const counterparty = { ...entity("esmc", raw), ticker: null };
+  const quote = `We buy from ${raw}.`;
+  const row = supplyRow("supplier", { counterparty, quote });
+  const context = createTestHeadlessContext();
+  context.apiClient = { ...context.apiClient, getCloudSupplyChain: async () => supplyPayload({ says: [row] }) };
+  const input = createTestHeadlessArgs({ symbols: ["FOCUS"] });
+  const result = await supplyChainHeadless.load(input, context);
+  expect(result.sections[0]!.rows![0]).toMatchObject({ counterparty: raw, quote });
+  const text = renderHeadlessPaneText(supplyChainHeadless, result, input, "SPLC", deriveHeadlessFreshness(supplyChainHeadless, result));
+  expect(text.split("\n").filter(line => line.includes("European Semiconductor Manufacturing Company"))).toHaveLength(1);
+  expect(text).not.toContain(raw);
+});
+
+test("plain Graph, Path and Supplier Lists flatten cells without normalizing JSON, CSV or filing evidence", async () => {
+  const rawQuote = "We source\n our components\tfrom this company.";
+  const names = { buyer: "Filing\n Buyer", operator: "Named\tOperator", parent: "Reported\n Parent" };
+  const graph = graphPayload();
+  graph.links[0]!.evidence[0]!.quote = rawQuote;
+  const paths = { ...graph, target: graph.nodes[2]!, paths: [graph.downstream[0]!.bestPath] };
+  const listingContext = createTestHeadlessContext();
+  listingContext.apiClient = { ...listingContext.apiClient, getCloudSupplyChain: async () => supplyPayload({ directories: [directory("2026-02-25", names)] }) };
+  for (const [options, request] of [
+    [{ tab: "graph" }, context(graph, [])], [{ tab: "path", to: "C" }, context(paths, [])], [{ tab: "directories" }, listingContext],
+  ] as const) {
+    const input = args(options);
+    const result = await supplyChainHeadless.load(input, request);
+    const freshness = deriveHeadlessFreshness(supplyChainHeadless, result);
+    const text = renderHeadlessPaneText(supplyChainHeadless, result, input, "SPLC", freshness);
+    const json = JSON.stringify(serializeHeadlessPaneResult(supplyChainHeadless, result));
+    const csv = renderReportCsv(headlessReportTables(supplyChainHeadless, result, input, "SPLC", freshness, { complete: true, unavailableSymbols: [] }), freshness);
+    const originals = options.tab === "directories" ? Object.values(names) : [rawQuote];
+    for (const raw of originals) {
+      expect(text).toContain(raw.replace(/\s+/g, " "));
+      expect(text).not.toContain(raw);
+      expect(json).toContain(JSON.stringify(raw));
+      expect(csv).toContain(raw);
+    }
+    if (options.tab !== "directories") expect(result.sections.at(-1)!.rows![0]!.evidence).toMatchObject({ quote: rawQuote, quoteMatchMode: "exact" });
+  }
+});
+
 test("graph boundaries preserve global filing scale and provenance and reject uninterpretable native amounts", async () => {
   const payload = graphPayload();
   // Synthetic contract fixture: these amounts are not a claim about a real route.
@@ -246,7 +436,7 @@ test("--view prints that view alone and says when it is empty; an earlier period
     ["FOCUS says | Earlier periods", [["earlier", "earlier", 14, "2023-12-31"]]],
   ]);
   const names = await load({ view: "names" });
-  expect(names.sections.map((section) => [section.title, section.rows?.length, "empty" in section ? section.empty : null])).toEqual([["Names FOCUS", 0, "No other company's disclosures name FOCUS."]]);
+  expect(names.sections.map((section) => [section.title, section.rows?.length, "empty" in section ? section.empty : null])).toEqual([["Names FOCUS", 0, "No linked disclosures naming FOCUS are shown."]]);
   // Rows the preview leaves out of the other view are not this view's.
   expect([names.complete, names.errors]).toEqual([true, []]);
   const says = await load({ view: "says" });

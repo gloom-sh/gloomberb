@@ -63,7 +63,7 @@ export type SecCompanyFactsStatements = {
 const COMPANY_FACTS_STATEMENT_FIELDS: CompanyFactsStatementField[] = [
   {
     field: "totalRevenue",
-    tags: ["RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet", "RevenuesNetOfInterestExpense"],
+    tags: ["Revenues", "RevenueFromContractWithCustomerExcludingAssessedTax", "SalesRevenueNet", "RevenuesNetOfInterestExpense"],
     units: ["USD"],
     periodType: "duration",
     sameMeasureFallback: "RevenuesNetOfInterestExpense",
