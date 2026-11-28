@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { solveImpliedVolatility, valueOption } from "./pricing";
 import { expectedMove, extractImpliedForward, forwardFromCarry, logForwardMoneyness, optionDelta,
-  optionMid, quoteUnderIntrinsic, strikeForDelta, strikeFromLogMoneyness, volatilityTermSlope, withQuotesUnderIntrinsicMarked } from "./options";
+  optionMid, quoteUnderIntrinsic, volatilityTermSlope, withQuotesUnderIntrinsicMarked } from "./options";
 
 const input = { spot: 100, years: 0.5, rate: 0.04, dividendYield: 0.015, volatility: 0.3 };
 function quote(strike: number, side: "call" | "put") {
@@ -10,30 +10,20 @@ function quote(strike: number, side: "call" | "put") {
 }
 
 describe("delta and forward conversions", () => {
-  test("inverts signed call/put deltas with dividend carry and changing scale", () => {
-    for (const spot of [0.001, 100, 100_000]) {
-      for (const side of ["call", "put"] as const) {
-        for (const absolute of [0.1, 0.25, 0.8]) {
-          const target = side === "call" ? absolute : -absolute;
-          const strike = strikeForDelta({ ...input, spot }, target, side)!;
-          expect(optionDelta({ ...input, spot }, strike, side)).toBeCloseTo(target, 7);
-        }
-      }
-    }
+  test("computes signed call/put deltas with dividend carry", () => {
+    const call = optionDelta(input, 100, "call")!;
+    const put = optionDelta(input, 100, "put")!;
+    expect(call).toBeGreaterThan(0.5);
+    expect(put).toBeLessThan(0);
+    expect(call - put).toBeCloseTo(Math.exp(-input.dividendYield * input.years), 8);
+    expect(optionDelta({ ...input, years: 0 }, 100, "call")).toBeNull();
+    expect(optionDelta({ ...input, volatility: NaN }, 100, "call")).toBeNull();
   });
-  test("rejects targets beyond dividend-discounted delta and expiry boundaries", () => {
-    expect(strikeForDelta({ ...input, dividendYield: 2 }, 0.5, "call")).toBeNull();
-    expect(strikeForDelta(input, 0.25, "put")).toBeNull();
-    expect(strikeForDelta(input, 0, "call")).toBeNull();
-    expect(strikeForDelta({ ...input, years: 0 }, 0.25, "call")).toBeNull();
-    expect(strikeForDelta({ ...input, volatility: NaN }, 0.25, "call")).toBeNull();
-  });
-  test("round trips forward log-moneyness without overflowing ratios", () => {
+  test("computes forward carry and log-moneyness without overflowing ratios", () => {
     const forward = forwardFromCarry(100, 0.5, 0.04, 0.015)!;
     expect(forward).toBeCloseTo(101.257845, 5);
-    expect(strikeFromLogMoneyness(logForwardMoneyness(120, forward)!, forward)).toBeCloseTo(120, 9);
+    expect(logForwardMoneyness(120, forward)).toBeCloseTo(Math.log(120 / forward), 9);
     expect(logForwardMoneyness(1e300, 1e-300)).toBeCloseTo(600 * Math.log(10), 8);
-    expect(strikeFromLogMoneyness(1000, 100)).toBeNull();
     expect(forwardFromCarry(100, -1, 0.04)).toBeNull();
   });
 });

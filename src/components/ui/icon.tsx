@@ -41,7 +41,9 @@ export type IconName =
   | "pro"
   | "clock"
   | "edit"
-  | "mail";
+  | "mail"
+  | "reply"
+  | "react";
 
 /** Terminal glyph for each icon; the desktop host draws SVG. */
 export const ICON_GLYPHS: Record<IconName, string> = {
@@ -95,6 +97,14 @@ export const ICON_GLYPHS: Record<IconName, string> = {
   edit: "✎",
   // A message written to you (a DM): text presentation, one cell.
   mail: "✉",
+  // Answer a message, and add a reaction to it: the keys that do it, Enter's
+  // return symbol and the plus. Menlo, SF Mono, Cascadia and DejaVu Sans Mono
+  // each draw the return symbol themselves, at the size of the glyphs beside
+  // it; ↵ is missing from SF Mono and Cascadia and comes small from a
+  // fallback font, and a face shrinks to a dot at text size. One cell each:
+  // the hooked arrow and the outlined face are emoji-capable and take two.
+  reply: "⏎",
+  react: "+",
 };
 
 export interface IconProps {
@@ -134,10 +144,17 @@ export interface IconButtonProps {
   label: string;
   /** Tooltip when it should say more than the name (a count, a state). */
   title?: string;
-  /** Key that triggers the same action, announced to assistive tech. */
+  /**
+   * Key that triggers the same action, announced to assistive tech and named
+   * in the tooltip. Give it only while the key acts on what this button acts
+   * on: a row's action names its key on the row the keyboard is on, while its
+   * pane has the keys, and on no other row.
+   */
   shortcut?: string;
   /** The press opens a menu or dialog. */
   hasPopup?: "menu" | "dialog";
+  /** The menu or dialog it opens is open. */
+  expanded?: boolean;
   onPress?: (event?: IconButtonPressEvent) => void;
   /** Toggle state for a pressed/unpressed icon (quick settings). */
   pressed?: boolean;
@@ -146,7 +163,30 @@ export interface IconButtonProps {
   size?: number;
   /** Keep the press from also reaching a row or header behind the button. */
   stopPropagation?: boolean;
+  /**
+   * The pointer moved onto or off it. The terminal draws no tooltip, so a row
+   * of icons names the one under the pointer beside itself with this.
+   */
+  onHoverChange?: (hovered: boolean) => void;
+  /**
+   * Desktop: while keyboard focus is on it, show its tooltip text beside it in
+   * the tooltip surface, since a tooltip shows only under the pointer. For
+   * icons with no other visible name (a row's actions that show only when
+   * used). The label goes beside the nearest `ICON_GROUP_ATTRIBUTE` element
+   * holding the button, so it never covers the icons next to it, follows the
+   * group as its row moves, and hides while a list has the group scrolled
+   * out of view. A pointer press, which focuses the button too, shows
+   * nothing. When its pane gives up the app's focus (Tab to the next pane),
+   * the button lets go of the page's focus as well.
+   */
+  focusLabel?: boolean;
 }
+
+/**
+ * Marks a row of icon buttons whose `focusLabel` goes beside the whole row,
+ * not over the icons next to the focused one.
+ */
+export const ICON_GROUP_ATTRIBUTE = "data-gloom-icon-group";
 
 /**
  * The one icon-only button: pane header actions, footer indicators, dialog
@@ -159,12 +199,15 @@ export function IconButton({
   title,
   shortcut,
   hasPopup,
+  expanded,
   onPress,
   pressed,
   color,
   disabled = false,
   size = 12,
   stopPropagation = true,
+  onHoverChange,
+  focusLabel,
 }: IconButtonProps) {
   const colors = useThemeColors();
   const label = t(rawLabel);
@@ -175,7 +218,7 @@ export function IconButton({
     label,
     disabled,
     actions: { press: () => { if (!disabled) onPress?.(); } },
-    metadata: { icon, pressed, ...(remoteScope ? { scope: remoteScope } : {}) },
+    metadata: { icon, pressed, expanded, ...(remoteScope ? { scope: remoteScope } : {}) },
   });
   const HostIconButton = useUiHost().IconButton as ComponentType<IconButtonProps> | undefined;
   if (HostIconButton) {
@@ -186,12 +229,15 @@ export function IconButton({
         title={title}
         shortcut={shortcut}
         hasPopup={hasPopup}
+        expanded={expanded}
         onPress={onPress}
         pressed={pressed}
         color={color}
         disabled={disabled}
         size={size}
         stopPropagation={stopPropagation}
+        onHoverChange={onHoverChange}
+        focusLabel={focusLabel}
       />
     );
   }
@@ -208,6 +254,7 @@ export function IconButton({
         }
         if (!disabled) onPress?.(event);
       }}
+      {...(onHoverChange ? { onMouseOver: () => onHoverChange(true), onMouseOut: () => onHoverChange(false) } : {})}
     >
       {/* Pressed takes the colour the desktop and the terminal pane header give an active toggle. */}
       <Text fg={disabled ? colors.textMuted : color ?? (pressed ? colors.warning : colors.textDim)} selectable={false}>

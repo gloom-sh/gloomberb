@@ -11,6 +11,7 @@ import { paneEvidenceGaps, paneEvidenceMismatches, paneScreenshotEvidenceHook } 
 import { collectShotSymbols } from "./data";
 import { renderedReportNotices } from "./report-notices";
 import { financialRatioRenderMismatches, financialRatioShotGap, shotRatioTab } from "./financial-ratio-shot";
+import { PERIOD_END_ROW_ID } from "../../utils/financial-statements";
 import { paneFitsRows, COLLECTION_PANE_IDS } from "./screenshot-payload";
 import { stripDesktopShotCredentials } from "./screenshot-bridge";
 import type { PaneScreenshotExpectedSelection, PaneScreenshotReadinessSignals, PaneScreenshotResult } from "./screenshot-types";
@@ -20,6 +21,7 @@ import {
   shotGraphKind,
   shotSemanticRowCount,
   shotExpectedText,
+  shotFinancialText,
 } from "./screenshot-data-evidence";
 import { shotExpectedChart, chartEvidenceMismatchesFor, intradayChartEvidenceMismatchesFor } from "./screenshot-chart-evidence";
 
@@ -49,7 +51,7 @@ function showsToken(visible: string, token: string, notBefore = "", notAfter = "
  * "+2", and the legend was the only place the other two showed, so a good
  * picture read "not usable".
  */
-export function shotShowsText(visibleText: string, value: string): boolean {
+function shotShowsText(visibleText: string, value: string): boolean {
   const visible = visibleText.toLowerCase();
   if (showsToken(visible, value.toLowerCase())) return true;
   const { symbol, exchange } = parsePublicTickerKey(value);
@@ -58,7 +60,7 @@ export function shotShowsText(visibleText: string, value: string): boolean {
   return showsToken(visible, `${symbol}:${exchange}`.toLowerCase()) || showsToken(visible, symbol.toLowerCase(), ":.$¥€£", ":");
 }
 
-export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
+function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return !signals.refused
     && !signals.blankColumns?.length
     && (signals.interactive || signals.confirmedEmpty || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
@@ -96,7 +98,7 @@ export function shotStatusIssues(
  * rows than the image draws, the rows drawn of all they hold ("36 of 76").
  * Null when the image holds every row, or no table says how many it holds.
  */
-export function shotTableRows(
+function shotTableRows(
   resolved: Pick<ResolvedPaneFunction, "pane" | "instance">,
   render: Pick<DesktopPaneShotRenderResult, "rows" | "reportRows" | "tableRowTotals">,
 ): { shown: number; total: number } | null {
@@ -143,12 +145,16 @@ export function assessPaneScreenshot(
   // A view that drew part of its data (OVDV with 4 of 7 expiries ready) says what it left out.
   const gaps = usesLiveDomEvidence ? null : paneEvidenceGaps(resolved, payload, render.semanticUi);
   const complete = unavailableSymbols.length === 0 && figureGaps.length === 0 && !gaps;
-  const expectedText = shotExpectedText(resolved, symbols, payload);
+  const financial = shotFinancialText(resolved, payload);
+  const expectedText = shotExpectedText(resolved, symbols, payload, financial);
   // A text field's value is on screen too (OVME's Underlying SPY), though not in the page's text. It is read
   // for this check alone: what a reader typed in a field never reaches the result, its JSON or its print.
   const { fieldValues, ...shownRender } = render;
   const normalizedVisibleText = [render.visibleText, ...fieldValues ?? []].join(" ").toLowerCase();
-  const missingExpectedText = expectedText.filter((value) => !shotShowsText(normalizedVisibleText, value));
+  const periodEnd = financial?.periodEnd;
+  const periodCell = periodEnd && render.rows.find(({ key }) => key === PERIOD_END_ROW_ID)?.cells.find((cell) => cell.columnId === periodEnd.columnId);
+  const missingExpectedText = expectedText.filter((value) => value === periodEnd?.text
+    ? periodCell?.text.trim() !== value : !shotShowsText(normalizedVisibleText, value));
   const expectedSelections = shotExpectedSelections(resolved);
   const missingExpectedSelections = missingActiveTabSelections(
     render.semanticUi,
@@ -161,6 +167,7 @@ export function assessPaneScreenshot(
     ...intradayChartEvidenceMismatchesFor(resolved, payload, render.semanticUi),
     ...paneEvidenceMismatches(resolved, payload, render),
     ...financialRatioRenderMismatches(resolved, payload, render),
+    ...earningsQuarterCellMismatches(resolved, render.rows),
     // The 2D grid that stands in for a sheet too few expiries can make draws every quoted value: no picture of the
     // 3D surface asked for, so not usable, but neither empty nor at odds with the data.
     ...surfaceNotDrawnMismatches(render).filter((gap) => gap !== SURFACE_GRID_STAND_IN),
@@ -180,7 +187,8 @@ export function assessPaneScreenshot(
   // The capture's refusal of a request (chat, a team's) drawn where the pane's content goes is not the pane.
   const refused = shotShowsRefusal(render);
   // A column with no value in any row is data the pane lost, as Market Movers' VOL and V/AVG did before the open.
-  const blankColumns = interactive ? [] : shotBlankColumns(render.rows);
+  // A statement's period-end row dates every column, one with no figure in it too, so it is not read as a value.
+  const blankColumns = interactive ? [] : shotBlankColumns(render.rows.filter((row) => row.key !== PERIOD_END_ROW_ID));
   // A column past the edge of its table is data the picture left out (AUCT's after view at 720px lost +5D, +20D and the CUSIP).
   // It is a warning, not a reason the picture is unusable, while nineteen panes still cut one at 720px.
   const cutColumns = interactive ? [] : cleanColumnLabels(render.cutColumns ?? []);
@@ -311,6 +319,16 @@ function requiresStructuredDataEvidence(resolved: ResolvedPaneFunction): boolean
 
 const PLACEHOLDER_VALUE = /^(?:[-\u2013\u2014]+|n\/?a)?$/i;
 
+function earningsQuarterCellMismatches(resolved: ResolvedPaneFunction, rows: readonly DesktopPaneShotRenderedRow[]): string[] {
+  if (resolved.pane.id !== "corporate-actions" && resolved.pane.id !== "earnings-estimates") return [];
+  return rows.flatMap((row) => {
+    if (row.section || !row.cells.some((cell) => cell.columnId === "period" && cell.columnLabel === "QUARTER")) return [];
+    const blank = row.cells.filter((cell) => ["eps", "estimate", "surprise"].includes(cell.columnId ?? "")
+      && !cell.mayBeBlank && PLACEHOLDER_VALUE.test(cell.text.trim()));
+    return blank.length ? [`${namedColumns(blank.map((cell) => cell.columnLabel))} missing for ${row.key ?? `quarter ${row.rowIndex + 1}`}`] : [];
+  });
+}
+
 /**
  * Rows a table must draw before a column that is blank in all of them reads
  * as a column the pane lost, rather than a short list's gaps.
@@ -323,9 +341,12 @@ const BLANK_COLUMN_MIN_ROWS = 3;
  * and V/AVG did before the open. A column some rows leave empty is a sparse
  * marker (an event column), not a blank one, and neither is a column the pane
  * says can be blank (`mayBeBlank`: a value that comes after an event, such as
- * an upcoming report's move). A row the pane says is still waiting on the
- * value (a cell's `mayBeBlank`: ECO's ACTUAL before the release) is left out:
- * the column is blank when every other row is, and there are at least
+ * an upcoming report's move). A row the pane says does not owe the value (a
+ * cell's `mayBeBlank`: ECO's ACTUAL before the release) is left out whatever
+ * its cell shows, a dash or words of its own: an event's label under PERIOD and
+ * a rule change's "Created" under Value are no period and no figure, and
+ * neither fills the column for the rows that owe one. The column is blank when
+ * every row that owes the value is, and there are at least
  * BLANK_COLUMN_MIN_ROWS of them. Section headers and tables of fewer than
  * BLANK_COLUMN_MIN_ROWS rows are not read.
  */
@@ -339,21 +360,21 @@ function shotBlankColumns(rows: readonly Pick<DesktopPaneShotRenderedRow, "table
   const blank: string[] = [];
   for (const tableRows of tables.values()) {
     if (tableRows.length < BLANK_COLUMN_MIN_ROWS) continue;
-    const columns = new Map<string, { label: string; placeholders: number; waiting: number; filled: boolean }>();
+    const columns = new Map<string, { label: string; placeholders: number; exempt: number; filled: boolean }>();
     for (const row of tableRows) {
       for (const cell of row.cells) {
         const key = cell.columnId ?? cell.columnLabel;
-        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, waiting: 0, filled: false };
-        // A row still waiting on the value (an upcoming release's ACTUAL) is neither a gap nor a value.
-        if (cell.mayBeBlank && PLACEHOLDER_VALUE.test(cell.text.trim())) column.waiting += 1;
+        const column = columns.get(key) ?? { label: cell.columnLabel, placeholders: 0, exempt: 0, filled: false };
+        // A row that does not owe the value is neither a gap nor a value, whether its cell is a dash or says why.
+        if (cell.mayBeBlank) column.exempt += 1;
         else if (PLACEHOLDER_VALUE.test(cell.text.trim())) column.placeholders += 1;
         else column.filled = true;
         columns.set(key, column);
       }
     }
-    for (const { label, placeholders, waiting, filled } of columns.values()) {
+    for (const { label, placeholders, exempt, filled } of columns.values()) {
       // Blank in every row that should have the value, and in enough of them to be no short list's gaps.
-      const owed = tableRows.length - waiting;
+      const owed = tableRows.length - exempt;
       if (!filled && owed >= BLANK_COLUMN_MIN_ROWS && placeholders === owed && !blank.includes(label)) blank.push(label);
     }
   }
@@ -405,7 +426,7 @@ function stateSaid(lines: readonly string[] | undefined): string {
  * figures above the bars are not its rows); else, for a pane without a table
  * such as a ticker overview, its labeled values.
  */
-export function liveDomRowCount(render: Pick<DesktopPaneShotRenderResult, "rows" | "visibleKeyValues" | "semanticUi">): number {
+function liveDomRowCount(render: Pick<DesktopPaneShotRenderResult, "rows" | "visibleKeyValues" | "semanticUi">): number {
   const plotted = (render.semanticUi ?? []).reduce((count, node) => (
     node.role === "chart-data" && isRecord(node.metadata) && typeof node.metadata.plottedValueCount === "number"
       ? count + Math.max(0, node.metadata.plottedValueCount) : count
@@ -415,7 +436,7 @@ export function liveDomRowCount(render: Pick<DesktopPaneShotRenderResult, "rows"
 
 /** Labeled values that hold data. A grid of labels over "-" placeholders,
  * as for a ticker without fundamentals, is an empty pane. */
-export function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKeyValues"]): number {
+function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKeyValues"]): number {
   return (rows ?? []).filter(({ label, text }) => {
     const value = text.startsWith(label) ? text.slice(label.length) : text;
     return !PLACEHOLDER_VALUE.test(value.trim());
@@ -455,7 +476,7 @@ function plotsData(node: RemoteUiNodeSnapshot): boolean {
   return lists.some((list) => list.some((series) => isRecord(series) && typeof series.pointCount === "number" && series.pointCount > 0));
 }
 
-export function essentialFigureMismatches(render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "visibleText">): string[] {
+function essentialFigureMismatches(render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "visibleText">): string[] {
   return render.semanticUi.filter((node) => node.role === "figure-layout").flatMap((node) => {
     const metadata = node.metadata;
     if (!isRecord(metadata) || !Array.isArray(metadata.figures) || !Array.isArray(metadata.omitted)) return ["Essential figure evidence is unavailable."];
@@ -473,7 +494,7 @@ export function essentialFigureMismatches(render: Pick<DesktopPaneShotRenderResu
  * grid stands in for it. Both are fine for a person using the pane and wrong
  * for a capture of it.
  */
-export function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResult, "surfaces">): string[] {
+function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResult, "surfaces">): string[] {
   const surfaces = render.surfaces ?? [];
   return [
     ...(surfaces.some((surface) => surface.state === "blank") ? ["the 3D surface drew no mesh"] : []),
@@ -482,7 +503,7 @@ export function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResu
 }
 const SURFACE_GRID_STAND_IN = "the 3D surface was replaced by a 2D grid";
 
-export function shotUnusableReasonFor(
+function shotUnusableReasonFor(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
   render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected" | "accessGate" | "surfaces" | "stateText" | "errorStateMarkers" | "emptyStateMarkers">,
@@ -553,7 +574,7 @@ function shotExpectedSelections(
   ];
 }
 
-export function missingActiveTabSelections(
+function missingActiveTabSelections(
   semanticUi: RemoteUiNodeSnapshot[],
   expected: PaneScreenshotExpectedSelection[],
 ): PaneScreenshotExpectedSelection[] {

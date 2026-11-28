@@ -1,6 +1,5 @@
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from "fs";
-import { join } from "path";
 import type { UpdateChannel } from "../types/config";
+import { createNodeReportStateStore, readSentMap } from "./node-report-state";
 import type {
   UpdateAttempt,
   UpdateFailureReporterHost,
@@ -18,21 +17,6 @@ function readAttempt(value: unknown): UpdateAttempt | undefined {
   return { from, to, channel: (channel === "nightly" ? "nightly" : "stable") satisfies UpdateChannel, at };
 }
 
-/** The saved state, keeping only entries of the right shape. */
-function parseUpdateReportState(text: string): UpdateReportState {
-  const parsed: unknown = JSON.parse(text);
-  const record = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
-  const sent: Record<string, number> = {};
-  if (record.sent && typeof record.sent === "object") {
-    for (const [key, at] of Object.entries(record.sent as Record<string, unknown>)) {
-      if (typeof at === "number" && Number.isFinite(at)) sent[key] = at;
-    }
-  }
-  const staged = readAttempt(record.staged);
-  const applying = readAttempt(record.applying);
-  return { sent, ...(staged ? { staged } : {}), ...(applying ? { applying } : {}) };
-}
-
 /** The update failure reporter for a Bun process (the terminal app, the desktop app's main process). */
 export function createNodeUpdateFailureHost(options: {
   installKind: UpdateInstallKind;
@@ -43,17 +27,16 @@ export function createNodeUpdateFailureHost(options: {
     installKind: options.installKind,
     platform: process.platform,
     arch: process.arch,
-    load: () => {
-      const dir = options.getDataDir();
-      const path = dir ? join(dir, STATE_FILE) : null;
-      if (!path || !existsSync(path)) return { sent: {} };
-      return parseUpdateReportState(readFileSync(path, "utf-8"));
-    },
-    save: (state) => {
-      const dir = options.getDataDir();
-      if (!dir) return;
-      mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, STATE_FILE), JSON.stringify(state), "utf-8");
-    },
+    ...createNodeReportStateStore<UpdateReportState>({
+      fileName: STATE_FILE,
+      getDataDir: options.getDataDir,
+      empty: () => ({ sent: {} }),
+      parse: (record) => {
+        const staged = readAttempt(record.staged);
+        const applying = readAttempt(record.applying);
+        return { sent: readSentMap(record.sent), ...(staged ? { staged } : {}), ...(applying ? { applying } : {}) };
+      },
+      privateFile: false,
+    }),
   };
 }

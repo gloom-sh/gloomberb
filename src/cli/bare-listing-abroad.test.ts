@@ -1,4 +1,4 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterEach, expect, spyOn, test } from "bun:test";
 import { AppPersistence } from "../data/app-persistence";
 import { JsonTickerRepository } from "../data/json-ticker-repository";
 import { TickerRepository } from "../data/ticker-repository";
@@ -14,6 +14,7 @@ import { createTestDataProvider, createTestFinancials, createTestQuote } from ".
 import { createTestArticle } from "../test-support/news";
 import { marketDataCliCommands } from "./commands/market";
 import { ticker } from "./commands/ticker";
+import * as paneShot from "./desktop-pane-shot";
 import { resolveCliListing } from "./listing-arg";
 import { runPaneFunction } from "./pane-functions";
 import { DEFAULT_CLI_OPTIONS } from "./options";
@@ -121,22 +122,45 @@ test("ticker and news read a bare code listed abroad alone on that listing, and 
   expect(serializeCliResult(news.result, { ...DEFAULT_CLI_OPTIONS, color: false }, news.options)).toContain("Pelican Aqua orders two more wellboats");
 });
 
-test("fn DES reads it on that listing too, as every function taking a ticker does", async () => {
+async function runFrankfurtDes(config: ReturnType<typeof createDefaultConfig>) {
   const { dataProvider } = frankfurtOnly();
   const persistence = new AppPersistence(":memory:");
   const fn = createTestCliContext({ config, dataProvider, persistence, store: new TickerRepository(persistence.tickers) });
-  (fn.context as { plugins?: unknown }).plugins = getLoadablePlugins();
+  fn.context.plugins = getLoadablePlugins();
   try {
     await captureConsole(() => runPaneFunction(["DES", "O8A"], fn.context));
+    return fn.printed[0]!.result;
   } finally {
     persistence.close();
   }
-  const des = fn.printed[0]!;
-  expect(des.result.warnings).toContain("O8A -> FWB2");
-  expect(des.result.data.symbols).toEqual(["O8A:FWB2"]);
-  expect(des.result.failure).toBeUndefined();
-  // The report is the pane as drawn, which takes a few seconds.
-}, 30_000);
+}
+
+test("fn DES routes the bare code to Frankfurt and names the listing in a warning", async () => {
+  const prepare = spyOn(paneShot, "prepareDesktopPaneShotView").mockImplementation(() => {});
+  const render = spyOn(paneShot, "renderDesktopPaneScreenshot").mockResolvedValue({
+    visibleText: "Company overview", rows: [], truncated: false, truncationReasons: [], loadingStateDetected: false,
+    errorStateDetected: false, errorStateMarkers: [], emptyStateDetected: false, emptyStateMarkers: [], semanticUi: [],
+  });
+  try {
+    const result = await runFrankfurtDes(config);
+    expect(render).toHaveBeenCalledTimes(1);
+    expect(result.warnings).toContain("O8A -> FWB2");
+    expect(result.data.symbols).toEqual(["O8A:FWB2"]);
+    expect(result.failure).toBeUndefined();
+  } finally {
+    render.mockRestore();
+    prepare.mockRestore();
+  }
+});
+
+test.skipIf(process.env.GLOOM_TEST_DES_RENDER !== "1")("renders DES in Chrome with fixture data", async () => {
+  const profile = process.env.GLOOMBERB_HOME;
+  if (!profile) throw new Error("Run this smoke check with bun --no-env-file scripts/smoke-des-render.ts.");
+  const result = await runFrankfurtDes(createDefaultConfig(profile));
+  expect(result.failure).toBeUndefined();
+  expect(result.data).toMatchObject({ source: "dom", empty: false, symbols: ["O8A:FWB2"] });
+  expect(result.data.visibleText).toContain("A maritime aqua-service company.");
+}, 90_000);
 
 test("the command bar and a $O8A link open the code on the listing search finds for it", async () => {
   const { dataProvider } = frankfurtOnly();

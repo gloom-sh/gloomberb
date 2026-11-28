@@ -11,7 +11,7 @@ import { formatMarketPrice, formatMarketPriceWithCurrency, quoteFormatOptions, w
 import { previousPublishedSession } from "./market/freshness";
 import { globexPrintSession } from "./market/globex-day";
 import { minorUnitSign } from "../utils/currency-units";
-import { contractPriceUnit } from "../time-series/price-units";
+import { contractPriceUnit, currencyRateUnitText } from "../time-series/price-units";
 import { deliveryMonthLabel } from "../utils/contract-month";
 
 /**
@@ -101,11 +101,12 @@ export function futuresContractLines(terms: FuturesContractTermsPayload, symbol:
   const lines: FuturesContractLine[] = [];
   const code = terms.contract ? futuresContractCode(terms) : null;
   if (code && code !== contractCode(symbol)) lines.push({ key: "contract", label: "Contract", value: code });
-  if (terms.spec) lines.push(...futuresSpecLines(terms.spec));
+  const contract = futuresContractByCode(terms.root);
+  const unit = futuresPriceUnitLabel(contract, terms);
+  if (terms.spec) lines.push(...futuresSpecLines({ ...terms.spec, unit: unit ?? terms.spec.unit }));
   else {
     // A root the server sends no terms for still says what its price counts: Dutch TTF gas is EUR / MWh.
-    const unit = futuresContractByCode(terms.root)?.unit;
-    if (unit) lines.push({ key: "unit", label: "Unit", value: unit });
+    if (contract?.unit && unit) lines.push({ key: "unit", label: "Unit", value: unit });
   }
   if (terms.firstNotice) {
     lines.push(terms.inDelivery
@@ -523,6 +524,14 @@ export function futuresPriceUnit(
     ?? (contract?.sector === "equity-index" || contract?.sector === "equity-sectors" ? "index points" : null);
 }
 
+export function futuresPriceUnitLabel(
+  contract: Pick<FuturesContract, "unit" | "sector"> | null | undefined,
+  terms?: Pick<FuturesContractTermsPayload, "spec"> | null,
+): string | null {
+  const unit = futuresPriceUnit(contract, terms);
+  return unit && contract?.sector === "currencies" ? currencyRateUnitText(unit) : unit;
+}
+
 /** The terms change with a roll, and a roll is decided once a day. */
 const PRICE_UNIT_TTL_MS = 30 * 60_000;
 /** A failed request is asked again sooner than a settled answer. */
@@ -555,12 +564,6 @@ export function loadFuturesPriceUnit(
     .finally(() => { priceUnitsInFlight.delete(key); });
   priceUnitsInFlight.set(key, request);
   return request;
-}
-
-/** Forgets every remembered price unit (tests). */
-export function resetFuturesPriceUnits(): void {
-  priceUnits.clear();
-  priceUnitsInFlight.clear();
 }
 
 /** A day's settlement lands the morning after its session; the terms change only with a roll. */

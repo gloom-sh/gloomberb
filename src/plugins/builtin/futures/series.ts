@@ -50,7 +50,7 @@ const FRONT_MONTH_SERIES: readonly SeriesDefinition[] = FUTURES_CONTRACTS.map((c
  * December on 16 Oct 2026); CME's Brent trades until the last business day of
  * the second month before delivery, so its front month is two months out.
  */
-export function crudeFrontMonth(root: "CL" | "BZ", now: Date): number {
+function crudeFrontMonth(root: "CL" | "BZ", now: Date): number {
   const month = now.getUTCFullYear() * 12 + now.getUTCMonth();
   return month + (root === "BZ" || now.getUTCDate() >= 16 ? 2 : 1);
 }

@@ -97,22 +97,9 @@ export function requestEmailConfirmation(): boolean {
   return requestAuthDialog({ confirm: user });
 }
 
-/** Whether a host is mounted to show the dialog, for a flow that must not start what it could not finish. */
-export function hasAuthDialogHost(): boolean {
-  return authDialogListeners.size > 0;
-}
-
 /** Whether the dialog is on screen, so a press that would only ask for it again can do nothing. */
 export function isAuthDialogOpen(): boolean {
   return openAuthDialogs > 0;
-}
-
-/** Takes the requests a host would, for a test that signs in without the form. */
-export function interceptAuthDialogForTests(listener: (request: AuthDialogRequest) => void): () => void {
-  authDialogListeners.add(listener);
-  return () => {
-    authDialogListeners.delete(listener);
-  };
 }
 
 export function AuthDialogHost() {

@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
@@ -28,12 +29,13 @@ const stanceColor = (value: number | null) => value == null ? colors.textMuted :
 const RANGES: SocialMentionsRange[] = ["1y", "5y", "max"];
 
 function renderCell(row: SocialDayRow, column: SocialColumn, _index: number, state: { selected: boolean }): DataTableCell {
-  const text = column.id === "day" ? row.day : column.id === "mentions" ? socialCount(row.mentions)
+  const text = column.id === "day" ? formatDay(row.day) : column.id === "mentions" ? socialCount(row.mentions)
     : column.id === "ratio" ? socialRatio(row.ratio) : column.id === "wikiViews" ? socialCount(row.wikiViews)
       : column.id === "redditMentions" ? socialCount(row.redditMentions)
       : column.id === "stance" ? socialStance(row.stance) : topPostCell(row.topPost);
-  if (state.selected) return { text, color: colors.selectedText };
-  return { text, color: column.id === "stance" ? stanceColor(row.stance)
+  const value = column.id === "day" ? { value: row.day } : {};
+  if (state.selected) return { text, ...value, color: colors.selectedText };
+  return { text, ...value, color: column.id === "stance" ? stanceColor(row.stance)
     : column.id === "ratio" && (row.ratio ?? 0) >= 2.5 ? colors.warning
       : column.id === "topPost" || column.id === "wikiViews" || column.id === "redditMentions" || !row.closed ? colors.textMuted : colors.text };
 }
@@ -153,19 +155,19 @@ function SocialMentionsTickerView({ width, height, focused, listingKey, onDetail
         getItemKey={rowKey} renderCell={renderCell} resetScrollKey={identity}
         selection={{ kind: "index", selectedIndex: rows.length ? selectedIndex : -1, onChange: (index) => setSelectedId(rows[index] ? rowKey(rows[index]!) : null) }}
         onActivate={(row) => setOpenId(rowKey(row))} detailOpen={!!openRow} onBack={() => setOpenId(null)}
-        detailTitle={openRow?.day} detailContent={openRow ? <DayDetail symbol={symbol} row={openRow} recent={data.topPosts} width={width} height={Math.max(3, height - 2)} /> : null}
+        detailTitle={openRow ? formatDay(openRow.day) : undefined} detailContent={openRow ? <DayDetail symbol={symbol} row={openRow} recent={data.topPosts} width={width} height={Math.max(3, height - 2)} /> : null}
         sortColumnId={sort.column} sortDirection={sort.direction}
         onHeaderClick={(column) => setSort((current) => ({ column: column as SocialSort["column"], direction: current.column === column && current.direction === "desc" ? "asc" : "desc" }))}
         rootBefore={<Box flexDirection="column" flexShrink={0}>
           <StatGrid width={width} items={[
-            { id: "posts", label: "Posts", value: socialCount(latest?.mentions), detail: latest ? `${socialRatio(latest.ratio)} median · ${latest.day.slice(5)}` : undefined },
+            { id: "posts", label: "Posts", value: socialCount(latest?.mentions), detail: latest ? `${socialRatio(latest.ratio)} median · ${formatDay(latest.day, "no-year")}` : undefined },
             { id: "median", label: "30D median", value: socialCount(data.x.baseline) },
             { id: "stance", label: "Stance 7D", value: socialStance(summary?.stance ?? null), detail: stanceWord(summary?.stance ?? null) },
-            { id: "peak", label: `Peak ${range === "max" ? "all" : range.toUpperCase()}`, value: socialCount(summary?.peak?.mentions), detail: summary?.peak?.day },
+            { id: "peak", label: `Peak ${range === "max" ? "all" : range.toUpperCase()}`, value: socialCount(summary?.peak?.mentions), detail: summary?.peak?.day ? formatDay(summary.peak.day) : undefined },
             ...(summary?.wiki ? [{ id: "wiki", label: "Wiki views", value: socialCount(summary.wiki.views),
-              detail: `${socialRatio(summary.wiki.ratio)} median · ${summary.wiki.day.slice(5)}` }] : []),
+              detail: `${socialRatio(summary.wiki.ratio)} median · ${formatDay(summary.wiki.day, "no-year")}` }] : []),
             ...(summary?.reddit ? [{ id: "reddit", label: "Reddit", value: socialCount(summary.reddit.mentions),
-              detail: `${socialRatio(summary.reddit.ratio)} median · ${summary.reddit.day.slice(5)}` }] : []),
+              detail: `${socialRatio(summary.reddit.ratio)} median · ${formatDay(summary.reddit.day, "no-year")}` }] : []),
           ]} />
           {chartHeight && allRows.length ? <Box paddingX={1} flexShrink={0}>
             <CompositeChart series={series} panels={hasWiki ? WITH_WIKI_PANELS : PANELS} width={Math.max(1, width - 2)} height={chartHeight} focused={focused && !openRow} showLegend={hasWiki} showTimeAxis navigable={false}

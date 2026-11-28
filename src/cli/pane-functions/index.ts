@@ -92,7 +92,9 @@ async function withPaneRuntime<T>(
     const registry = await createPaneCatalog(context, plugins);
     try {
       return await withPersistedCloudSession(context, async () => {
-        let parsed = await applyListingArgument(registry, context, parsePaneFunctionArgsFor(registry, args, ctx.cliOptions), settings.command);
+        const asked = parsePaneFunctionArgsFor(registry, args, ctx.cliOptions);
+        let parsed = await applyListingArgument(registry, context, settings.command === "fn"
+          ? commoditiesTabReport(registry, asked) : asked, settings.command);
         const resolution = { ...settings, seriesSources: () => ctx.plugins, pluginStop: pluginStopFor(ctx, context) };
         let resolved = await resolvePaneFunction(registry, context, parsed, resolution);
         // A ticker whose company moved (SQ) is read as its new symbol (XYZ) before the function asks for anything.
@@ -113,6 +115,16 @@ async function withPaneRuntime<T>(
       registry.destroy();
     }
   });
+}
+
+function commoditiesTabReport(registry: PaneFunctionCatalog, asked: ParsedPaneFunctionArgs): ParsedPaneFunctionArgs {
+  if (findPaneFunction(registry, asked.target)?.template?.id !== "futures-pane") return asked;
+  const tab = typeof asked.options.tab === "string" ? asked.options.tab.trim().toLowerCase() : null;
+  const target = tab === "crops" ? "PSD" : tab === "positioning" ? "COT" : null;
+  if (!target || !findPaneFunction(registry, target)) return asked;
+  const options = { ...asked.options };
+  delete options.tab;
+  return { ...asked, target, options };
 }
 
 /**
@@ -215,6 +227,20 @@ function commandWord(argument: string): string {
  * function's argument hint when they gave none. Null when the word is no
  * function code or the catalog cannot be read, and the command stays unknown.
  */
+async function withPaneCatalog<T>(
+  ctx: CliCommandContext,
+  run: (registry: PaneFunctionCatalog, market: MarketContext) => Promise<T> | T,
+): Promise<T> {
+  return withMarketData(ctx, async (market) => {
+    const registry = await createPaneCatalog(market, ctx.plugins);
+    try {
+      return await run(registry, market);
+    } finally {
+      registry.destroy();
+    }
+  });
+}
+
 export async function functionCodeCommand(
   ctx: CliCommandContext,
   token: string,
@@ -223,14 +249,7 @@ export async function functionCodeCommand(
   const word = token.trim();
   if (!FUNCTION_CODE_WORD.test(word)) return null;
   try {
-    const found = await withMarketData(ctx, async (market) => {
-      const registry = await createPaneCatalog(market, ctx.plugins);
-      try {
-        return findFunctionCode(registry, word);
-      } finally {
-        registry.destroy();
-      }
-    });
+    const found = await withPaneCatalog(ctx, (registry) => findFunctionCode(registry, word));
     if (!found) return null;
     const code = word.replace(/^\$/, "").toUpperCase();
     return { code, command: ["gloom fn", code, args.length > 0 ? args.map(commandWord).join(" ") : found.argument].filter(Boolean).join(" ") };
@@ -255,14 +274,7 @@ export async function nearFunctionCodeCommand(
   const word = token.trim();
   if (!FUNCTION_CODE_WORD.test(word)) return null;
   try {
-    const near = await withMarketData(ctx, async (market) => {
-      const registry = await createPaneCatalog(market, ctx.plugins);
-      try {
-        return nearFunctionCodes(registry, word, { commandWord: true });
-      } finally {
-        registry.destroy();
-      }
-    });
+    const near = await withPaneCatalog(ctx, (registry) => nearFunctionCodes(registry, word, { commandWord: true }));
     if (near.length !== 1) return null;
     const { code, label } = near[0]!;
     return { code, label, command: ["gloom fn", code, ...args.map(commandWord)].join(" ") };
@@ -284,28 +296,23 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
   const word = token.trim();
   if (!/^[a-z][\w-]{1,30}$/i.test(word)) return [];
   try {
-    return await withMarketData(ctx, async (market) => {
-      const registry = await createPaneCatalog(market, ctx.plugins);
-      try {
-        return (await suggestPaneFunctions(registry, market, word)).slice(0, COMMAND_HIT_LIMIT).map((entry) => {
-          const pane = registry.panes.get(entry.paneId);
-          const template = entry.templateId ? registry.paneTemplates.get(entry.templateId) : undefined;
-          const headless = pane ? getHeadlessPaneDefinition(template, pane) : undefined;
-          const refuse = headless?.refuseSymbol;
-          return {
-            code: entry.token,
-            label: entry.label,
-            argKind: entry.argKind ?? null,
-            argPlaceholder: entry.argPlaceholder ?? null,
-            peers: entry.capability.options.some((option) => option.key === "peers" && option.type === "boolean"),
-            ...(refuse ? { refusesSymbol: (key: string) => refuse(key) != null } : {}),
-            ...(headless?.currencyPairs ? { takesFx: true } : {}),
-          };
-        });
-      } finally {
-        registry.destroy();
-      }
-    });
+    return await withPaneCatalog(ctx, async (registry, market) => (
+      (await suggestPaneFunctions(registry, market, word)).slice(0, COMMAND_HIT_LIMIT).map((entry) => {
+        const pane = registry.panes.get(entry.paneId);
+        const template = entry.templateId ? registry.paneTemplates.get(entry.templateId) : undefined;
+        const headless = pane ? getHeadlessPaneDefinition(template, pane) : undefined;
+        const refuse = headless?.refuseSymbol;
+        return {
+          code: entry.token,
+          label: entry.label,
+          argKind: entry.argKind ?? null,
+          argPlaceholder: entry.argPlaceholder ?? null,
+          peers: entry.capability.options.some((option) => option.key === "peers" && option.type === "boolean"),
+          ...(refuse ? { refusesSymbol: (key: string) => refuse(key) != null } : {}),
+          ...(headless?.currencyPairs ? { takesFx: true } : {}),
+        };
+      })
+    ));
   } catch (error) {
     logFailure("cli.pane-functions-index", "Find catalog command suggestions failed")(error);
     return [];
@@ -313,7 +320,7 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
 }
 
 /** A board's rows in a shot: "72" when the image holds them all, "37 of 72 rows" when it was cut. */
-export function shotRowsText(rows: { shown: number; total: number }): string {
+function shotRowsText(rows: { shown: number; total: number }): string {
   return rows.shown >= rows.total ? String(rows.total) : `${rows.shown} of ${rows.total} rows`;
 }
 
@@ -348,21 +355,15 @@ function missingListings(asked: readonly string[], unavailable: readonly string[
   return missing;
 }
 
-/** Whether a table holds a value past its first column (a row's label or date) and its reasons: a figure, a time, any text. */
-function tablesHoldValues(tables: CliReportTables): boolean {
+/** Whether a table holds a matching cell past its first column (a row's label or date) and its status columns. */
+function tablesHold(tables: CliReportTables, match: (cell: unknown) => boolean): boolean {
   return tables.tables.some((table) => {
     const skipped = new Set(table.columns.flatMap((header, index) => index === 0 || header === "status" || header === "value_status" ? [index] : []));
-    return table.rows.some((row) => row.some((cell, index) => !skipped.has(index) && cell !== "" && cell != null));
+    return table.rows.some((row) => row.some((cell, index) => !skipped.has(index) && match(cell)));
   });
 }
-
-/** Whether a report's tables show a figure: a cell outside the label column with a digit in it (not a dash). */
-function tablesHoldFigures(tables: CliReportTables): boolean {
-  return tables.tables.some((table) => {
-    const skipped = new Set(table.columns.flatMap((header, index) => index === 0 || header === "status" || header === "value_status" ? [index] : []));
-    return table.rows.some((row) => row.some((cell, index) => !skipped.has(index) && /\d/.test(String(cell ?? ""))));
-  });
-}
+const tablesHoldValues = (tables: CliReportTables) => tablesHold(tables, (cell) => cell !== "" && cell != null);
+const tablesHoldFigures = (tables: CliReportTables) => tablesHold(tables, (cell) => /\d/.test(String(cell ?? "")));
 
 /**
  * Whether a report holds nothing because its reads failed: empty with a
@@ -373,7 +374,7 @@ function tablesHoldFigures(tables: CliReportTables): boolean {
  * with a figure from a read that did answer (VIX's term structure beside
  * quotes it has none of).
  */
-export function reportHasNoData(data: {
+function reportHasNoData(data: {
   empty: boolean; rowCount: number; unavailableSymbols: readonly string[]; errors?: readonly string[]; locked?: unknown;
 }, tables?: CliReportTables): boolean {
   if (data.locked) return false;
@@ -402,7 +403,7 @@ function reportFailedUnreached(data: Parameters<typeof reportHasNoData>[0], tabl
  * not be reached: that is no answer rather than no data, and fails as
  * retryable `service_unreachable`, whatever else it shows.
  */
-export function reportFailure(
+function reportFailure(
   data: { empty: boolean; rowCount: number; symbols: readonly string[]; unavailableSymbols: readonly string[]; errors?: readonly string[]; reason?: unknown },
   asked: string,
   { failsWithoutData = false, tables }: { failsWithoutData?: boolean; tables?: CliReportTables } = {},
@@ -536,6 +537,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       const result = { data, exportFreshness: report.data.freshness, ...(warnings.length > 0 ? { warnings } : {}), ...(failure ? { failure } : {}) };
       const render = {
         text: () => glossary ? `${report.text}\n\n${renderReportGlossary(resolved.token, glossary)}` : report.text,
+        csvTrailingColumns: resolved.headless?.csvTrailingColumns,
         // A symbol of the list left out still has its row, with why.
         ...(tabular ? { tables: selectReportTables(withRefusedRows(report.tables, parsed.refusedListings), resolved.tableSection) } : {}),
       };
@@ -545,7 +547,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
         if (failure) failWithError({ ...failure, details: `Nothing was written to ${outputPath}.` });
         const written = renderForFile(() => serializeCliResult(result, ctx.cliOptions, render));
         const { csv, footer } = ctx.cliOptions.format === "csv" ? splitCsvFooter(written) : { csv: written, footer: [] };
-        await writeOutputFile(outputPath, `${ctx.cliOptions.format === "csv" ? portableCsv(written, warnings) : csv}\n`);
+        await writeOutputFile(outputPath, `${ctx.cliOptions.format === "csv" ? portableCsv(written, warnings, [], render.csvTrailingColumns) : csv}\n`);
         if (!ctx.cliOptions.quiet) for (const line of footer) console.error(line);
         // What was written and where; warnings go to stderr as they would beside printed rows, and JSON keeps its envelope.
         const saved = { output: outputPath, format: ctx.cliOptions.format, rows: report.data.rowCount, replaced: replacing };
@@ -556,7 +558,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
       }
       ctx.printResult(result, render);
       if (failure) process.exitCode = CLI_EXIT_CODES.error;
-    }, { strictHeadlessOptions: true, strictRenderedOptions: true, tableSection: true, rowWindow: true });
+    }, { command: "fn", strictHeadlessOptions: true, strictRenderedOptions: true, tableSection: true, rowWindow: true });
   });
 }
 
@@ -565,7 +567,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
  * when the report knows, and what to run instead. A FRED series ID given where
  * a ticker goes (`fn G DEXSFUS`) is charted with the `fred:` prefix.
  */
-export function emptySeriesExport(
+function emptySeriesExport(
   token: string,
   arg: string,
   data: { unavailableSymbols: readonly string[]; errors?: readonly string[] },
@@ -612,7 +614,7 @@ const FN_PROGRESS_AFTER_MS = 5_000;
  * file, a pipe, a script reading it) never gets it. Nothing for a quick one,
  * or with --quiet.
  */
-export function progressNotice(
+function progressNotice(
   ctx: Pick<CliCommandContext, "cliOptions">,
   label: string,
   afterMs = SHOT_PROGRESS_AFTER_MS,
@@ -774,20 +776,15 @@ export async function runPaneFunctionHelp(command: string, args: string[], ctx: 
   }
   if (!target) return false;
   try {
-    const entry = await withMarketData(ctx, async (context) => {
-      const registry = await createPaneCatalog(context, ctx.plugins);
-      try {
-        const found = findPaneFunction(registry, target);
-        if (!found?.pane) return undefined;
-        const { template, pane } = found;
-        // A function typed by its code is helped even while it is unlisted.
-        const entries = await buildPaneCatalogEntries(registry, context, { unlisted: true });
-        // A pane named directly, where functions open it, is helped by the first of them.
-        return (template ? entries.find((candidate) => candidate.templateId === template.id) : undefined)
-          ?? entries.find((candidate) => candidate.paneId === pane.id);
-      } finally {
-        registry.destroy();
-      }
+    const entry = await withPaneCatalog(ctx, async (registry, context) => {
+      const found = findPaneFunction(registry, target);
+      if (!found?.pane) return undefined;
+      const { template, pane } = found;
+      // A function typed by its code is helped even while it is unlisted.
+      const entries = await buildPaneCatalogEntries(registry, context, { unlisted: true });
+      // A pane named directly, where functions open it, is helped by the first of them.
+      return (template ? entries.find((candidate) => candidate.templateId === template.id) : undefined)
+        ?? entries.find((candidate) => candidate.paneId === pane.id);
     });
     if (!entry) return false;
     ctx.printResult({ data: entry }, { text: () => renderFunctionHelp(entry, command) });
@@ -814,15 +811,10 @@ export async function runPaneCatalog(args: string[], ctx: CliCommandContext) {
       limit: ctx.cliOptions.limit ?? parsed.limit,
     };
     if (await listFromSnapshot(ctx, parsed, effectiveParsed)) return;
-    await withMarketData(ctx, async (context) => {
-      const registry = await createPaneCatalog(context, ctx.plugins);
-      try {
-        // The UI audits picture every pane the app opens, those the command line has nothing to show for too.
-        const entries = await buildPaneCatalogEntries(registry, context, { appPanes: process.env[CATALOG_APP_PANES_ENV] === "1" });
-        printCatalog(ctx, parsed, effectiveParsed, entries, findCatalogSeries(ctx.plugins, parsed.query));
-      } finally {
-        registry.destroy();
-      }
+    await withPaneCatalog(ctx, async (registry, context) => {
+      // The UI audits picture every pane the app opens, those the command line has nothing to show for too.
+      const entries = await buildPaneCatalogEntries(registry, context, { appPanes: process.env[CATALOG_APP_PANES_ENV] === "1" });
+      printCatalog(ctx, parsed, effectiveParsed, entries, findCatalogSeries(ctx.plugins, parsed.query));
     });
   });
 }

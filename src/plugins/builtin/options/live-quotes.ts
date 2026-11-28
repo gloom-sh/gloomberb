@@ -50,6 +50,7 @@ export interface OptionQuoteCoverage {
   liveCount: number;
   status: OptionQuoteCoverageStatus;
   totalCount: number;
+  oldestLiveAt?: number;
 }
 
 function fallbackVisibleRange(
@@ -140,7 +141,7 @@ export function buildOptionQuoteKey(contractSymbol: string, broker?: OptionQuote
   });
 }
 
-export function overlayOptionContractQuote(
+function overlayOptionContractQuote(
   contract: OptionContract | undefined,
   quote: Quote | null | undefined,
 ): OptionContract | undefined {
@@ -156,12 +157,13 @@ export function overlayOptionContractQuote(
     && (contract.volume == null || !Number.isFinite(contract.volume) || quote.volume >= contract.volume)
     ? quote.volume : contract.volume;
   // A streamed bid and ask newer than the snapshot are a market now: the snapshot's stale mark (quoted before the
-  // session, or under intrinsic) no longer applies. The pane checks the new quote against intrinsic again.
-  const { quoteStale, ...snapshot } = contract;
+  // session, under intrinsic, or crossed) no longer applies. The pane checks the new quote against intrinsic again.
+  const { quoteStale, quoteCrossed, ...snapshot } = contract;
   const freshBook = isFiniteNumber(quote.bid) && isFiniteNumber(quote.ask);
   return {
     ...snapshot,
     ...(quoteStale && !freshBook ? { quoteStale } : {}),
+    ...(quoteCrossed && !freshBook ? { quoteCrossed } : {}),
     // Generic quote.price may itself be a midpoint. LAST must remain an
     // executed trade, with its own timestamp, even while the bid/ask updates.
     lastPrice: hasNewTrade ? quote.lastTradePrice! : contract.lastPrice,
@@ -195,9 +197,12 @@ export interface LiveOptionsChain {
   streamedStrikes: ReadonlySet<number>;
   /** Latest streamed quote time applied, in milliseconds. */
   quotedAt: number | null;
+  /** Times of the real-time two-sided books that actually replaced a snapshot quote. */
+  liveBookTimes: ReadonlyMap<string, number>;
 }
 
 const EMPTY_STRIKES: ReadonlySet<number> = new Set();
+const EMPTY_BOOK_TIMES: ReadonlyMap<string, number> = new Map();
 const contractKeyIndexes = new WeakMap<readonly OptionContract[], Map<string, Map<string, number[]>>>();
 
 function contractKeyIndex(contracts: readonly OptionContract[], broker?: OptionQuoteBroker): Map<string, number[]> {
@@ -228,8 +233,9 @@ export function overlayOptionChainQuotes(
   freshness: OptionsQuoteFreshness,
   broker?: OptionQuoteBroker,
 ): LiveOptionsChain {
-  if (quoteEntries.size === 0) return { chain, streamedStrikes: EMPTY_STRIKES, quotedAt: null };
+  if (quoteEntries.size === 0) return { chain, streamedStrikes: EMPTY_STRIKES, quotedAt: null, liveBookTimes: EMPTY_BOOK_TIMES };
   const streamedStrikes = new Set<number>();
+  const liveBookTimes = new Map<string, number>();
   let quotedAt: number | null = null;
   const overlay = (contracts: OptionContract[]): OptionContract[] => {
     const index = contractKeyIndex(contracts, broker);
@@ -246,6 +252,10 @@ export function overlayOptionChainQuotes(
         next ??= contracts.slice();
         next[position] = live;
         streamedStrikes.add(contract.strike);
+        if (quote.dataSource === "live" && quote.delivery === "stream" && quote.stale === false
+          && isFiniteNumber(quote.bid) && isFiniteNumber(quote.ask) && isFiniteNumber(quote.lastUpdated)) {
+          liveBookTimes.set(key, quote.lastUpdated);
+        }
         if (isFiniteNumber(quote.lastUpdated) && (quotedAt == null || quote.lastUpdated > quotedAt)) quotedAt = quote.lastUpdated;
       }
     }
@@ -253,17 +263,18 @@ export function overlayOptionChainQuotes(
   };
   const calls = overlay(chain.calls);
   const puts = overlay(chain.puts);
-  if (calls === chain.calls && puts === chain.puts) return { chain, streamedStrikes: EMPTY_STRIKES, quotedAt: null };
+  if (calls === chain.calls && puts === chain.puts) return { chain, streamedStrikes: EMPTY_STRIKES, quotedAt: null, liveBookTimes: EMPTY_BOOK_TIMES };
   const snapshotAt = chain.asOf ? Date.parse(chain.asOf) : Number.NaN;
   const asOf = quotedAt != null && (!Number.isFinite(snapshotAt) || quotedAt > snapshotAt)
     ? new Date(quotedAt).toISOString() : chain.asOf;
-  return { chain: { ...chain, calls, puts, ...(asOf ? { asOf } : {}) }, streamedStrikes, quotedAt };
+  return { chain: { ...chain, calls, puts, ...(asOf ? { asOf } : {}) }, streamedStrikes, quotedAt, liveBookTimes };
 }
 
 export function resolveOptionQuoteCoverage(
   targets: readonly QuoteSubscriptionTarget[],
   quoteEntries: ReadonlyMap<string, QueryEntry<Quote>>,
   freshness: OptionsQuoteFreshness,
+  liveBookTimes?: ReadonlyMap<string, number>,
 ): OptionQuoteCoverage {
   // Each target's own key: a chain's broker profile is part of it.
   const visibleKeys = new Set(
@@ -273,14 +284,18 @@ export function resolveOptionQuoteCoverage(
   );
   let liveCount = 0;
   let fallbackCount = 0;
+  let oldestLiveAt: number | undefined;
   for (const key of visibleKeys) {
     const quote = freshOptionQuote(quoteEntries.get(key), freshness);
+    const appliedAt = liveBookTimes?.get(key);
     if (
       quote?.dataSource === "live"
       && quote.delivery === "stream"
       && quote.stale === false
+      && (!liveBookTimes || appliedAt != null)
     ) {
       liveCount += 1;
+      if (appliedAt != null) oldestLiveAt = Math.min(oldestLiveAt ?? appliedAt, appliedAt);
     } else if (quote) {
       fallbackCount += 1;
     }
@@ -296,5 +311,5 @@ export function resolveOptionQuoteCoverage(
         && freshness.now - freshness.subscriptionStartedAt < OPTIONS_STREAM_CONNECTING_GRACE_MS
         ? "connecting"
         : "delayed";
-  return { fallbackCount, liveCount, status, totalCount };
+  return { fallbackCount, liveCount, status, totalCount, ...(oldestLiveAt != null ? { oldestLiveAt } : {}) };
 }

@@ -9,12 +9,11 @@ import {
   type DataTableCell,
   type QueryBarView,
 } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, useUiCapabilities } from "../../../ui";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
+import { nextHeaderSort, sortRowsBy, type SortDirection } from "../../../utils/sort-values";
 import { SignInWall } from "../cloud/auth-actions";
 import type { CloudResource } from "../shared/cloud-resource";
 import { missingCell } from "../shared/research-cells";
@@ -113,7 +112,8 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
     async (force: boolean): Promise<InsiderCompanyAnswer> => ({ query, resource: await loadInsiderCompany(query, { force }) }),
     [query, session.displayScope],
   );
-  const resource = useAsyncResource(loader, {
+  const resource = usePaneResource(loader, {
+    focused,
     initialData: () => {
       const cached = cachedInsiderCompany(query);
       return cached ? { query, resource: cached } : null;
@@ -124,19 +124,11 @@ export function InsiderActivityView({ symbol, control, viewBar, width, height, f
   });
   const answered = resource.data?.query === query ? resource.data.resource : null;
   const shown = answered ?? (resource.loading ? resource.data?.resource ?? null : null);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
 
   const activity = shown?.payload ?? null;
   const lines = useMemo(() => (activity ? insiderActivityLines(activity) : []), [activity]);
   const [sort, setSort] = useState<{ columnId: InsiderActivityColumnId; direction: SortDirection }>(() => insiderActivityDefaultSort(control.side));
-  const sortedLines = useMemo(() => {
-    const order = new Map(lines.map((line, index) => [line, index]));
-    return [...lines].sort((a, b) => (
-      compareSortValues(insiderActivitySortValue(a, sort.columnId), insiderActivitySortValue(b, sort.columnId), sort.direction)
-      || order.get(a)! - order.get(b)!
-    ));
-  }, [lines, sort]);
+  const sortedLines = useMemo(() => sortRowsBy(lines, sort.direction, (line) => insiderActivitySortValue(line, sort.columnId)), [lines, sort]);
   const columns = useMemo(() => buildInsiderActivityColumns(width, lines), [lines, width]);
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
 

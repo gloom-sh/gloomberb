@@ -1,15 +1,8 @@
-import {
-  useCallback,
-  useRef,
-  type Dispatch,
-  type MutableRefObject,
-  type RefObject,
-  type SetStateAction,
-} from "react";
-import type { ScrollBoxRenderable } from "../../../ui";
-import type { AppState } from "../../../state/app/context";
+import { useCallback, useRef } from "react";
 import type { LayoutBounds } from "../../../layout/pane-manager";
 import type { CommandBarPanelProps } from "./types";
+import type { CommandBarNavigationState } from "../routing/navigation-state";
+import type { CommandBarEnvironment } from "../surface/environment";
 import { useCommandBarKeyboardShortcuts } from "../keyboard-shortcuts";
 import { useCommandBarListNavigation } from "../list/navigation";
 import {
@@ -20,91 +13,74 @@ import {
   type ResultItem,
 } from "../list/model";
 import { useCommandBarPanelState } from "./state";
-import type { ThemePickerHandle } from "../theme-picker";
-import type { CommandBarRoute } from "../workflow/types";
 
 interface CommandBarPanelRuntimeOptions {
+  env: CommandBarEnvironment;
+  nav: CommandBarNavigationState;
   acceptRootShortcutTab: () => boolean;
   acceptSelectedShortcutTab: () => boolean;
   activateListSelection: (options?: { secondary?: boolean; item?: ResultItem }) => void;
   applyThemePreview: (themeId: string | null) => void;
-  cellHeightPx: number;
-  cellWidthPx: number;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
   commitTheme: (themeId: string) => void;
-  committedThemeId: string;
-  currentRoute: CommandBarRoute | null;
-  currentRouteRef: MutableRefObject<CommandBarRoute | null>;
-  dismissCommandBar: () => void;
   /** A click outside the bar: a dismissal, unlike `closeAll` after a commit. */
   dismissOverlay: () => void;
-  markRootSelectionNavigated: () => void;
-  nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
-  nativePaneChrome: boolean;
-  nativeWindowChrome?: boolean;
   onNativeOccluderChange?: (rect: LayoutBounds | null) => void;
-  persistConfig: (nextConfig: AppState["config"]) => void;
-  popRoute: () => void;
   resetAssist: () => boolean;
   rootGhostSuffix: string | null;
-  rootModeKind: string;
   rootShortcutFeedback: string | null;
   routeListState: ListScreenState | null;
   setActiveListQuery: (query: string) => void;
-  setRootHoveredIdx: Dispatch<SetStateAction<number | null>>;
-  setRootSelectedIdx: Dispatch<SetStateAction<number>>;
-  setRouteStack: Dispatch<SetStateAction<CommandBarRoute[]>>;
-  stateRef: MutableRefObject<AppState>;
-  termHeight: number;
-  termWidth: number;
   themePickerActive: boolean;
   themePickerFilter: string;
-  themePickerRef: RefObject<ThemePickerHandle | null>;
-  titleBarOverlay: boolean | undefined;
-  updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
-  visibleListStateRef: MutableRefObject<ListScreenState | null>;
 }
 
 export function useCommandBarPanelRuntime({
+  env,
+  nav,
   acceptRootShortcutTab,
   acceptSelectedShortcutTab,
   activateListSelection,
   applyThemePreview,
-  cellHeightPx,
-  cellWidthPx,
   closeAll,
   commitTheme,
-  committedThemeId,
-  currentRoute,
-  currentRouteRef,
-  dismissCommandBar,
   dismissOverlay,
-  markRootSelectionNavigated,
-  nativeListScrollRef,
-  nativePaneChrome,
-  nativeWindowChrome,
   onNativeOccluderChange,
-  persistConfig,
-  popRoute,
   resetAssist,
   rootGhostSuffix,
-  rootModeKind,
   rootShortcutFeedback,
   routeListState,
   setActiveListQuery,
-  setRootHoveredIdx,
-  setRootSelectedIdx,
-  setRouteStack,
-  stateRef,
-  termHeight,
-  termWidth,
   themePickerActive,
   themePickerFilter,
-  themePickerRef,
-  titleBarOverlay,
-  updateTopRoute,
-  visibleListStateRef,
 }: CommandBarPanelRuntimeOptions): CommandBarPanelProps {
+  const {
+    cellHeightPx,
+    cellWidthPx,
+    nativeListScrollRef,
+    nativePaneChrome,
+    nativeWindowChrome,
+    persistConfig,
+    state: { config: { theme: committedThemeId } },
+    stateRef,
+    termHeight,
+    termWidth,
+    themePickerRef,
+    titleBarOverlay,
+    visibleListStateRef,
+  } = env;
+  const {
+    currentRoute,
+    currentRouteRef,
+    dismissCommandBar,
+    markRootSelectionNavigated,
+    popRoute,
+    rootModeInfo: { kind: rootModeKind },
+    setRootHoveredIdx,
+    setRootSelectedIdx,
+    setRouteStack,
+    updateTopRoute,
+  } = nav;
   const activateListSelectionRef = useRef(activateListSelection);
   activateListSelectionRef.current = activateListSelection;
 

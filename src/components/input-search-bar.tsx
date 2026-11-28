@@ -14,6 +14,25 @@ export function useSearchFocusUp() {
   ), [bindings]);
 }
 
+/** Moves focus from a table's first row back to its search field, delegating other keys to `fallback`. */
+export function useSearchUpRootKeyDown<
+  TEvent extends SearchFocusNavigationEvent,
+  TContext extends { selectedIndex: number },
+>(
+  focusSearch: () => void,
+  fallback?: (event: TEvent, context: TContext) => boolean,
+) {
+  const isSearchUp = useSearchFocusUp();
+  return useCallback((event: TEvent, context: TContext) => {
+    if (context.selectedIndex <= 0 && isSearchUp(event)) {
+      stopSearchFocusNavigation(event);
+      focusSearch();
+      return true;
+    }
+    return fallback ? fallback(event, context) : false;
+  }, [isSearchUp, focusSearch, fallback]);
+}
+
 export function InputSearchBar({
   value,
   focused,

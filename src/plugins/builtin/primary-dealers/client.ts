@@ -150,9 +150,3 @@ export function cachedDealerHistory(seriesBreak: string, row: Pick<DealerRow, "i
   const series = heldSeries(seriesBreak, row);
   return series ? { rowId: row.id, points: sumSeries(series) } : null;
 }
-
-/** Forgets what was read, for a test or a refresh that must see the release again. */
-export function resetPrimaryDealersCache(): void {
-  seriesBreaks.clear();
-  seriesReads.clear();
-}

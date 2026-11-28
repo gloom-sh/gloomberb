@@ -28,7 +28,7 @@ import { useOptionalPaneInstanceId } from "./app/context";
  * the old one; a closed pane never mounts again, and its memory is released
  * after this.
  */
-export const PANE_SESSION_GRACE_MS = 2_000;
+const PANE_SESSION_GRACE_MS = 2_000;
 
 interface SessionEntry {
   id: string;
@@ -59,16 +59,6 @@ function acquire<T>(paneId: string, key: string, create: () => T, dispose: ((val
   sessions.set(id, entry);
   scheduleRelease(entry);
   return entry;
-}
-
-/** Test hook: releases every pane's memory now, so one test's panes never start on another's. */
-export function resetPaneSessionsForTests(): void {
-  for (const entry of [...sessions.values()]) {
-    if (entry.timer) clearTimeout(entry.timer);
-    entry.timer = null;
-    sessions.delete(entry.id);
-    entry.dispose?.(entry.value as never);
-  }
 }
 
 function useScopedPaneId(paneId?: string): string {

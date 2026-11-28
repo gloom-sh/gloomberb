@@ -1,6 +1,10 @@
+import { apiClient } from "../../api-client";
 import { majorListings } from "../../tickers/search/major-listings";
+import type { InstrumentSearchResult } from "../../types/instrument";
+import { settleWithin } from "../../utils/async-deadline";
 import { CENTRAL_BANKS, centralBankNames } from "../../utils/central-banks";
-import { isUsListingExchange } from "../../utils/exchanges";
+import { canonicalTickerKey, exchangeCodeVenues, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../utils/exchanges";
+import { logFailure } from "../../utils/log-failure";
 import { asksAboutRatesOrMacro } from "./rates-question";
 
 /**
@@ -51,64 +55,65 @@ const NOT_TICKERS = new Set([
 const BANK_WORDS = new Set(CENTRAL_BANKS.flatMap((bank) => centralBankNames(bank))
   .filter((name) => /^[A-Za-z]+$/.test(name)).map((name) => name.toUpperCase()));
 
-let majorUsSymbols: Promise<ReadonlySet<string>> | null = null;
+let majorUsSymbols: Promise<ReadonlyMap<string, string>> | null = null;
 
 /** The US listings shipped with the app, read the first time a question names a symbol, so a launch never loads them. */
-function knownUsSymbols(): Promise<ReadonlySet<string>> {
-  majorUsSymbols ??= majorListings().then((listings) => new Set(listings
-    .filter(([, , exchange]) => isUsListingExchange(exchange)).map(([symbol]) => symbol.toUpperCase())));
+function knownUsSymbols(): Promise<ReadonlyMap<string, string>> {
+  majorUsSymbols ??= majorListings().then((listings) => new Map(listings
+    .filter(([, , exchange]) => isUsListingExchange(exchange)).map(([symbol, , exchange]) => [symbol.toUpperCase(), exchange])));
   return majorUsSymbols;
 }
 
-/** A cashtag (`$DAL`) or a symbol in capitals (`DAL`, `BRK.B`, `MSFT's`) that stands as a word of its own. */
-const TICKER_WORD = /(?<![\p{L}\p{N}&/.\-])(\$)?([A-Za-z][A-Za-z0-9]{0,5}(?:\.[A-Z])?)(?:['’]s)?(?![\p{L}\p{N}&/]|\.[A-Za-z])/gu;
+const TICKER_WORD = /(?<![\p{L}\p{N}&/.$:\-])(\$)?([A-Za-z0-9]+(?:[.\-][A-Za-z0-9]+)*)(?::([A-Za-z0-9]+(?::[A-Za-z0-9]+)*))?(?:['’]s)?(?![\p{L}\p{N}&/:\-]|\.[A-Za-z0-9])/gu;
+const QUESTION_LISTING_WAIT_MS = 2_000;
+const MAX_QUESTION_LOOKUPS = 12;
 
-/**
- * The tickers a question names, in its order, each once: a cashtag always; a
- * word in capitals in a question that has lower case too, unless it is an
- * abbreviation (NOT_TICKERS), a central bank (BANK_WORDS), a short word no
- * shipped US listing has, or a function's code no listing has
- * (`functionCodes`: OMON, WEI). A symbol of three letters or more that the
- * shipped listings do not carry (LUV) still counts, as only the large caps
- * ship, except in a question about rates or macro figures, whose capitals are
- * banks, indices and indicators ("How has the BCRP policy rate moved?").
- */
-export async function questionTickers(question: string, functionCodes: ReadonlySet<string> = new Set()): Promise<string[]> {
+/** A qualified listing is one token. Bare words still follow the CLI's US-first convention. */
+async function questionTickers(question: string, functionCodes: ReadonlySet<string> = new Set()): Promise<string[]> {
   const mixedCase = /\p{Ll}/u.test(question);
-  const found: string[] = [];
-  let known: ReadonlySet<string> | null = null;
-  let macro: boolean | null = null;
+  const macro = asksAboutRatesOrMacro(question);
+  const candidates = new Map<string, { symbol: string; venue?: string; cashtag?: boolean }>();
   for (const match of question.matchAll(TICKER_WORD)) {
-    const [, cashtag, word] = match;
+    const [, cashtag, word, venue] = match;
     const symbol = word!.toUpperCase();
-    if (found.includes(symbol)) continue;
-    if (cashtag) {
-      found.push(symbol);
-      continue;
+    if (venue) {
+      if (!venue.includes(":")) candidates.set(`${symbol}:${venue.toUpperCase()}`, { symbol, venue });
+    } else if (cashtag || (mixedCase && word === symbol && /^[A-Z]{2,5}(?:\.[A-Z])?$/.test(symbol)
+      && !NOT_TICKERS.has(symbol) && !BANK_WORDS.has(symbol))) {
+      candidates.set(symbol, { symbol, cashtag: !!cashtag || candidates.get(symbol)?.cashtag });
     }
-    // BRK.B, never U.S. nor Q4.
-    if (!mixedCase || word !== symbol || !/^[A-Z]{2,5}(?:\.[A-Z])?$/.test(symbol) || NOT_TICKERS.has(symbol) || BANK_WORDS.has(symbol)) continue;
-    known ??= await knownUsSymbols();
-    if (known.has(symbol)) {
-      found.push(symbol);
-      continue;
-    }
-    macro ??= asksAboutRatesOrMacro(question);
-    if (!macro && symbol.length >= 3 && !functionCodes.has(symbol)) found.push(symbol);
   }
-  return found;
+  if (!candidates.size) return [];
+  const known = await knownUsSymbols();
+  const queries = [...candidates.values()].flatMap(({ symbol, venue, cashtag }) => venue
+    ? exchangeCodeVenues(venue).map((exchange) => publicTickerKey(symbol, exchange))
+    : !known.has(symbol) && (cashtag || (!macro && !functionCodes.has(symbol))) ? [symbol] : []);
+  const asked = [...new Set(queries)].slice(0, MAX_QUESTION_LOOKUPS);
+  const results = asked.length ? await settleWithin(
+    apiClient.searchInstrumentsBatch(asked, 40, { signal: AbortSignal.timeout(QUESTION_LISTING_WAIT_MS) })
+      .catch(logFailure("cli.ticker-question", "Checking question listings failed", null)), QUESTION_LISTING_WAIT_MS) : null;
+  const found = new Map<string, string>();
+  for (const [token, { symbol, venue }] of candidates) {
+    const venues = exchangeCodeVenues(venue);
+    const rows = venue ? venues.flatMap((exchange) => results?.get(publicTickerKey(symbol, exchange)) ?? []) : results?.get(token) ?? [];
+    const listing = questionListing(symbol, venues, rows, venue ? undefined : known.get(symbol));
+    if (listing && (!found.has(listing.key) || venue)) found.set(listing.key, listing.input);
+  }
+  return [...found.values()];
 }
 
-/**
- * The ticker a question asks about first, for the functions run on one: the
- * first it writes as a cashtag or a shipped listing has, ahead of a word in
- * capitals only its shape made a ticker ("the KST of NVDA" is NVDA's), else
- * the first named.
- */
-async function primaryTicker(question: string, tickers: readonly string[]): Promise<string> {
-  const known = await knownUsSymbols();
-  const cashtags = new Set([...question.matchAll(TICKER_WORD)].filter(([, cashtag]) => cashtag).map(([, , word]) => word!.toUpperCase()));
-  return tickers.find((ticker) => known.has(ticker) || cashtags.has(ticker)) ?? tickers[0]!;
+function questionListing(symbol: string, venues: readonly string[], rows: readonly InstrumentSearchResult[], knownUs?: string) {
+  const matching = new Set(rows.flatMap((row) => {
+    const parsed = parsePublicTickerKey(row.symbol);
+    const exchange = parsed.exchange ?? (row.exchange === "SMART" ? row.primaryExchange : row.exchange || row.primaryExchange);
+    const [canonical] = exchangeCodeVenues(exchange);
+    return parsed.symbol === symbol && canonical && (!venues.length || venues.includes(canonical)) ? [canonical] : [];
+  }));
+  const us = !venues.length && (knownUs ?? [...matching].find(isUsListingExchange));
+  if (us) return { key: publicTickerKey(symbol, us), input: symbol };
+  if (matching.size !== 1) return null;
+  const key = publicTickerKey(symbol, [...matching][0]!);
+  return { key, input: canonicalTickerKey(key) };
 }
 
 const MONTHS = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
@@ -150,7 +155,7 @@ function isoDay(year: number, month: number, day: number): string | null {
 }
 
 /** The days a question asks about: from its first date to its second, or from the one it names. */
-export interface QuestionWindow {
+interface QuestionWindow {
   from: string;
   /** Absent for "since October 9": up to today. */
   to?: string;
@@ -163,7 +168,7 @@ export interface QuestionWindow {
  * come yet. One date is that day, or from it after "since", "after" or
  * "from". Null when it names none.
  */
-export function questionWindow(question: string, now = new Date()): QuestionWindow | null {
+function questionWindow(question: string, now = new Date()): QuestionWindow | null {
   const dates = questionDates(question);
   if (dates.length === 0) return null;
   const today = now.toISOString().slice(0, 10);
@@ -226,7 +231,7 @@ interface TickerQuestionFunction {
 /** What a question asks of the tickers it names; null when it names none. */
 export interface TickerQuestion {
   tickers: string[];
-  /** The one the functions run on one ticker take (`primaryTicker`). */
+  /** The first verified listing, used by functions that take one. */
   primary: string;
   functions: TickerQuestionFunction[];
 }
@@ -259,7 +264,7 @@ export async function tickerQuestion(
   const tickers = await questionTickers(question, functionCodes);
   if (tickers.length === 0) return null;
   const text = question.toLowerCase();
-  const primary = await primaryTicker(question, tickers);
+  const primary = tickers[0]!;
   const window = questionWindow(question, now) ?? questionYear(question, now);
   const span = questionSpan(text);
   const one = (code: TickerQuestionFunction["code"]): TickerQuestionFunction => ({ code, argument: primary, input: primary });

@@ -146,6 +146,8 @@ const MUSL_SMOKE_IMAGE = "gloomberb-musl-smoke:alpine-3.22";
 
 const args = process.argv.slice(2);
 const buildAll = args.includes("--all");
+const noCompress = args.includes("--no-compress");
+const skipSmoke = args.includes("--skip-smoke");
 /** `--target linux-x64-musl` (repeatable) builds the named targets instead of the host's. */
 const requestedTargets = args.flatMap((arg, index) => {
   if (arg === "--target") return args[index + 1] ? [args[index + 1]!] : [];
@@ -229,23 +231,46 @@ async function removeSmokeDir(smokeDir: string) {
   console.warn(`Could not remove smoke test directory ${smokeDir}:`, lastError);
 }
 
+async function prepareSmokeContainer(target: BuildTarget): Promise<void> {
+  if (!canRunTarget(target.os, target.arch) || target.os !== "linux") return;
+  const container = containerTool();
+  if (!container) return;
+  if (target.libc === "musl" && (detectLinuxLibc() ?? "glibc") !== "musl") {
+    await runProcess(
+      [container, "build", "--quiet", "--tag", MUSL_SMOKE_IMAGE, "-"],
+      `Failed to build the ${MUSL_SMOKE_IMAGE} smoke test image`,
+      { stdin: new Blob([`FROM ${MUSL_SMOKE_BASE_IMAGE}\nRUN apk add --no-cache libstdc++\n`]), stdout: "ignore" },
+    );
+    return;
+  }
+  if (target.libc !== "musl" && x64Emulator(target)) {
+    await runProcess(
+      [container, "pull", "--quiet", GLIBC_OLD_CPU_IMAGE],
+      `Failed to pull ${GLIBC_OLD_CPU_IMAGE} for the old CPU check`,
+      { stdout: "ignore" },
+    );
+  }
+}
+
 /**
  * What runs a target's binary on this host: nothing in front of it when the
  * host can run it, an Alpine container for a musl binary built on glibc
  * (with the old CPU check's emulator, when there is one), and null when it
  * cannot run here.
  */
-async function smokeRunner(target: BuildTarget, smokeDir: string, emulator: string | null): Promise<string[] | null> {
+async function smokeRunner(target: BuildTarget, smokeDir: string, emulator: string | null, containerReady = false): Promise<string[] | null> {
   if (!canRunTarget(target.os, target.arch)) return null;
   if (target.os !== "linux" || target.libc === (detectLinuxLibc() ?? "glibc")) return [];
   if (target.libc !== "musl") return null;
   const container = containerTool();
   if (!container) return null;
-  await runProcess(
-    [container, "build", "--quiet", "--tag", MUSL_SMOKE_IMAGE, "-"],
-    `Failed to build the ${MUSL_SMOKE_IMAGE} smoke test image`,
-    { stdin: new Blob([`FROM ${MUSL_SMOKE_BASE_IMAGE}\nRUN apk add --no-cache libstdc++\n`]), stdout: "ignore" },
-  );
+  if (!containerReady) {
+    await runProcess(
+      [container, "build", "--quiet", "--tag", MUSL_SMOKE_IMAGE, "-"],
+      `Failed to build the ${MUSL_SMOKE_IMAGE} smoke test image`,
+      { stdin: new Blob([`FROM ${MUSL_SMOKE_BASE_IMAGE}\nRUN apk add --no-cache libstdc++\n`]), stdout: "ignore" },
+    );
+  }
   return containerRunner(container, MUSL_SMOKE_IMAGE, smokeDir, emulator);
 }
 
@@ -253,16 +278,18 @@ async function smokeRunner(target: BuildTarget, smokeDir: string, emulator: stri
  * What runs the old CPU check, or null when nothing here can: the musl
  * binary's own container, or Debian's for a glibc binary.
  */
-async function oldCpuRunner(runner: string[], smokeDir: string, emulator: string | null): Promise<string[] | null> {
+async function oldCpuRunner(runner: string[], smokeDir: string, emulator: string | null, containerReady = false): Promise<string[] | null> {
   if (!emulator) return null;
   if (runner.length > 0) return runner;
   const container = containerTool();
   if (!container) return null;
-  await runProcess(
-    [container, "pull", "--quiet", GLIBC_OLD_CPU_IMAGE],
-    `Failed to pull ${GLIBC_OLD_CPU_IMAGE} for the old CPU check`,
-    { stdout: "ignore" },
-  );
+  if (!containerReady) {
+    await runProcess(
+      [container, "pull", "--quiet", GLIBC_OLD_CPU_IMAGE],
+      `Failed to pull ${GLIBC_OLD_CPU_IMAGE} for the old CPU check`,
+      { stdout: "ignore" },
+    );
+  }
   return containerRunner(container, GLIBC_OLD_CPU_IMAGE, smokeDir, emulator);
 }
 
@@ -295,11 +322,13 @@ async function noexecTempRunner(dir: string): Promise<string[] | null> {
   return code === 0 ? runner : null;
 }
 
-async function smokeTestBinary(outfile: string, target: BuildTarget) {
+async function smokeTestBinary(outfile: string, target: BuildTarget, preparedImages?: Promise<void>) {
   const { os } = target;
   const smokeDir = mkdtempSync(join(tmpdir(), "gloomberb-smoke-"));
   const emulator = x64Emulator(target);
-  const runner = await smokeRunner(target, smokeDir, emulator);
+  const containerReady = preparedImages !== undefined;
+  if (preparedImages) await preparedImages;
+  const runner = await smokeRunner(target, smokeDir, emulator, containerReady);
   if (!runner) {
     rmSync(smokeDir, { recursive: true, force: true });
     const reason = !canRunTarget(target.os, target.arch)
@@ -324,9 +353,11 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
   const inContainer = runner.length > 0;
   const missingTemp = join(smokeDir, "missing-temp");
   const noexecTemp = join(smokeDir, "noexec-temp");
-  const noexec = inContainer ? null : await noexecTempRunner(noexecTemp);
+  const [noexec, oldCpu] = await Promise.all([
+    inContainer ? Promise.resolve(null) : noexecTempRunner(noexecTemp),
+    oldCpuRunner(runner, smokeDir, emulator, containerReady),
+  ]);
   if (!inContainer && !noexec) console.log("Skipping the noexec temp folder check: no unprivileged mount namespace here");
-  const oldCpu = await oldCpuRunner(runner, smokeDir, emulator);
   // CI installs the emulator and has docker, so a runner without them fails rather than skips.
   if (target.os === "linux" && target.arch === "x64" && !oldCpu) {
     const missing = emulator
@@ -340,78 +371,110 @@ async function smokeTestBinary(outfile: string, target: BuildTarget) {
     console.log(`Skipping the old CPU check ${missing}`);
   }
 
-  const checks: SmokeCheck[] = [
+  const runCheck = async (check: SmokeCheck, homeName: string): Promise<string | undefined> => {
+    const checkRunner = check.runner ?? runner;
+    const checkIsContainer = check.runner ? check.runnerIsContainer : inContainer;
+    const defaultHome = checkIsContainer ? `/tmp/gloomberb-smoke-${homeName}` : join(smokeDir, `home-${homeName}`);
+    const checkEnv = { GLOOMBERB_HOME: defaultHome, ...check.env };
+    // A container does not see this process's environment, so it gets the check's through `env`.
+    const envInContainer = checkIsContainer
+      ? ["env", ...Object.entries({ ...checkEnv, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" }).map(([name, value]) => `${name}=${value}`)]
+      : [];
+    const code = await runProcess(
+      [...checkRunner, ...envInContainer, check.command ?? smokeBinary, ...check.args],
+      check.failureMessage,
+      { cwd: smokeDir, stdout: "ignore", env: testAppEnv(checkEnv) },
+      true,
+    );
+    return code === 0 ? undefined : check.failureMessage;
+  };
+
+  const parallelChecks: Array<{ name: string; check: SmokeCheck }> = [
     {
-      args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
-      failureMessage: `Packaged binary failed to load OpenTUI native package: ${outfile}`,
+      name: "native",
+      check: {
+        args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
+        failureMessage: `Packaged binary failed to load OpenTUI native package: ${outfile}`,
+      },
     },
     {
-      args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
-      env: {
-        BUN_TMPDIR: missingTemp,
-        TMPDIR: missingTemp,
-        // The container mounts the smoke folder read-only.
-        GLOOMBERB_HOME: inContainer ? "/tmp/gloomberb-smoke-home" : join(smokeDir, "home-missing-temp"),
+      name: "missing-temp",
+      check: {
+        args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
+        env: {
+          BUN_TMPDIR: missingTemp,
+          TMPDIR: missingTemp,
+          // The container mounts the smoke folder read-only.
+          GLOOMBERB_HOME: inContainer ? "/tmp/gloomberb-smoke-home" : join(smokeDir, "home-missing-temp"),
+        },
+        failureMessage: `Packaged binary failed to load OpenTUI when its temp folder cannot take the library: ${outfile}`,
       },
-      failureMessage: `Packaged binary failed to load OpenTUI when its temp folder cannot take the library: ${outfile}`,
     },
     ...(noexec ? [{
-      runner: noexec,
-      args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
-      env: { BUN_TMPDIR: noexecTemp, TMPDIR: noexecTemp, GLOOMBERB_HOME: join(smokeDir, "home-noexec-temp") },
-      failureMessage: `Packaged binary failed to load OpenTUI with a noexec temp folder: ${outfile}`,
+      name: "noexec-temp",
+      check: {
+        runner: noexec,
+        args: [OPEN_TUI_NATIVE_SMOKE_COMMAND],
+        env: { BUN_TMPDIR: noexecTemp, TMPDIR: noexecTemp, GLOOMBERB_HOME: join(smokeDir, "home-noexec-temp") },
+        failureMessage: `Packaged binary failed to load OpenTUI with a noexec temp folder: ${outfile}`,
+      },
     }] : []),
     {
-      args: [OPEN_TUI_RUNTIME_SMOKE_COMMAND],
-      failureMessage: `Packaged binary failed to load the OpenTUI runtime graph: ${outfile}`,
+      name: "runtime",
+      check: {
+        args: [OPEN_TUI_RUNTIME_SMOKE_COMMAND],
+        failureMessage: `Packaged binary failed to load the OpenTUI runtime graph: ${outfile}`,
+      },
     },
     {
-      args: [PLUGIN_HOST_SMOKE_COMMAND],
-      failureMessage: `Packaged binary failed to load an external plugin against its own runtime: ${outfile}`,
+      name: "plugin-host",
+      check: {
+        args: [PLUGIN_HOST_SMOKE_COMMAND],
+        failureMessage: `Packaged binary failed to load an external plugin against its own runtime: ${outfile}`,
+      },
     },
     {
-      args: [SHOT_VIEW_SMOKE_COMMAND],
-      failureMessage: `Packaged binary is missing the page shot and rendered fn reports draw panes in: ${outfile}`,
+      name: "shot-view",
+      check: {
+        args: [SHOT_VIEW_SMOKE_COMMAND],
+        failureMessage: `Packaged binary is missing the page shot and rendered fn reports draw panes in: ${outfile}`,
+      },
     },
-    {
+    ...(oldCpu ? [{
+      name: "old-cpu",
+      check: {
+        runner: oldCpu,
+        runnerIsContainer: true,
+        command: CONTAINER_EMULATOR,
+        args: ["-cpu", OLD_CPU_MODEL, smokeBinary, OPEN_TUI_RUNTIME_SMOKE_COMMAND],
+        failureMessage: `Packaged binary does not start on a CPU without AVX2 or BMI2 (an emulated ${OLD_CPU_MODEL}): ${outfile}`,
+      },
+    }] : []),
+  ];
+
+  // `gloom help` depends on the `help` launch having created the `gloom` symlink beside `gloomberb`.
+  const runHelpChain = async (): Promise<string | undefined> => {
+    const helpErr = await runCheck({
       args: ["help"],
       failureMessage: `Packaged binary failed to launch: ${outfile}`,
-    },
-    // Symlinks need extra rights on Windows, where the desktop installer ships
-    // both commands instead, and the container run mounts the folder read-only.
-    ...(os === "windows" || runner.length > 0 ? [] : [{
+    }, "help");
+    if (helpErr) return helpErr;
+    if (os === "windows" || runner.length > 0) return undefined;
+    return runCheck({
       command: join(smokeDir, "gloom"),
       args: ["help"],
       failureMessage: `Packaged binary did not add the gloom command beside gloomberb: ${outfile}`,
-    }]),
-    ...(oldCpu ? [{
-      runner: oldCpu,
-      runnerIsContainer: true,
-      command: CONTAINER_EMULATOR,
-      args: ["-cpu", OLD_CPU_MODEL, smokeBinary, OPEN_TUI_RUNTIME_SMOKE_COMMAND],
-      failureMessage: `Packaged binary does not start on a CPU without AVX2 or BMI2 (an emulated ${OLD_CPU_MODEL}): ${outfile}`,
-    }] : []),
-  ];
+    }, "gloom-help");
+  };
+
   let failureMessage: string | undefined;
 
   try {
-    for (const check of checks) {
-      const checkRunner = check.runner ?? runner;
-      // A container does not see this process's environment, so it gets the check's through `env`.
-      const envInContainer = (check.runner ? check.runnerIsContainer : inContainer)
-        ? ["env", ...Object.entries({ ...check.env, GLOOMBERB_NO_TELEMETRY: "1", DO_NOT_TRACK: "1" }).map(([name, value]) => `${name}=${value}`)]
-        : [];
-      const code = await runProcess(
-        [...checkRunner, ...envInContainer, check.command ?? smokeBinary, ...check.args],
-        check.failureMessage,
-        { cwd: smokeDir, stdout: "ignore", env: testAppEnv(check.env) },
-        true,
-      );
-      if (code !== 0) {
-        failureMessage = check.failureMessage;
-        break;
-      }
-    }
+    const results = await Promise.all([
+      ...parallelChecks.map(({ name, check }) => runCheck(check, name)),
+      runHelpChain(),
+    ]);
+    failureMessage = results.find((message) => message !== undefined);
   } finally {
     await removeSmokeDir(smokeDir);
   }
@@ -533,6 +596,8 @@ async function build(targetConfig: BuildTarget) {
   // `exports` map cannot be resolved from `~/.gloomberb/plugins/*/node_modules`
   // ("Cannot find package 'youtubei.js'" from the TV plugin, for one). The
   // plugin-host smoke below imports such a package so this flag stays.
+  // Kick off container image pull/build while Bun compiles so they overlap.
+  const preparedImages = skipSmoke ? undefined : prepareSmokeContainer(targetConfig);
   const buildExitCode = await runProcess(
     [
       "bun", "build", "--compile", "--production", "--splitting", "--compile-autoload-package-json",
@@ -560,7 +625,14 @@ async function build(targetConfig: BuildTarget) {
     await signWindowsFiles(signing, [outfile]);
   }
 
-  await smokeTestBinary(outfile, targetConfig);
+  if (!skipSmoke) {
+    await smokeTestBinary(outfile, targetConfig, preparedImages);
+  }
+
+  if (noCompress) {
+    console.log(`  -> ${outfile}`);
+    return;
+  }
 
   const compressedPath = compressGzip(outfile);
   console.log(`  -> ${compressedPath}`);
@@ -603,9 +675,7 @@ try {
     console.error("Failed to write the catalog snapshot");
     process.exit(1);
   }
-  for (const t of buildTargets) {
-    await build(t);
-  }
+  await Promise.all(buildTargets.map((t) => build(t)));
 } finally {
   removeShotViewModule();
 }

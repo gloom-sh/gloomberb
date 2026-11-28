@@ -11,12 +11,12 @@ import { useDialog } from "../../../ui/dialog";
 import { MarkdownNotePreview } from "./markdown-note-preview";
 import {
   defaultNoteOwner,
+  handleNoteSaveError,
   NoteOwnerStrip,
   ReadOnlyBanner,
-  resolveNoteConflict,
   useNoteTeams,
 } from "./owner";
-import { NoteConflictError, type NoteOwner, type NotesStoreRegistry } from "./store";
+import type { NoteOwner, NotesStoreRegistry } from "./store";
 import { useSyncedText } from "./text-state";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
@@ -83,29 +83,20 @@ export function createNotesTab(registry: NotesStoreRegistry) {
       // rewrites an unchanged file and can clobber another pane on the same symbol.
       if (lastSavedTextRef.current.get(symbol) === text) return;
       lastSavedTextRef.current.set(symbol, text);
-      notesFiles.save(symbol, text).catch(async (error: unknown) => {
-        if (error instanceof NoteConflictError) {
-          // Keep the buffer; the person chooses between the two versions.
-          lastSavedTextRef.current.delete(symbol);
-          const choice = await resolveNoteConflict(dialog, error);
-          const cloud = registry.cloud(effectiveOwner);
-          if (choice === "reload") {
-            const theirs = error.current?.content ?? "";
-            if (cloud && error.current) cloud.acceptCurrent(symbol, error.current);
-            lastSavedTextRef.current.set(symbol, theirs);
-            if (loadedSymbolRef.current === symbol) applyNoteText(theirs);
-          } else if (choice === "overwrite") {
-            if (cloud && error.current) cloud.acceptCurrent(symbol, error.current);
-            lastSavedTextRef.current.set(symbol, text);
-            await notesFiles.save(symbol, text).catch((again: unknown) => {
-              notify({ body: again instanceof Error ? again.message : "Could not save the note.", type: "error" });
-            });
-          }
-          return;
-        }
-        notesLog.error("Failed to save ticker note", { symbol, error: error instanceof Error ? error.message : String(error) });
-        notify({ body: error instanceof Error ? error.message : "Failed to save note.", type: "error" });
-      });
+      notesFiles.save(symbol, text).catch((error: unknown) => handleNoteSaveError(error, {
+        dialog,
+        cacheKey: symbol,
+        text,
+        lastSaved: lastSavedTextRef.current,
+        acceptCurrent: (current) => registry.cloud(effectiveOwner)?.acceptCurrent(symbol, current),
+        onReload: (theirs) => { if (loadedSymbolRef.current === symbol) applyNoteText(theirs); },
+        save: () => notesFiles.save(symbol, text),
+        notify,
+        onOtherError: (err) => {
+          notesLog.error("Failed to save ticker note", { symbol, error: err instanceof Error ? err.message : String(err) });
+          notify({ body: err instanceof Error ? err.message : "Failed to save note.", type: "error" });
+        },
+      }));
     }, [applyNoteText, dialog, effectiveOwner, notesFiles, notify]);
 
     useEffect(() => {

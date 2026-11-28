@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import {
-  coalesceFinancialPeriodAliases, fillDate, fillDateText, filledPeriodPublications, filledPeriodsNote, halfYearGrowthPeriod, hasOlderStatements, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
+  coalesceFinancialPeriodAliases, fillDate, fillDateText, filledPeriodPublications, filledPeriodsNote, halfYearGrowthPeriod, mergeFinancialStatementRows, reportsHalfYearly, stalePeriodNote, statementHistoryNotes,
 } from "./financial-statements";
 import { computeTTM } from "../plugins/builtin/ticker-detail/financials/aggregation";
 import { exchangeResultsNotes, matchExchangeResults } from "./exchange-results";
@@ -218,14 +218,14 @@ describe("statementHistoryNotes", () => {
     // A trailing-twelve-months column has no date; the oldest year is the oldest period end.
     expect(statementHistoryNotes("annual", ["TTM", "2025-12-31", "2024-12-31", "2023-12-31"], "KO", true)).toEqual([
       "annual history from 2023; older years not served",
-      "earlier years, one metric at a time: gloom fn GF KO --period annual --periods 40",
+      "earlier revenue: gloom fn GF KO --period annual --periods 40",
     ]);
     // GF holds nothing older (IAG on LSE starts in 2022 there too): no pointer to the same years.
     expect(statementHistoryNotes("annual", ["2024-06-30", "2025-06-30"], "SAN:EPA", false))
-      .toEqual(["annual history from 2024; older years not available for this listing"]);
+      .toEqual(["annual history from 2024; no earlier revenue in GF's latest 40 periods"]);
     expect(statementHistoryNotes("quarterly", ["2026-06-30", "2025-03-28"], "KO", true)).toEqual([
       "quarterly history from 2025-03-28; older quarters not served",
-      "earlier quarters, one metric at a time: gloom fn GF KO --period quarterly --periods 40",
+      "earlier revenue: gloom fn GF KO --period quarterly --periods 40",
     ]);
     // Unknown (the history was not read in time): nothing is said of older quarters.
     expect(statementHistoryNotes("quarterly", ["2025-03-28"], "KO", null)).toEqual([]);
@@ -234,26 +234,6 @@ describe("statementHistoryNotes", () => {
     expect(statementHistoryNotes("annual", ["TTM"], "KO", true)).toEqual([]);
   });
 
-  test("hasOlderStatements reads the extended history for a period older than the report's oldest", async () => {
-    const extended = { annualStatements: [{ date: "2019-12-31" }, { date: "2023-12-31" }], quarterlyStatements: [{ date: "2025-03-31" }] };
-    const load = async () => extended;
-    expect(await hasOlderStatements(load, "annual", ["TTM", "2024-12-31", "2023-12-31"])).toBe(true);
-    expect(await hasOlderStatements(load, "annual", ["2019-12-31", "2023-12-31"])).toBe(false);
-    expect(await hasOlderStatements(load, "quarterly", ["2025-03-31"])).toBe(false);
-    // Nothing dated to compare against, or a failed read: unknown.
-    expect(await hasOlderStatements(load, "annual", ["TTM"])).toBeNull();
-    expect(await hasOlderStatements(async () => { throw new Error("down"); }, "annual", ["2023-12-31"])).toBeNull();
-  });
-
-  test("hasOlderStatements stops waiting at its deadline, so a slow history leaves the report on time", async () => {
-    let answer: (value: { annualStatements: FinancialStatement[]; quarterlyStatements: FinancialStatement[] }) => void = () => {};
-    const slow = () => new Promise<{ annualStatements: FinancialStatement[]; quarterlyStatements: FinancialStatement[] }>((resolve) => { answer = resolve; });
-    const started = Date.now();
-    expect(await hasOlderStatements(slow, "annual", ["2023-12-31"], 20)).toBeNull();
-    expect(Date.now() - started).toBeLessThan(1_000);
-    // The answer arriving after it changes nothing.
-    answer({ annualStatements: [{ date: "2019-12-31" }], quarterlyStatements: [] });
-  });
 });
 
 test("reportsHalfYearly: an Australian or New Zealand listing, or periods half a year apart", () => {
@@ -374,6 +354,19 @@ describe("periods read from a results announcement", () => {
     expect(exchangeResultsNotes(results, [{ periodEnd: "2026-06-30", published: "2026-09-24" }])).toHaveLength(1);
   });
 
+  test("IDX quarter dates come from the current report and preserve catalogue provenance", () => {
+    const earlier = { ...report, source: "idx" as const, publishedAt: "2026-07-23T02:00:00Z" };
+    const current = { ...earlier, publishedAt: "2026-10-30T02:00:00Z", dateBasis: "catalogue" as const };
+    const quarter: FinancialStatement = {
+      date: "2026-09-30", currency: "IDR", netIncome: 5e9,
+      filledFrom: { source: "results", fields: ["netIncome"], documents: [earlier, current],
+        lines: { netIncome: { document: 1, page: null, subtractDocument: 0 } }, derived: "9 months minus 6 months" },
+    };
+    expect(fillDate(quarter)).toEqual({ label: "catalogue", date: "2026-10-30" });
+    expect(filledPeriodPublications([quarter])).toEqual([]);
+    expect(filledPeriodsNote([quarter])).toContain("IDX catalogue date 2026-10-30");
+  });
+
   test("a later period's comparative column is dated by that period's first announcement, never by a report published after it", () => {
     // Pop Mart's H1 2025: the 2026 interim report's comparative column (published 2026-09-24).
     const prior: FinancialStatement = { ...half, date: "2025-06-30", filledFrom: { ...half.filledFrom!, documents: [report] } };
@@ -465,4 +458,28 @@ describe("expense lines served blank", () => {
     expect(other!.sellingGeneralAndAdministration).toBe(2.1e9);
     expect(filledPeriodsNote([other!])).toBeNull();
   });
+});
+
+test("an undated MOPS report is dated by first observation without a publication date", () => {
+  const statement: FinancialStatement = {
+    date: "2026-06-30",
+    currency: "TWD",
+    netIncome: 63_839_675_000,
+    filledFrom: {
+      source: "results",
+      fields: ["netIncome"],
+      documents: [{
+        source: "mops",
+        kind: "interim_report",
+        title: "2881 2026 Q2 consolidated financial statements",
+        url: "https://mopsov.twse.com.tw/server-java/t164sb01?step=3&SYEAR=2026&file_name=tifrs-fr2-m1-fh-cr-2881-2026Q2.html",
+        firstObserved: true,
+        publishedAt: "2026-11-25T14:30:00Z",
+        fetchedAt: "2026-11-26T02:00:00Z",
+      }],
+      lines: { netIncome: { document: 0, page: null } },
+    },
+  };
+  expect(fillDateText(fillDate(statement)!)).toBe("first observed 2026-11-25");
+  expect(filledPeriodPublications([statement])).toEqual([]);
 });

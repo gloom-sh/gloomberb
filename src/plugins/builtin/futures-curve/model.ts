@@ -7,6 +7,7 @@ import { CME_CRYPTO_FUTURES, FUTURES_CONTRACTS, futuresBoardContractForTicker, f
 import { futuresContractCode } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
+import { formatDay, formatDayTime } from "../../../components/ui/day-cell";
 import { formatThirtySeconds } from "../../../market-data/market/format";
 import { cryptoPairCoin, isFuturesSymbol } from "../shared/crypto-pair";
 import { formatUtcDayTime, newestReportTime, oldestReportTime, parseReportTime } from "../../../utils/utc-time";
@@ -200,16 +201,17 @@ export function curveSpreadLabel(slope: Pick<FuturesCurvePayload["slope"], "fron
 const THIN_SPREAD_LOTS = 20;
 
 /**
- * What the front spread subtracts, as its figure says it: "settle 10-22" for
+ * What the front spread subtracts, as its figure says it: "settle 22 Oct" for
  * two settlements of a session (the Settle column's date), "last 20:59" for
  * two last trades made together, dated when not the newest quote's day. Null
  * when the server does not say.
  */
 export function curveSpreadBasis(slope: Pick<FuturesCurvePayload["slope"], "basis" | "asOf">, newest: string | null): string | null {
   if (!slope.basis || !slope.asOf) return null;
-  if (slope.basis === "settle" || !slope.asOf.includes("T")) return `${slope.basis} ${slope.asOf.slice(5, 10)}`;
+  if (slope.basis === "settle" || !slope.asOf.includes("T")) return `${slope.basis} ${formatDay(slope.asOf.slice(0, 10), "no-year")}`;
   const stamp = curveTimestamp(slope.asOf);
-  return `last ${newest?.includes("T") && curveTimestamp(newest).slice(0, 10) === stamp.slice(0, 10) ? stamp.slice(11) : stamp.slice(5)}`;
+  const sameDay = newest?.includes("T") && curveTimestamp(newest).slice(0, 10) === stamp.slice(0, 10);
+  return `last ${sameDay ? stamp.slice(11) : `${formatDay(stamp.slice(0, 10), "no-year")} ${stamp.slice(11)}`}`;
 }
 
 /**
@@ -287,7 +289,7 @@ const MONTH_CODES = "FGHJKMNQUVXZ";
  * its last trading day: crude's November contract expires in October, and a
  * "26-10-20" label also reads as a day-first date.
  */
-export function curveContractMonth(symbol: string, expiration: string): string {
+function curveContractMonth(symbol: string, expiration: string): string {
   const coded = /^[A-Z0-9]+?([FGHJKMNQUVXZ])(\d{2})\.[A-Z]+$/.exec(symbol);
   if (coded) return contractMonthLabel(Number(coded[2]), MONTH_CODES.indexOf(coded[1]!));
   return contractMonthLabel(Number(expiration.slice(0, 4)), Number(expiration.slice(5, 7)) - 1);
@@ -295,6 +297,12 @@ export function curveContractMonth(symbol: string, expiration: string): string {
 
 export function curveTimestamp(value: string | null): string {
   return value?.replace("T", " ").slice(0, 16) ?? MISSING_VALUE;
+}
+
+/** A stamp as the table writes it: `24 Nov 2026 21:00` for an instant, `24 Nov 2026` for a session. */
+export function curveStampText(value: string | null): string {
+  if (!value) return MISSING_VALUE;
+  return value.includes("T") ? formatDayTime(value) : formatDay(value);
 }
 
 /** The rank against the contract's own history; one observation ranks nothing. */
@@ -339,7 +347,7 @@ export function futuresCurveSeries(data: FuturesCurvePayload, palette?: CurvePal
   return [{
     id: "current", label: currentLabel, asOf: newestQuote(contracts), color: palette?.current,
     points: contracts.map(point),
-  }, ...settled.length ? [{ id: "settle", label: `Settle ${data.settlementDate!.slice(5)}, no trade since`, role: "marker" as const,
+  }, ...settled.length ? [{ id: "settle", label: `Settle ${formatDay(data.settlementDate!, "no-year")}, no trade since`, role: "marker" as const,
     color: palette?.settle, points: settled.map(point) }] : [],
   ...data.ghosts.map((ghost) => {
     // The payload dates a ghost by its oldest point, which can be a contract beyond the charted horizon.
@@ -582,7 +590,7 @@ function nearestSpotBar(bars: readonly SpotBar[], minute: number): SpotBar | nul
 }
 
 /** How far a contract trades over (positive) or under spot, in percent. */
-export function vsSpotPct(futures: number | null | undefined, spot: number | null | undefined): number | null {
+function vsSpotPct(futures: number | null | undefined, spot: number | null | undefined): number | null {
   return positive(futures) && positive(spot) ? (futures / spot - 1) * 100 : null;
 }
 
@@ -602,13 +610,13 @@ function finalSettlementTime(expiration: string): number | null {
 }
 
 /** Days, fractional, from `from` to the contract's final settlement: 6.6 from Saturday 01:33 UTC to Friday 16:00 London. */
-export function daysToExpiry(from: number, expiration: string): number | null {
+function daysToExpiry(from: number, expiration: string): number | null {
   const settles = finalSettlementTime(expiration);
   return settles == null || !Number.isFinite(from) ? null : (settles - from) / DAY_MS;
 }
 
 /** The premium over spot as a yearly rate, on a 365-day year. Blank at or past final settlement, where it has no meaning. */
-export function annualisedBasisPct(futures: number | null | undefined, spot: number | null | undefined, days: number | null): number | null {
+function annualisedBasisPct(futures: number | null | undefined, spot: number | null | undefined, days: number | null): number | null {
   if (!positive(futures) || !positive(spot) || days == null || !Number.isFinite(days) || days <= 0) return null;
   return (futures / spot - 1) * 365 / days * 100;
 }
@@ -641,7 +649,7 @@ const NO_BASIS: ContractBasis = { vsSpotPct: null, annualisedBasisPct: null, spo
  * missing or stale, for a trade with no time of day, and for one no spot bar
  * shares a minute with.
  */
-export function contractBasis(row: Pick<FuturesContract, "price" | "stale" | "expiration" | "asOf">, bars: readonly SpotBar[] | null): ContractBasis {
+function contractBasis(row: Pick<FuturesContract, "price" | "stale" | "expiration" | "asOf">, bars: readonly SpotBar[] | null): ContractBasis {
   if (!bars || row.stale || !positive(row.price)) return NO_BASIS;
   const printed = parseReportTime(row.asOf);
   if (!printed || printed.dateOnly) return { ...NO_BASIS, unpaired: { print: null, spot: null } };

@@ -38,7 +38,7 @@ interface CliServicesOptions {
   externalPlugins?: LoadedExternalPlugin[];
 }
 
-export async function ensureCliServicesReady<T extends { ready: Promise<unknown>; destroy(): void }>(
+async function ensureCliServicesReady<T extends { ready: Promise<unknown>; destroy(): void }>(
   services: T,
 ): Promise<T> {
   try {

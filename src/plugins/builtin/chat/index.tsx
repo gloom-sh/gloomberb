@@ -175,7 +175,7 @@ export const chatModule: PluginModule = {
     });
     // Messages drawn before a plugin came in, or with one since switched off, draw its codes again.
     for (const event of ["plugin:registered", "plugin:unregistered", "config:changed"] as const) ctx.on(event, chatFunctionsChanged);
-    chatController.attachPersistence(ctx.persistence, ctx.resume, { keepInstalledSession: ctx.runtime === "command" });
+    chatController.attachPersistence(ctx.persistence, ctx.resume);
     chatSidebarStore.attach(ctx.persistence);
     chatHandlePromptStore.attach(ctx.persistence);
     disposeUnreadBadge?.();

@@ -20,12 +20,15 @@ name: UI tokens
 # records the week's snapshot when it has none: every view once live, then
 # checked from what it kept, as pull requests read it.
 #
-# Four shards, split by a hash of each function's token, then one job, "UI
-# tokens", that passes only when every shard did: branch protection requires
-# that one name, not the shards'. Four leave room under the organisation's
-# concurrent jobs for Verify, Pane chrome and Performance beside them.
+# On pull requests that only touch isolated built-in plugin directories, the
+# scope job resolves the affected function tokens and runs a single scoped
+# runner with `--only`. Shared UI/theme/kit/shell changes, pushes to main, and
+# manual dispatches run the full two-shard sweep (three concurrent headless
+# browsers per shard offline). One job, "UI tokens", passes only when every
+# required shard passed.
 on:
   pull_request:
+    types: [opened, synchronize, reopened, closed]
     branches:
       - main
   push:
@@ -37,7 +40,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ui-tokens-${{ github.ref }}
+  group: ui-tokens-${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -45,15 +48,56 @@ env:
   DO_NOT_TRACK: "1"
 
 jobs:
+  scope:
+    name: UI tokens scope
+    if: github.event.action != 'closed'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      relevant: ${{ steps.scope.outputs.relevant }}
+      mode: ${{ steps.scope.outputs.mode }}
+      only: ${{ steps.scope.outputs.only }}
+      replay_shards: ${{ steps.scope.outputs.replay_shards }}
+      matrix_shards: ${{ steps.scope.outputs.matrix_shards }}
+    steps:
+      - if: github.event_name == 'pull_request'
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - if: github.event_name == 'pull_request'
+        uses: ./.github/actions/setup-bun
+
+      - id: scope
+        name: Check which views the change can affect
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+        run: |
+          if [ "$EVENT" != pull_request ]; then
+            {
+              echo "relevant=true"
+              echo "mode=full"
+              echo "only="
+              echo "replay_shards=1,2"
+              echo "matrix_shards=[1,2]"
+            } >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git fetch --depth=1 origin "$BASE_REF"
+          bun run scripts/pane-chrome/ui-tokens-scope.ts --base FETCH_HEAD
+
   shard:
-    name: UI tokens, shard ${{ matrix.shard }} of 4
+    name: ${{ needs.scope.outputs.mode == 'scoped' && 'UI tokens, scoped' || format('UI tokens, shard {0} of 2', matrix.shard) }}
+    needs: scope
+    if: github.event.action != 'closed' && needs.scope.outputs.relevant == 'true'
     runs-on: ubuntu-latest
     # Recording on main opens every view live, then again offline.
     timeout-minutes: ${{ github.ref == 'refs/heads/main' && 120 || 45 }}
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: ${{ fromJSON(needs.scope.outputs.matrix_shards) }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
@@ -73,7 +117,8 @@ jobs:
           key: chrome-headless-shell-${{ steps.keys.outputs.chrome }}-${{ runner.os }}-${{ runner.arch }}
 
       # Checkouts of the registry's plugins; which commit each builds is the snapshot's lock.
-      - uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+      - if: needs.scope.outputs.mode != 'scoped'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-audit-plugins
           key: ui-audit-plugins-${{ steps.keys.outputs.week }}
@@ -83,30 +128,63 @@ jobs:
       # a pull request takes the newest kept.
       - id: snapshot
         name: Restore the data snapshot
+        if: needs.scope.outputs.mode != 'scoped' || needs.scope.outputs.replay_shards == '1' || needs.scope.outputs.replay_shards == '1,2'
         uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
-          key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
-          restore-keys: ${{ github.ref != 'refs/heads/main' && format('ui-replay-v2-{0}of4-', matrix.shard) || '' }}
+          key: ui-replay-v2-${{ matrix.shard }}of2-${{ steps.keys.outputs.week }}
+          restore-keys: ${{ github.ref != 'refs/heads/main' && format('ui-replay-v2-{0}of2-', matrix.shard) || '' }}
 
-      - name: Hold every view to the tokens
+      - name: Restore shard 2 data snapshot for scoped run
+        if: needs.scope.outputs.mode == 'scoped' && needs.scope.outputs.replay_shards == '2'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/ui-replay
+          key: ui-replay-v2-2of2-${{ steps.keys.outputs.week }}
+          restore-keys: ui-replay-v2-2of2-
+
+      - name: Restore shard 2 data snapshot for cross-shard scoped run
+        if: needs.scope.outputs.mode == 'scoped' && needs.scope.outputs.replay_shards == '1,2'
+        uses: actions/cache/restore@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: ~/.cache/gloomberb-pane-chrome/ui-replay-2
+          key: ui-replay-v2-2of2-${{ steps.keys.outputs.week }}
+          restore-keys: ui-replay-v2-2of2-
+
+      - name: Merge shard 2 replay entries for cross-shard scoped run
+        if: needs.scope.outputs.mode == 'scoped' && needs.scope.outputs.replay_shards == '1,2'
+        run: |
+          mkdir -p "$HOME/.cache/gloomberb-pane-chrome/ui-replay"
+          if [ -d "$HOME/.cache/gloomberb-pane-chrome/ui-replay-2" ]; then
+            cp -n "$HOME/.cache/gloomberb-pane-chrome/ui-replay-2"/* "$HOME/.cache/gloomberb-pane-chrome/ui-replay/" 2>/dev/null || true
+          fi
+
+      - name: Hold views to the tokens
         env:
+          MODE: ${{ needs.scope.outputs.mode }}
+          ONLY: ${{ needs.scope.outputs.only }}
           SHARD: ${{ matrix.shard }}
           RECORD: ${{ github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true' && '--record' || '' }}
-        run: bun run check:ui-tokens --shard "$((SHARD - 1))/4" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay" $RECORD
+          UI_TOKENS_CONCURRENCY: "3"
+        run: |
+          if [ "$MODE" = scoped ] && [ -n "$ONLY" ]; then
+            bun run check:ui-tokens --only "$ONLY" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay"
+          else
+            bun run check:ui-tokens --shard "$((SHARD - 1))/2" --replay "$HOME/.cache/gloomberb-pane-chrome/ui-replay" $RECORD
+          fi
 
       - name: Keep this week's snapshot
         if: github.ref == 'refs/heads/main' && steps.snapshot.outputs.cache-hit != 'true'
         uses: actions/cache/save@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: ~/.cache/gloomberb-pane-chrome/ui-replay
-          key: ui-replay-v2-${{ matrix.shard }}of4-${{ steps.keys.outputs.week }}
+          key: ui-replay-v2-${{ matrix.shard }}of2-${{ steps.keys.outputs.week }}
 
       - name: Keep the measures
         if: failure()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: ui-tokens-${{ matrix.shard }}
+          name: ui-tokens-${{ needs.scope.outputs.mode == 'scoped' && 'scoped' || matrix.shard }}
           path: |
             ~/.cache/gloomberb-pane-chrome/ui-tokens/results.jsonl
             ~/.cache/gloomberb-pane-chrome/ui-tokens/views.jsonl
@@ -114,16 +192,30 @@ jobs:
 
   verdict:
     name: UI tokens
-    needs: shard
+    needs:
+      - scope
+      - shard
     # always(), not the default: a required check that is skipped counts as
     # passed, so this runs, and fails, when a shard failed or was cancelled.
-    if: always()
+    if: always() && github.event.action != 'closed'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Every shard passed
         env:
+          SCOPE_RESULT: ${{ needs.scope.result }}
+          RELEVANT: ${{ needs.scope.outputs.relevant }}
+          MODE: ${{ needs.scope.outputs.mode }}
+          ONLY: ${{ needs.scope.outputs.only }}
           SHARDS: ${{ needs.shard.result }}
         run: |
-          echo "The shards: $SHARDS"
+          echo "Scope: $SCOPE_RESULT (relevant=$RELEVANT, mode=$MODE); shards: $SHARDS"
+          test "$SCOPE_RESULT" = success
+          if [ "$RELEVANT" = false ]; then
+            echo "No UI files changed; skipped shards."
+            exit 0
+          fi
+          if [ "$MODE" = scoped ]; then
+            echo "Scoped UI tokens passed ($ONLY)."
+          fi
           test "$SHARDS" = success

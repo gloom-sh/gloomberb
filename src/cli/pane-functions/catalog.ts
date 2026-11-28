@@ -1,5 +1,6 @@
 import type { TickerRecord } from "../../types/ticker";
 import { logFailure } from "../../utils/log-failure";
+import { discoveryOpening, discoveryOpeningKeywords } from "../../utils/lookup-token";
 import { shellWord } from "../../utils/shell-word";
 import { commands as builtInCommands, getCommandPrefixes } from "../../components/command-bar/commands/registry";
 import type { HeadlessPaneDefinition, PaneDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../types/plugin";
@@ -16,6 +17,7 @@ import {
   optionChoices,
   optionFlag,
   optionFlags,
+  optionValueAliasNote,
   paneFunctionArgument,
   type PaneFunctionCapability,
   type PaneFunctionOptionDef,
@@ -444,6 +446,7 @@ function namesShownTerm(entry: Pick<PaneCatalogEntry, "token" | "shortcut" | "al
 // description, then one carrying every word in its name or description, then every word counting its flags;
 // the rest rank by how many words they match.
 const PHRASE_IN_NAME_BAND = 4000;
+const NAMED_VIEW_BAND = 5000;
 const PHRASE_IN_DESCRIPTION_BAND = 3000;
 const ALL_WORDS_BAND = 2000;
 const ALL_WORDS_WITH_FLAGS_BAND = 1000;
@@ -482,7 +485,7 @@ function nameAndDescriptionFields(entry: PaneCatalogEntry): string[] {
     ...entry.keywords,
     ...entry.capability.aliases,
     ...entry.capability.intents,
-    ...entry.capability.opens?.flatMap((opening) => opening.words) ?? [],
+    ...discoveryOpeningKeywords(entry.capability),
   ].filter((value): value is string => !!value).map((value) => value.toLowerCase());
 }
 
@@ -531,14 +534,18 @@ const SHOWN_TERM_SCORE = 20;
 function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string, { glossary = true }: CatalogScoring = {}): CatalogMatchScore {
   const terms = queryTerms(query);
   if (terms.length === 0) return { score: 1, terms: 0, named: 0, called: 0 };
+  if (discoveryOpening(entry.capability, query)?.label) {
+    return { score: NAMED_VIEW_BAND, terms: terms.length, named: terms.length, called: 0 };
+  }
   const none = { score: 0, terms: terms.length, named: 0, called: 0 };
+  const openingKeywords = discoveryOpeningKeywords(entry.capability);
 
   const exactTokens = [
     entry.token,
     entry.shortcut,
     ...entry.aliases,
     ...entry.capability.suggestFor ?? [],
-    ...entry.capability.opens?.flatMap((opening) => opening.words) ?? [],
+    ...openingKeywords,
     entry.templateId,
     entry.paneId,
   ].filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
@@ -552,7 +559,7 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string, { glossar
   const wholeQuery = query.toLowerCase().trim().replace(/\s+/g, " ");
   const called = identityFields(entry);
   // A word that opens one case of the function (CTM's `VX`) is typed as its code is.
-  const codes = [entry.token, entry.shortcut, ...entry.aliases, ...entry.capability.opens?.flatMap((opening) => opening.words) ?? []]
+  const codes = [entry.token, entry.shortcut, ...entry.aliases, ...openingKeywords]
     .filter((value): value is string => !!value).map((value) => normalizeLookupToken(value));
 
   let score = containsPhrase(`${named} ${flags}`, wholeQuery) ? 12 : 0;
@@ -630,9 +637,8 @@ function scorePaneCatalogEntry(entry: PaneCatalogEntry, query: string, { glossar
  * ECO through "purchasing managers' index" is one.
  */
 function isClosestCatalogMatch(entry: PaneCatalogEntry, query: string): boolean {
-  const pointed = [...entry.capability.suggestFor ?? [], ...entry.capability.opens?.flatMap((opening) => opening.words) ?? []]
-    .map((value) => normalizeLookupToken(value));
-  if (pointed.includes(normalizeLookupToken(query))) return false;
+  const wanted = normalizeLookupToken(query);
+  if (discoveryOpening(entry.capability, query) || entry.capability.suggestFor?.some((value) => normalizeLookupToken(value) === wanted)) return false;
   return scorePaneCatalogEntry(entry, query).called === 0;
 }
 
@@ -949,7 +955,7 @@ function optionDescription(option: PaneFunctionOptionDef): string {
   const bounds = optionBounds(option);
   if (bounds) parts.push(bounds);
   if (option.defaultValue !== undefined && option.defaultValue !== "") parts.push(`Default ${String(option.defaultValue)}`);
-  return `${parts.join(". ")}.`;
+  return [`${parts.join(". ")}.`, optionValueAliasNote(option)].filter(Boolean).join(" ");
 }
 
 /**
@@ -1059,7 +1065,7 @@ function optionValueCommand(entry: PaneCatalogEntry, query: string): string | nu
   const wanted = normalizeLookupToken(query);
   if (!wanted) return null;
   // A word that opens one case of the function (FA's `roic`) runs it with that case's options.
-  const opening = entry.capability.opens?.find((candidate) => candidate.words.some((word) => normalizeLookupToken(word) === wanted));
+  const opening = discoveryOpening(entry.capability, query);
   if (opening?.options && Object.keys(opening.options).length > 0) {
     const argument = opening.argument || argumentHint(entry);
     const flags = Object.entries(opening.options).map(([key, value]) => `${optionFlag(key)} ${value}`).join(" ");
@@ -1172,10 +1178,14 @@ export function renderPaneCatalogReport(
   if (args.query && entries.length === 1) {
     // A value of one of its options (EQS's `compounders` preset) is run with that option; a function found only
     // through a word of its description or keywords is the closest there is, and says so.
+    // The closest one leads with the command that runs it ("spin-off": gloom fn EVT <ticker>), not a dead end.
     const run = optionValueCommand(entries[0]!, args.query);
+    const entry = entries[0]!;
+    const argument = argumentHint(entry);
+    const command = entry.capability.reportReadiness === "unsupported" ? "" : ` Try gloom fn ${entry.token}${argument ? ` ${argument}` : ""}.`;
     const closest = run ? `${cliStyles.muted(`"${args.query.trim()}": ${run}`)}\n\n`
-      : isClosestCatalogMatch(entries[0]!, args.query)
-        ? `${cliStyles.muted(`Closest match for "${args.query.trim()}": no function is named for it.`)}\n\n` : "";
+      : isClosestCatalogMatch(entry, args.query)
+        ? `${cliStyles.muted(`Closest match for "${args.query.trim()}": no function is named for it.${command}`)}\n\n` : "";
     return withTerms(`${closest}${renderCatalogEntry(entries[0]!)}`);
   }
 

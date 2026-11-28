@@ -1,7 +1,9 @@
 import { useSyncExternalStore } from "react";
+import { createListenerSet } from "../../utils/listeners";
 
 let windowFullscreen = false;
-const listeners = new Set<() => void>();
+let windowMaximized = false;
+const listeners = createListenerSet();
 
 /**
  * Whether the window hosting this view is in the platform's own fullscreen,
@@ -13,25 +15,12 @@ const listeners = new Set<() => void>();
 export function setWindowFullscreen(next: boolean): void {
   if (windowFullscreen === next) return;
   windowFullscreen = next;
-  for (const listener of [...listeners]) listener();
-}
-
-function isWindowFullscreen(): boolean {
-  return windowFullscreen;
-}
-
-function subscribeWindowFullscreen(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+  listeners.notify();
 }
 
 export function useWindowFullscreen(): boolean {
-  return useSyncExternalStore(subscribeWindowFullscreen, isWindowFullscreen, () => false);
+  return useSyncExternalStore(listeners.subscribe, () => windowFullscreen, () => false);
 }
-
-let windowMaximized = false;
 
 /**
  * Whether the window hosting this view is maximized. On Windows it then has
@@ -40,13 +29,9 @@ let windowMaximized = false;
 export function setWindowMaximized(next: boolean): void {
   if (windowMaximized === next) return;
   windowMaximized = next;
-  for (const listener of [...listeners]) listener();
-}
-
-function isWindowMaximized(): boolean {
-  return windowMaximized;
+  listeners.notify();
 }
 
 export function useWindowMaximized(): boolean {
-  return useSyncExternalStore(subscribeWindowFullscreen, isWindowMaximized, () => false);
+  return useSyncExternalStore(listeners.subscribe, () => windowMaximized, () => false);
 }

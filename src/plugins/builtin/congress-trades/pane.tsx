@@ -7,9 +7,9 @@ import {
   usePaneFooter,
   usePaneMenuItems,
   usePaneTabs,
-  ChoiceDialog,
   useTableLoadMore,
 } from "../../../components";
+import { choiceDialog } from "../../../components/ui";
 
 const CONGRESS_TABS = [
   { label: "Trades", value: "trades" },
@@ -25,7 +25,6 @@ import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useInlineTickerOpener } from "../../../state/hooks/inline-tickers";
 import {
   type CloudCongressMemberPayload,
-  type CloudCongressTradePayload,
   type CloudCongressTickerPayload,
 } from "../../../api-client";
 import type { PaneProps } from "../../../types/plugin";
@@ -35,12 +34,10 @@ import {
   CONGRESS_MEMBER_FILING_LIMIT,
   CONGRESS_TRADE_LIMIT,
   CONGRESS_TRADES_PANE_ID,
-  canLoadMoreCongress,
-  nextCongressPage,
   buildMemberColumns,
   buildTradeColumns,
   congressScanNotice,
-  previousCongressYearPage,
+  foldFilingLines,
   selectedIndexById,
   sortedMembers,
   sortedTrades,
@@ -49,6 +46,7 @@ import {
   type TickerColumn,
   type TickerColumnId,
   type CongressTab,
+  type CongressTradeRow,
   type DetailMode,
   type MemberColumn,
   type MemberColumnId,
@@ -69,7 +67,7 @@ import { aggregateLoadedCongress } from "./aggregates";
 import { CongressFilterBar, type CongressFilters } from "./filters";
 import type { SelectControl } from "../../../components/ui/select-button";
 import { colors } from "../../../theme/colors";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { isPlainKey } from "../../../utils/keyboard";
 import type { DataTableKeyEvent } from "../../../components";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
@@ -96,7 +94,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const assetControl = useRef<SelectControl | null>(null);
   const amountControl = useRef<SelectControl | null>(null);
   const filterKey = JSON.stringify(filters);
-  const { payload, status, error, updatedAt, loadingMore, loadPage, reload: refresh, autoReload } = useCongressFeed({
+  const { payload, status, error, updatedAt, loadingMore, canLoadMore, loadMore, previousYearRequest, loadPreviousYear, reload: refresh, autoReload } = useCongressFeed({
     ...filters,
     chamber: filters.chamber ?? "all",
     limit: CONGRESS_TRADE_LIMIT,
@@ -122,23 +120,9 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   });
   const openFiltersRef = useRef<() => Promise<void>>(async () => {});
 
-  const loadMore = useCallback(() => {
-    if (!payload || loadingMore || status !== "loaded") return;
-    loadPage(nextCongressPage(payload));
-  }, [loadPage, loadingMore, payload, status]);
-
-  // Each earlier year is a fresh set of documents to read, so it waits to be asked for.
-  const previousYearRequest = payload && !canLoadMoreCongress(payload)
-    ? previousCongressYearPage(payload)
-    : null;
-  const loadPreviousYear = useCallback(() => {
-    if (loadingMore || status !== "loaded" || !previousYearRequest) return;
-    loadPage(previousYearRequest);
-  }, [loadPage, loadingMore, previousYearRequest, status]);
-
   const onTradeScroll = useTableLoadMore(
     tradeScrollRef,
-    !!payload && status === "loaded" && !loadingMore && canLoadMoreCongress(payload),
+    status === "loaded" && !loadingMore && canLoadMore,
     loadMore,
   );
 
@@ -161,7 +145,10 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const members = summaries.members;
   const tickerRows = useMemo(() => sortedTickers(summaries.tickers, tickerSort), [summaries.tickers, tickerSort]);
   const tickerColumns = useMemo(() => buildTickerColumns(width), [width]);
-  const tradeRows = useMemo(() => sortedTrades(visibleTrades, tradeSort), [visibleTrades, tradeSort]);
+  // One filing's alike lines are one row; Export CSV writes each line.
+  const tradeRows = useMemo(() => sortedTrades(foldFilingLines(visibleTrades), tradeSort), [visibleTrades, tradeSort]);
+  const tradeLines = useMemo(() => sortedTrades(visibleTrades, tradeSort), [visibleTrades, tradeSort]);
+  const foldedTrades = useMemo(() => foldFilingLines(trades), [trades]);
   const memberRows = useMemo(() => sortedMembers(members, memberSort), [members, memberSort]);
   const tradeColumns = useMemo(() => buildTradeColumns(width, !!tickerFilter), [width, tickerFilter]);
   const memberColumns = useMemo(() => buildMemberColumns(width), [width]);
@@ -170,7 +157,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   const selectedTrade = tradeRows[selectedTradeIndex] ?? null;
   const selectedMember = memberRows[selectedMemberIndex] ?? null;
   const detailTrade = detailMode?.kind === "trade"
-    ? trades.find((trade) => trade.id === detailMode.tradeId) ?? null
+    ? foldedTrades.find((trade) => trade.id === detailMode.tradeId) ?? null
     : null;
   const detailMember = detailMode?.kind === "member"
     ? members.find((member) => member.id === detailMode.memberId) ?? null
@@ -275,7 +262,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     error,
     latestFiling: latestCongressFiling(visibleTrades),
     loadPreviousYear: previousYearRequest ? loadPreviousYear : null,
-    loadMore: payload && canLoadMoreCongress(payload) ? loadMore : null,
+    loadMore: canLoadMore ? loadMore : null,
     loadingMore,
     openSelectedTicker,
     openSelectedTradeMember,
@@ -287,11 +274,15 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
   });
 
   const openFilters = useCallback(async () => {
-    const choice = await dialog.prompt<string>({
-      content: (ctx: PromptContext<string>) => <ChoiceDialog {...ctx} title="Filter trades" choices={[
+    const choice = await choiceDialog(dialog, {
+      closeOnClickOutside: false,
+      title: "Filter trades",
+      choices: [
         { id: "chamber", label: "Chamber" }, { id: "side", label: "Side" }, { id: "owner", label: "Owner" },
         { id: "asset", label: "Asset type" }, { id: "amount", label: "Minimum amount" },
-      ]} />,
+      ],
+      logSource: "congress-trades.pane",
+      logMessage: "Open trade filter choice failed",
     });
     const control = choice === "chamber" ? chamberControl : choice === "side" ? sideControl : choice === "owner" ? ownerControl : choice === "asset" ? assetControl : choice === "amount" ? amountControl : null;
     control?.current?.open();
@@ -355,34 +346,34 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
     );
   }
 
+  const sharedStack = {
+    focused,
+    detailOpen: detailMode !== null,
+    onBack: () => setDetailMode(null),
+    detailTitle,
+    detailContent,
+    onRootKeyDown: handleFiltersKey,
+    rootWidth: width,
+    rootBefore: filterBar,
+    rootHeight: Math.max(1, height - tabRows - filterHeight),
+    selectedTextOverridesCellColor: true,
+    scrollRef: tradeScrollRef,
+    onBodyScrollActivity: onTradeScroll,
+  };
+
   return (
     <Box flexDirection="column" width={width} height={height}>
       {tabs}
       {activeTab === "trades" ? (
-        <DataTableStackView<CloudCongressTradePayload, TradeColumn>
-          focused={focused}
-          detailOpen={detailMode !== null}
-          onBack={() => setDetailMode(null)}
-          detailTitle={detailTitle}
-          detailContent={detailContent}
-          selection={{
-            kind: "id",
-            selectedId: selectedTradeId,
-            getId: (trade) => trade.id,
-            onChange: (id) => setSelectedTradeId(id),
-          }}
-          onActivate={(trade) => {
-            setSelectedTradeId(trade.id, { immediate: true });
-            setDetailMode({ kind: "trade", tradeId: trade.id });
-          }}
-          onRootKeyDown={handleFiltersKey}
+        <DataTableStackView<CongressTradeRow, TradeColumn>
+          {...sharedStack}
           detailScrollRef={detailScrollRef}
-          rootWidth={width}
-          rootBefore={filterBar}
           resetScrollKey={`${filterKey}:${mine}`}
-          rootHeight={Math.max(1, height - tabRows - filterHeight)}
+          selection={{ kind: "id", selectedId: selectedTradeId, getId: (trade) => trade.id, onChange: (id) => setSelectedTradeId(id) }}
+          onActivate={(trade) => { setSelectedTradeId(trade.id, { immediate: true }); setDetailMode({ kind: "trade", tradeId: trade.id }); }}
           columns={tradeColumns}
           items={tradeRows}
+          exportItems={tradeLines}
           sortColumnId={tradeSort.columnId}
           sortDirection={tradeSort.direction}
           onHeaderClick={(columnId) => setTradeSort((current) => nextHeaderSort(current, columnId as TradeColumnId, { firstDirection: columnId === "member" || columnId === "ticker" || columnId === "asset" ? "asc" : "desc" }))}
@@ -391,49 +382,31 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
             const cell = renderCongressTradeCell(trade, column, index, row);
             return !row.selected && trade.ticker && mineTickers.has(trade.ticker) && column.id === "member" ? { ...cell, color: colors.borderFocused } : cell;
           }}
-          selectedTextOverridesCellColor
           emptyStateTitle="No matching trades in this filing window."
-          scrollRef={tradeScrollRef}
-          onBodyScrollActivity={onTradeScroll}
         />
       ) : activeTab === "tickers" ? (
         <DataTableStackView<CloudCongressTickerPayload, TickerColumn>
-          focused={focused} detailOpen={detailMode !== null} onBack={() => setDetailMode(null)} detailTitle={detailTitle} detailContent={detailContent}
+          {...sharedStack}
           selection={{ kind: "id", selectedId: selectedTicker, getId: (row) => row.ticker, onChange: setSelectedTicker }}
           onActivate={(row) => { setSelectedTicker(row.ticker); setDetailMode({ kind: "ticker", ticker: row.ticker }); }}
-          rootWidth={width} rootHeight={Math.max(1, height - tabRows - filterHeight)} rootBefore={filterBar}
-          onRootKeyDown={handleFiltersKey} columns={tickerColumns} items={tickerRows} getItemKey={(row) => row.ticker}
-          sortColumnId={tickerSort.columnId} sortDirection={tickerSort.direction}
+          columns={tickerColumns}
+          items={tickerRows}
+          getItemKey={(row) => row.ticker}
+          sortColumnId={tickerSort.columnId}
+          sortDirection={tickerSort.direction}
           onHeaderClick={(columnId) => setTickerSort((current) => nextHeaderSort(current, columnId as TickerColumnId, { firstDirection: columnId === "ticker" ? "asc" : "desc" }))}
           renderCell={(row, column, _index, selected) => {
             const cell = renderCongressTickerCell(row, column);
             return !selected.selected && mineTickers.has(row.ticker) && column.id === "ticker" ? { ...cell, color: colors.borderFocused } : cell;
           }}
-          selectedTextOverridesCellColor
-          emptyStateTitle="No matching tickers." scrollRef={tradeScrollRef} onBodyScrollActivity={onTradeScroll}
+          emptyStateTitle="No matching tickers."
         />
       ) : (
         <DataTableStackView<CloudCongressMemberPayload, MemberColumn>
-          focused={focused}
-          detailOpen={detailMode !== null}
-          onBack={() => setDetailMode(null)}
-          detailTitle={detailTitle}
-          detailContent={detailContent}
-          selection={{
-            kind: "id",
-            selectedId: selectedMemberId,
-            getId: (member) => member.id,
-            onChange: (id) => setSelectedMemberId(id),
-          }}
-          onActivate={(member) => {
-            setSelectedMemberId(member.id, { immediate: true });
-            setDetailMode({ kind: "member", memberId: member.id });
-          }}
-          onRootKeyDown={handleFiltersKey}
-          rootWidth={width}
-          rootBefore={filterBar}
+          {...sharedStack}
           resetScrollKey={`${filterKey}:${mine}`}
-          rootHeight={Math.max(1, height - tabRows - filterHeight)}
+          selection={{ kind: "id", selectedId: selectedMemberId, getId: (member) => member.id, onChange: (id) => setSelectedMemberId(id) }}
+          onActivate={(member) => { setSelectedMemberId(member.id, { immediate: true }); setDetailMode({ kind: "member", memberId: member.id }); }}
           columns={memberColumns}
           items={memberRows}
           sortColumnId={memberSort.columnId}
@@ -441,10 +414,7 @@ export function CongressTradesPane({ focused, width, height, tickerFilter }: Pan
           onHeaderClick={(columnId) => setMemberSort((current) => nextHeaderSort(current, columnId as MemberColumnId, { firstDirection: columnId === "member" || columnId === "district" ? "asc" : "desc" }))}
           getItemKey={(member) => member.id}
           renderCell={renderCongressMemberCell}
-          selectedTextOverridesCellColor
           emptyStateTitle="No matching members."
-          scrollRef={tradeScrollRef}
-          onBodyScrollActivity={onTradeScroll}
         />
       )}
     </Box>

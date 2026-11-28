@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableColumn } from "../../../components";
 import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
@@ -7,8 +8,9 @@ import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneDefinition 
 import { withoutQuietColumns } from "../shared/research-cells";
 import { resolveHeadlessIssuerListing } from "../shared/headless-market-data";
 import { companyQuery, fetchCompanyData, type CompanyDataset, type CompanyMode } from "./client";
-import { allGuidance, allObservations, companyCellText, companyColumns, companyEmptyState, companyPreviewNote, guidanceIssueNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
+import { allGuidance, allObservations, companyCellDay, companyCellText, companyColumns, companyEmptyState, companyPreviewNote, guidanceIssueNote, KPI_COVERAGE_NOTE, kpiFreeLimitNote, QUIET_COLUMNS,
   type CompanyRow } from "./model";
+import type { KpiPeriod } from "../../../api-client/company-kpis";
 import type { KpiObservation } from "../../../api-client/company-kpis";
 import { currentKpiSeries } from "./latest";
 
@@ -26,16 +28,22 @@ const ROW_KEYS: Record<string, string> = { scope: "dimensions", issued: "issuedD
  * figure. Each row's disclosure date follows. The rows keep every field the
  * server sent for exports.
  */
-function reportColumns(mode: CompanyMode, history: boolean, revisions: boolean, rows: CompanyRow[], observations: KpiObservation[]): HeadlessPaneColumn[] {
-  const columns: DataTableColumn[] = [...companyColumns(mode === "guidance", false, history),
+function reportColumns(mode: CompanyMode, history: boolean, revisions: boolean, rows: CompanyRow[], observations: KpiObservation[], period: KpiPeriod["kind"] | null = null): HeadlessPaneColumn[] {
+  const columns: DataTableColumn[] = [...companyColumns(mode === "guidance", false, history, false, false, period),
     ...(revisions ? [{ id: "revision", label: "Revision", width: 12, align: "left" as const }] : [])];
   return [...withoutQuietColumns(columns, rows, (row, id) => companyCellText(row, id, observations), QUIET_COLUMNS).map((column): HeadlessPaneColumn => ({
     key: column.id === "value" && mode === "guidance" ? "rangeText" : ROW_KEYS[column.id] ?? column.id, header: column.label, align: column.align === "right" ? "right" : "left",
-    format: (_value, row) => mode === "guidance" && column.id === "value" && typeof row.rangeText === "string" && /plus or minus|±/i.test(row.rangeText)
+    // A dated cell exports its ISO day; the text writes it as the pane does.
+    ...(column.id === "issued" || column.id === "published" ? { textFormat: (_value: unknown, row: Record<string, unknown>) => companyCellText(row as unknown as CompanyRow, column.id, observations) } : {}),
+    format: (_value, row) => column.id === "issued" || column.id === "published" ? companyCellDay(row as unknown as CompanyRow, column.id) ?? MISSING_VALUE
+      : mode === "guidance" && column.id === "value" && typeof row.rangeText === "string" && /plus or minus|±/i.test(row.rangeText)
       ? `${row.rangeText}${row.currency ? ` ${row.currency}` : ""}`
       : companyCellText(row as unknown as CompanyRow, column.id, observations),
-  })), { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE }];
+  })), { key: "asOf", header: "As of", format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE, textFormat: (value) => typeof value === "string" ? formatDay(value) : MISSING_VALUE }];
 }
+
+const PERIOD_KINDS: readonly KpiPeriod["kind"][] = ["quarter", "half", "ytd", "year", "instant", "other"];
+const periodOption = (value: unknown): KpiPeriod["kind"] | null => PERIOD_KINDS.find((kind) => kind === value) ?? null;
 
 function datasetRows(data: CompanyDataset): CompanyRow[] {
   return "series" in data ? allObservations(data) : allGuidance(data);
@@ -91,6 +99,9 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
     options: [
       { key: "tab", type: "enum", settingKey: "tab", defaultValue: "table", values: [{ value: "table", label: mode === "guidance" ? "Tracker" : "Table" }, { value: "chart" }, ...(mode === "guidance" ? [{ value: "history" }] : []), { value: "evidence" }], description: "The pane section to render." },
       { key: "metric", type: "string", settingKey: "metric", description: "Canonical metric ID, such as arr or subscribers.", normalize: (value) => value.trim().toLowerCase() },
+      ...(mode === "kpis" ? [{ key: "period", type: "enum" as const, values: PERIOD_KINDS.map((value) => ({ value, ...(value === "year" ? { aliases: ["annual"] } : value === "quarter" ? { aliases: ["quarterly"] } : {}) })),
+        pluginState: { pluginId: "ticker-research", key: "company:period" },
+        description: "One kind of fiscal period, as the Table's Period view lists them: quarter, half, ytd, year, instant or other. Its change column then says what it compares (Q/Q, Y/Y)." }] : []),
       { key: "basis", type: "enum", values: [{ value: "reported" }, { value: "adjusted" }, { value: "constant_currency" }, { value: "organic" }], description: "Accounting basis filter (Pro)." },
       { key: "from", type: "string", placeholder: "date", description: `First calendar period end, as ${DATE_OPTION_EXAMPLES} (Pro).`, normalize: (value) => isoDateOption(value, "from") },
       { key: "to", type: "string", placeholder: "date", description: `Last calendar period end, as ${DATE_OPTION_EXAMPLES} (Pro).`, normalize: (value) => isoDateOption(value, "to") },
@@ -102,27 +113,32 @@ export function companyHeadless(mode: CompanyMode): HeadlessPaneDefinition<"bund
       const options = companyQuery({ ...args.options, metric: METRIC_ID.test(requested) ? requested : undefined });
       const symbol = args.symbols[0]!;
       const data = await fetchCompanyData(mode, symbol, options, ctx.apiClient, await resolveHeadlessIssuerListing(ctx, symbol));
-      const { keep, empty } = metricFilter(requested, data, mode);
+      const { keep: keepMetric, empty } = metricFilter(requested, data, mode);
+      const period = mode === "kpis" ? periodOption(args.options.period) : null;
+      const keep = (row: CompanyRow) => keepMetric(row) && (!period || row.period.kind === period);
       const observations = "series" in data ? allObservations(data) : [];
       // A metric with no rows says why once, in the first section.
       const section = (title: string, rows: CompanyRow[], { history = false, revisions = false, first = false } = {}): HeadlessBundleSection => {
         const shown = rows.filter(keep);
-        return { title, columns: reportColumns(mode, history, revisions, shown, observations), rows: shown.map((row) => ({ ...row })), ...(empty && first ? { empty } : {}) };
+        return { title, columns: reportColumns(mode, history, revisions, shown, observations, period), rows: shown.map((row) => ({ ...row })), ...(empty && first ? { empty } : {}) };
       };
       const latest = ("series" in data ? currentKpiSeries(data.series).map((series) => series.latest) : data.guidance).filter(keep);
       const ignored = data.access === "preview" ? PRO_FILTERS.filter((key) => typeof args.options[key] === "string" && args.options[key] !== "") : [];
-      const notes = [ageNote(data, latest, mode),
+      // An older outlook's days read first in the text; JSON and CSV keep them in ISO.
+      const reportNotes = (day?: (iso: string) => string) => [ageNote(data, latest, mode),
         ...("guidance" in data ? data.guidance.filter(keep).flatMap((row) => {
-          const note = guidanceIssueNote(row, data.guidance);
+          const note = guidanceIssueNote(row, data.guidance, day);
           return note ? [`${row.metric.name}: ${note}.`] : [];
         }) : []),
         ignored.length ? `The free preview is fixed: ${ignored.map(optionFlag).join(", ")} ${ignored.length > 1 ? "need" : "needs"} Gloom Pro.` : null,
         ...companyDataNotes(data.companyFrom)].filter((note): note is string => !!note);
+      const notes = reportNotes((iso) => iso);
+      const textNotes = reportNotes();
       // A company with nothing on file says so once, as the pane does, rather than "not covered".
       const nothingOnFile = datasetRows(data).length === 0 && data.lockedRows === 0 && !requested;
       const { title, hint } = companyEmptyState(mode, symbol, { tab: "table", hasRows: !nothingOnFile }, "cli");
       return { complete: !data.truncated, ...(nothingOnFile ? { empty: [title, hint].filter(Boolean).join(" ") } : {}), errors: data.truncated ? [data.access === "preview" ? companyPreviewNote(data, mode === "guidance") : "Response limit reached; narrow the metric or date range"] : [],
-        ...(notes.length ? { notes } : {}),
+        ...(notes.length ? { notes, textNotes } : {}),
         sections: "series" in data ? [
           section("Latest KPIs", currentKpiSeries(data.series).map((series) => series.latest), { first: true }),
           section("KPI history", data.series.flatMap((series) => series.observations)),

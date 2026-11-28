@@ -17,9 +17,6 @@ import { useAppSelector, usePaneAppConfig } from "../../../state/app/context";
 import { useViewport } from "../../../react/input";
 import { displayWidth } from "../../../utils/format";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { useChartQueries, useFxRatesMap } from "../../../market-data/hooks";
-import { buildPortfolioFinancialsMap } from "../../../market-data/portfolio-financials";
-import { useLiveTickerFinancialsMap, useSampledValue } from "../../../state/hooks/live-ticker-financials";
 import { blendHex, colors, placeholderText } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import {
@@ -80,13 +77,8 @@ import { PaymentRecoveryRow, usePaymentRecovery } from "./payment-recovery-row";
 import { YearlyPlanRow, useYearlyPlan } from "./yearly-plan-row";
 import { useAccountManagementFooter } from "./footer";
 import { useAccountManagementKeyboard } from "./keyboard";
-import {
-  buildBenchmarkReturnSeries,
-  buildPortfolioChartTargets,
-  buildPortfolioReturnSeries,
-} from "../analytics/pane-model";
+import { usePortfolioReturnInputs } from "../analytics/use-portfolio-return-inputs";
 import { computeDatedBeta, hasPortfolioPosition } from "../../../portfolio/return-metrics";
-import { buildTrackedCurrencies } from "../portfolio-list/pane/data";
 import { accountDailyReturns } from "../analytics/account-returns";
 import { useBrokerPortfolioPerformance } from "../analytics/broker-performance";
 import { useCloudSyncStatus } from "../../../sync/react";
@@ -358,74 +350,17 @@ export function AccountManagementPane({ focused, width, height }: PaneProps) {
       : [],
     [activeTab, draft.sharedPortfolioId, tickers],
   );
-  const instrumentOptions = useMemo(() => ({
+  const { returnSeriesResult, spyReturnSeries } = usePortfolioReturnInputs({
+    portfolioTickers,
     portfolioId: draft.sharedPortfolioId || undefined,
-  }), [draft.sharedPortfolioId]);
-  // The positions stream in the background (about once a second each) and
-  // merge with the portfolio pane's own subscriptions.
-  const marketFinancials = useLiveTickerFinancialsMap(portfolioTickers, {
-    surface: "portfolio",
-    visible: false,
-    weight: 10,
-    instrumentOptions,
-  });
-  const liveFinancials = useMemo(
-    () => buildPortfolioFinancialsMap(portfolioTickers, cachedFinancials, marketFinancials, instrumentOptions),
-    [portfolioTickers, cachedFinancials, marketFinancials, instrumentOptions],
-  );
-  // The preview is a 1Y return and a beta: position values only weight daily
-  // returns, so price ticks need not recompute them.
-  const financials = useSampledValue(
-    liveFinancials,
-    PROFILE_PREVIEW_SAMPLE_MS,
-    `${draft.sharedPortfolioId ?? ""}\u001f${[...liveFinancials.keys()].join(",")}`,
-  );
-  const trackedCurrencies = useMemo(
-    () => buildTrackedCurrencies(portfolioTickers, financials, null, baseCurrency),
-    [baseCurrency, financials, portfolioTickers],
-  );
-  const exchangeRates = useFxRatesMap(trackedCurrencies);
-  const chartTargets = useMemo(
-    () => buildPortfolioChartTargets(portfolioTickers, instrumentOptions),
-    [portfolioTickers, instrumentOptions],
-  );
-  const chartRequests = useMemo(
-    () => chartTargets.flatMap((target) => target.request ? [target.request] : []),
-    [chartTargets],
-  );
-  const chartEntries = useChartQueries(chartRequests);
-  const spyRequest = useMemo(
-    () => ({
-      instrument: { symbol: "SPY", exchange: "" },
-      bufferRange: "1Y" as const,
-      granularity: "range" as const,
-    }),
-    [],
-  );
-  const spyChartRequests = useMemo(
-    () => portfolioTickers.length > 0 ? [spyRequest] : [],
-    [portfolioTickers.length, spyRequest],
-  );
-  const spyChartEntries = useChartQueries(spyChartRequests);
-  const columnContext = useMemo(() => ({
-    activeTab: draft.sharedPortfolioId || undefined,
+    cachedFinancials,
     baseCurrency,
-    exchangeRates,
-    now: Date.now(),
-  }), [baseCurrency, draft.sharedPortfolioId, exchangeRates]);
-  const portfolioReturnSeries = useMemo(
-    () => buildPortfolioReturnSeries({
-      chartTargets,
-      chartEntries,
-      financials,
-      columnContext,
-    }).returns,
-    [chartEntries, chartTargets, columnContext, financials],
-  );
-  const spyReturnSeries = useMemo(
-    () => buildBenchmarkReturnSeries(spyRequest, spyChartEntries),
-    [spyChartEntries, spyRequest],
-  );
+    sampleMs: PROFILE_PREVIEW_SAMPLE_MS,
+    weight: 10,
+    benchmarkExchange: "",
+    skipBenchmarkWhenEmpty: true,
+  });
+  const portfolioReturnSeries = returnSeriesResult.returns;
   // The account's own returns over the last year, when the broker has them, instead of today's holdings.
   const brokerPerformance = useBrokerPortfolioPerformance(selectedAnalyticsPortfolio ?? null, config);
   const accountReturns = useMemo(() => {

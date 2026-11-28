@@ -1,9 +1,10 @@
 import { forwardFiscalYear, forwardPEAsked, formatPriceEarnings, NOT_MEANINGFUL } from "../../../../utils/price-earnings";
+import { formatDay } from "../../../../utils/day-format";
 import { convertMarketCapitalization } from "../../../../utils/market-capitalization";
 import { priceColor } from "../../../../theme/colors";
 import { notMeaningfulColor } from "../../../../components/ui/not-meaningful";
 import type { CryptoMarketAsset } from "../../../../api-client/crypto-markets";
-import { NOT_MEANINGFUL_TEXT } from "../../../../utils/growth";
+import { NOT_MEANINGFUL_TEXT, revenueMargin } from "../../../../utils/growth";
 import type { ServedRate } from "../../../../utils/served-rates";
 import type { CedearRatio, CompanyProfile, DepositaryPair, NextEarnings, Quote, TickerFinancials } from "../../../../types/financials";
 import { adrRatioText } from "../../../../utils/depositary-receipt";
@@ -36,16 +37,21 @@ import type { OverviewFunctionLink, PositionTableRow, StatField } from "./types"
 import type { OverviewDividendState } from "./dividend";
 import { lapseValue, UNEVEN_REGULAR_PAYMENTS } from "../../../../utils/forward-dividend";
 import { getPortfolioPositionMetrics, getPortfolioQuoteDisplay, resolvePortfolioMarketValue, resolvePortfolioPositionPnl, portfolioPnlPercent, signedPositionDirection } from "../../../../portfolio/position-metrics";
-import { listingDividendYield, liveForwardPE, liveMarketCapitalization, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
-import { atRegularSessionPrice } from "../../../../market-data/quotes/regular-session-valuation";
+import { withPurchaseDateCostFx, type PurchaseDateCostFx } from "../../../../portfolio/cost-fx";
+import { listingDividendYield, liveForwardPE, liveTrailingPE } from "../../../../market-data/quotes/live-valuation";
+import { atRegularSessionPrice, regularSessionMarketCapitalization } from "../../../../market-data/quotes/regular-session-valuation";
+import { listingEnterpriseValue, type ListingEnterpriseValue } from "../../../../market-data/quotes/listing-enterprise-value";
 import { formatReportedMoney, REPORTING_CURRENCY_NOT_SOURCED } from "../../../../utils/reported-money";
-import { enterpriseValueCheck, enterpriseValueComputed, enterpriseValueNotMeaningful, fundamentalsCurrency, financialEnterpriseValue, fundamentalsEpsCurrency, reportedEnterpriseValue } from "../../../../utils/fundamentals";
+import { enterpriseValueCheck, enterpriseValueComputed, fundamentalsCurrency, financialEnterpriseValue, fundamentalsEpsCurrency } from "../../../../utils/fundamentals";
 import { formatShortDate } from "../../../../utils/datetime-format";
 import { safeExternalUrl } from "../../../../utils/external-url";
 import type { FundBondFacts } from "../../../../api-client/fund-facts";
 import { bondFigures } from "../../../../market-data/bond-funds";
 import { quoteStatsBasisText } from "../../../../market-data/quotes/export-identity";
 import { burnsCash, formatRunwayMonths, type CashRunway, type RunwayEstimate } from "../../../../utils/cash-runway";
+import { listingOwnsRow, listingOwnsSeries } from "../../../../utils/statement-scope";
+import { hasStatementGap } from "../../../../utils/statement-gaps";
+import { financialStatementCurrency, selectFinancialStatements } from "../financials/model";
 
 type CurrencyConverter = (value: number, fromCurrency: string) => number;
 
@@ -162,7 +168,7 @@ function runwayStat(runway: CashRunway | null | undefined): StatField | null {
   const { periodEnd } = runway;
   const quarter = runway.quarter?.kind === "months" ? runway.quarter : null;
   const trailing = runway.trailing?.kind === "months" ? runway.trailing : null;
-  const dates = [periodEnd, periodEnd.slice(5)];
+  const dates = [formatDay(periodEnd), formatDay(periodEnd, "no-year")];
   if (!quarter) return trailing ? { label: "Runway", value: runwayText(trailing), detail: [...dates.map((date) => `TTM to ${date}`), "TTM"], link: FINANCIALS } : null;
   const ttm = trailing ? ` · TTM ${runwayText(trailing)}` : "";
   return {
@@ -174,14 +180,45 @@ function runwayStat(runway: CashRunway | null | undefined): StatField | null {
   };
 }
 
+type OverviewStatements = Pick<TickerFinancials, "annualStatements" | "quarterlyStatements" | "financialCurrency" | "statementScope" | "trailingStatement">;
+
+function overviewTrailingIncome(statements: OverviewStatements, fundamentals: TickerFinancials["fundamentals"], currency: string | undefined) {
+  const { statements: [trailing] } = selectFinancialStatements("annual", "income", statements.annualStatements,
+    statements.quarterlyStatements, 1, statements.trailingStatement);
+  const end = trailing?.aggregation?.periodEnd;
+  if (!end || !trailing) return {};
+  if (!listingOwnsSeries(statements) || trailing.aggregation?.kind === "annual-plus-interim" && !listingOwnsRow(statements.statementScope, trailing)) {
+    return { difference: ["Different scope from Financials", "Different scope"] };
+  }
+  const summaryEnd = fundamentals?.trailingPeriodEnd;
+  if (summaryEnd && summaryEnd !== end) {
+    return { difference: ["Different period from Financials", "Different period"] };
+  }
+  if (!summaryEnd && statements.quarterlyStatements.some((quarter) => quarter.date > end)) {
+    return { difference: ["Overview period unverified", "Period unverified"] };
+  }
+  const reportingCurrency = financialStatementCurrency(statements, [trailing])?.trim();
+  if (!currency || !reportingCurrency || currency !== reportingCurrency || fundamentals?.ttmConversion) {
+    return { difference: ["Different currency basis from Financials", "Currency basis differs"] };
+  }
+  const { totalRevenue, netIncome, operatingIncome } = trailing;
+  if (!finite(totalRevenue) || !finite(netIncome) || hasStatementGap(trailing, "totalRevenue") || hasStatementGap(trailing, "netIncome")) {
+    return { difference: ["Financials TTM income incomplete", "Incomplete TTM"] };
+  }
+  return { income: { end, revenue: totalRevenue, netIncome, profitMargin: revenueMargin(netIncome, totalRevenue),
+    operatingMargin: hasStatementGap(trailing, "operatingIncome") ? undefined : revenueMargin(operatingIncome, totalRevenue) } };
+}
+
 export function buildOverviewStats({
   quote,
   fundamentals,
   coin,
   financialCurrency,
+  statementFinancials,
   quoteCurrency,
   baseCurrency,
   marketCapExchangeRates = new Map(),
+  enterpriseValue = listingEnterpriseValue({ quote, fundamentals, profile: undefined }),
   nextEarnings,
   depositaryReceipt = false,
   depositaryPair = null,
@@ -200,10 +237,12 @@ export function buildOverviewStats({
   coin?: CryptoMarketAsset | null;
   /** The currency the statements report in, for fundamentals that declare none on a listing that trades in it. */
   financialCurrency?: TickerFinancials["financialCurrency"];
+  statementFinancials?: OverviewStatements | null;
   quoteCurrency: string;
   baseCurrency: string;
   toBase: CurrencyConverter;
   marketCapExchangeRates?: ReadonlyMap<string, number>;
+  enterpriseValue?: ListingEnterpriseValue;
   nextEarnings?: NextEarnings;
   /** The share count is in depositary receipts, not ordinary shares. */
   depositaryReceipt?: boolean;
@@ -211,9 +250,9 @@ export function buildOverviewStats({
   depositaryPair?: { pair: DepositaryPair; receiptSide: boolean } | null;
   /**
    * An A+H company's other line (`useAhPair`): the A share on the H line's DES, the H share on the A line's, with
-   * the H price over the A price at spot. `linked` when this DES has the ADR vs Home tab that shows them.
+   * the H price over the A price at spot. The row opens that line's DES.
    */
-  ahPair?: { other: string; side: "h" | "a"; premiumPercent: number | null; linked: boolean } | null;
+  ahPair?: { other: string; side: "h" | "a"; premiumPercent: number | null } | null;
   /** A Buenos Aires CEDEAR's ratio in its company's shares, as Gloom Cloud serves it. */
   cedearRatio?: CedearRatio | null;
   /** The shares one lot of the listing trades in, as its exchange states it (an HKEX or SGX line). */
@@ -243,7 +282,8 @@ export function buildOverviewStats({
     unsourcedSaid = true;
     return { value: text, detail: [REPORTING_CURRENCY_NOT_SOURCED, "currency not sourced"] };
   };
-  const money = (value: number) => reported(value, fundamentalsCurrency({ fundamentals, financialCurrency, quote }));
+  const incomeCurrency = fundamentalsCurrency({ fundamentals, financialCurrency, quote });
+  const money = (value: number) => reported(value, incomeCurrency);
 
   // An index's 0 is volume nobody counts, not a quiet session: no Volume row.
   const quoteVolume = reportedQuoteVolume(quote);
@@ -265,7 +305,7 @@ export function buildOverviewStats({
     const converted = convertMarketCapitalization(value, currency, baseCurrency, marketCapExchangeRates);
     return converted == null ? undefined : formatCompactCurrency(converted, baseCurrency, { fixedDecimals: true });
   };
-  const capitalization = liveMarketCapitalization(quote, fundamentals)
+  const capitalization = regularSessionMarketCapitalization({ quote, fundamentals })
     ?? (coin?.marketCap == null ? null : { value: coin.marketCap, currency: "USD" });
   if (capitalization) {
     stats.push({
@@ -278,7 +318,7 @@ export function buildOverviewStats({
   if (coin?.maxSupply != null) stats.push({ label: "Max Supply", value: formatCompact(coin.maxSupply) });
   if (coin) stats.push({ label: "Rank", value: `#${coin.rank}`, detail: coin.kind === "stablecoin" ? "stablecoins" : ["by market cap", "mkt cap"] });
   // A count read off a 10-K or 10-Q cover says when it was counted; the source's own is undated.
-  const counted = (asOf: string | undefined) => (asOf ? { detail: [`as of ${asOf}`, `as of ${asOf.slice(5)}`] } : {});
+  const counted = (asOf: string | undefined) => (asOf ? { detail: [`as of ${formatDay(asOf)}`, `as of ${formatDay(asOf, "no-year")}`] } : {});
   if (fundamentals?.sharesOutstanding) {
     stats.push({
       label: "Shares Out",
@@ -301,14 +341,14 @@ export function buildOverviewStats({
       ? { label: "ADR Ratio", value: `1:${count}`, detail: [adrRatioText(pair.ratio, pair.ordinary[0])!, `${count} sh per ADR`], link: ADR_PAIR }
       : { label: "ADR", value: pair.receipt, detail: [`1 ADR = ${count} of these shares`, `1:${count}`], link: ADR_PAIR });
   }
-  // An A+H company's other line, and the H price over the A price at spot, as ADR vs Home shows them.
+  // An A+H company's other line, and the H price over the A price at spot, as ADR vs Home shows them; the row opens that line.
   if (ahPair) {
     const premium = ahPair.premiumPercent == null ? null : premiumText(ahPair.premiumPercent);
     stats.push({
       label: ahPair.side === "h" ? "A Share" : "H Share",
       value: ahPair.other,
       ...(premium ? { detail: [`H ${premium} at spot`, `H ${premium.replace(/ (?:premium|discount|at par)$/, "")}`] } : {}),
-      ...(ahPair.linked ? { link: ADR_PAIR } : {}),
+      opens: ahPair.other,
     });
   }
   if (cedearRatio) {
@@ -318,7 +358,9 @@ export function buildOverviewStats({
   }
   const trailingPE = liveTrailingPE(quote, fundamentals);
   if (trailingPE != null) {
-    stats.push({ label: trailingEpsYear ? `P/E ${trailingEpsYear}` : "P/E (TTM)", value: formatPriceEarnings(trailingPE) });
+    const reason = fundamentals?.notMeaningful?.trailingPE;
+    stats.push({ label: trailingEpsYear ? `P/E ${trailingEpsYear}` : "P/E (TTM)", value: formatPriceEarnings(trailingPE),
+      ...(reason ? { detail: [reason, "basis unavailable"] } : {}) });
   }
   // Next fiscal year's consensus, and the year it is for: N/M over a loss, a dash when there is none.
   const forwardPE = liveForwardPE(quote, fundamentals);
@@ -378,28 +420,38 @@ export function buildOverviewStats({
       link: DIVIDENDS,
     });
   }
-  if (fundamentals?.revenue != null) {
+  const { income, difference } = statementFinancials ? overviewTrailingIncome(statementFinancials, fundamentals, incomeCurrency) : {};
+  const revenueValue = income?.revenue ?? fundamentals?.revenue;
+  const netIncome = income?.netIncome ?? fundamentals?.netIncome;
+  if (revenueValue != null) {
     // Which twelve months the revenue, net income and margin are, as Financials' TTM column names them.
-    const end = fundamentals.trailingPeriodEnd;
-    const revenue = money(fundamentals.revenue);
-    stats.push({ label: "Revenue", ...revenue, ...(end && ISO_DATE.test(end) && !revenue.detail ? { detail: [`TTM to ${end}`, `to ${end}`] } : {}) });
+    const end = income?.end ?? fundamentals?.trailingPeriodEnd;
+    const revenue = money(revenueValue);
+    const through = end && ISO_DATE.test(end) && !revenue.detail ? [formatDay(end), formatDay(end, "no-year")] : null;
+    stats.push({ label: "Revenue", ...revenue, ...(through ? { detail: [`TTM to ${through[0]}`, ...through.map((day) => `to ${day}`)] }
+      : !incomeCurrency && !end ? { detail: ["currency and period unsourced", "basis unsourced"] } : {}) });
   }
-  if (fundamentals?.netIncome != null) {
-    stats.push({ label: "Net Income", ...money(fundamentals.netIncome) });
+  if (netIncome != null) {
+    const net = money(netIncome);
+    stats.push({ label: "Net Income", ...net, ...(!incomeCurrency && !(income?.end ?? fundamentals?.trailingPeriodEnd)
+      ? { detail: ["currency and period unsourced", "basis unsourced"] } : !net.detail && difference ? { detail: difference } : {}) });
   }
   if (fundamentals?.freeCashFlow != null) {
-    stats.push({ label: "FCF", ...money(fundamentals.freeCashFlow) });
+    const currency = (fundamentals.freeCashFlowCurrency === undefined ? fundamentals.financialCurrency : fundamentals.freeCashFlowCurrency)?.trim();
+    stats.push({ label: "FCF", value: formatReportedMoney(fundamentals.freeCashFlow, currency),
+      ...(!currency && Number.isFinite(fundamentals.freeCashFlow) ? { detail: ["currency unknown"] } : {}) });
   }
   const runwayField = runwayStat(runway);
   if (runwayField) stats.push(runwayField);
   // A margin over revenue at or below zero, and growth off it, read N/M in N/M's own colour, never a sign's.
   const notMeaningfulStat = (label: string): StatField => ({ label, value: NOT_MEANINGFUL_TEXT, valueColor: notMeaningfulColor() });
-  if (fundamentals?.operatingMargin != null) {
-    stats.push(notMeaningful.operatingMargin ? notMeaningfulStat("Op Margin") : { label: "Op Margin", value: formatLevelPercent(fundamentals.operatingMargin) });
-  }
-  if (fundamentals?.profitMargin != null) {
-    stats.push(notMeaningful.profitMargin ? notMeaningfulStat("Profit Marg") : { label: "Profit Marg", value: formatLevelPercent(fundamentals.profitMargin) });
-  }
+  const margin = (label: string, value: number | typeof NOT_MEANINGFUL | undefined, key: "operatingMargin" | "profitMargin") => {
+    if (value == null) return;
+    stats.push(value === NOT_MEANINGFUL || (!income && notMeaningful[key]) ? notMeaningfulStat(label)
+      : { label, value: formatLevelPercent(value) });
+  };
+  margin("Op Margin", income ? income.operatingMargin : fundamentals?.operatingMargin, "operatingMargin");
+  margin("Profit Marg", income ? income.profitMargin : fundamentals?.profitMargin, "profitMargin");
   if (fundamentals?.revenueGrowth != null) {
     stats.push(notMeaningful.revenueGrowth ? notMeaningfulStat("Rev Growth") : {
       label: "Rev Growth",
@@ -409,29 +461,30 @@ export function buildOverviewStats({
   }
   // At the regular session price, as the market cap above it is, with the check moved beside it.
   const priced = atRegularSessionPrice({ quote, fundamentals }).fundamentals;
-  const enterpriseValue = reportedEnterpriseValue(priced);
   // At or below zero, N/M as a P/E over a loss reads, with why in the space a stat has; valuation gives the full reason.
-  if (enterpriseValueNotMeaningful(priced)) {
+  if (enterpriseValue.kind === "not-meaningful") {
     // A bank's deposits and an insurer's float are funding, not debt (withFinancialEnterpriseValue);
     // any other's cash exceeds the rest.
     const financial = financialEnterpriseValue(priced);
     stats.push({ label: "EV", value: formatPriceEarnings(NOT_MEANINGFUL),
       detail: financial ? financial.replace(/^n\/m /, "") : ["cash > cap + debt", "cash > cap"] });
-  } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
-    stats.push({ label: "EV", value: MISSING_VALUE });
-  } else if (enterpriseValue != null) {
+  } else if (enterpriseValue.kind === "value") {
     // Market cap + debt - cash (+ minority interest) where the provider's is more than 5% from it, as every view
     // shows it; the notice under the pane gives its inputs where the provider's is far off (enterpriseValueGapIsLarge).
     const check = enterpriseValueCheck(priced);
     const minority = (check?.minorityAndPreferred ?? 0) > 0 ? " + minority" : "";
+    const leases = enterpriseValue.bridge?.leases ?? check?.leases ?? 0;
+    const computedDetail = leases > 0 ? "computed" : [`cap + debt - cash${minority}`, "computed"];
     stats.push({
       label: "EV",
-      value: formatCompactCurrency(enterpriseValue, quoteCurrency),
+      value: formatCompactCurrency(enterpriseValue.value, enterpriseValue.currency),
       // An insurer's: its investment book is not netted as cash. How it was reached comes before the base figure.
-      detail: enterpriseValueComputed(priced)
-        ? [`cap + debt - cash${minority}`, "computed"]
-        : check?.investmentsKept ? ["investments in", "inv. in"] : inBase(enterpriseValue, quoteCurrency),
+      detail: enterpriseValue.basis === "computed" || enterpriseValueComputed(priced)
+        ? computedDetail
+        : check?.investmentsKept ? ["investments in", "inv. in"] : inBase(enterpriseValue.value, enterpriseValue.currency),
     });
+  } else if (fundamentals?.unavailableFields?.includes("enterpriseValue")) {
+    stats.push({ label: "EV", value: MISSING_VALUE });
   }
   if (finite(fundamentals?.shortPercentOfFloat)) {
     stats.push({
@@ -489,6 +542,7 @@ export function buildPositionRows({
   quoteCurrency,
   baseCurrency,
   toBase,
+  purchaseDateFx,
   accountNames = NO_ACCOUNT_NAMES,
 }: {
   ticker: TickerRecord;
@@ -496,9 +550,11 @@ export function buildPositionRows({
   quoteCurrency: string;
   baseCurrency: string;
   toBase: CurrencyConverter;
+  purchaseDateFx?: PurchaseDateCostFx;
   accountNames?: PositionAccountNames;
 }): PositionTableRow[] {
-  return ticker.metadata.positions.filter((position) => position.shares !== 0).map((position) => {
+  const valuedTicker = purchaseDateFx ? withPurchaseDateCostFx([ticker], purchaseDateFx, baseCurrency)[0]! : ticker;
+  return valuedTicker.metadata.positions.filter((position) => position.shares !== 0).map((position) => {
     const positionCurrency = getPortfolioPositionMetrics(
       { ...ticker, metadata: { ...ticker.metadata, positions: [position] } }, undefined, quoteCurrency, undefined, quote,
     ).positionCurrency;

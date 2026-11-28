@@ -11,7 +11,7 @@ import { VENUES } from "./model";
  * pane back to the market's history, whatever it was showing: the request is stamped onto the instance, so the pane
  * sees it even when nothing else about the instance changed. Without a market, the board.
  */
-export function perpsInstance(arg: string | undefined): PaneTemplateInstanceConfig {
+function perpsInstance(arg: string | undefined): PaneTemplateInstanceConfig {
   const market = arg?.trim() ?? "";
   if (!market) return { placement: "floating", settings: { market } };
   return { instanceId: `perps:${encodeURIComponent(market.toUpperCase()).replace(/%/g, "~")}`, placement: "floating",
@@ -30,8 +30,5 @@ export const perpsModule: PluginModule = {
     keywords: ["perp", "perpetual", "perpetuals", "perpetual futures", "crypto", "bitcoin", "btc", "funding", "funding rate", "open interest", "hip-3", "stock perps", "basis", "basis trade", "carry", "venue", ...VENUES, "funding spread", "long short ratio", "long/short", "positioning", "liquidations", "liquidation", "order book depth", "market depth", "liquidity"],
     shortcut: { prefix: "PERP", argKind: "text", argOnlySelects: true, argOptional: true, argPlaceholder: "market" }, headless: perpsHeadless,
     createInstance: (_ctx, options) => perpsInstance(options?.arg) }],
-  setup(ctx) {
-    for (const cache of PERP_CACHES) cache.attach(ctx.persistence);
-  },
-  dispose() { for (const cache of PERP_CACHES) cache.reset(); },
+  caches: PERP_CACHES,
 };

@@ -36,7 +36,7 @@ const ROOT_SEARCH_TIMEOUT_MS = 15_000;
  * The search's answer, or a busy service once `timeoutMs` passes: the same row a
  * rate-limited search gets, since nothing was found and a retry may find it.
  */
-export async function searchWithinDeadline<T>(search: Promise<T>, timeoutMs = ROOT_SEARCH_TIMEOUT_MS): Promise<T> {
+async function searchWithinDeadline<T>(search: Promise<T>, timeoutMs = ROOT_SEARCH_TIMEOUT_MS): Promise<T> {
   try {
     return await withDeadline(search, timeoutMs, "Symbol search timed out");
   } catch (error) {

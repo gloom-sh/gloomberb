@@ -1,7 +1,7 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { AppAttentionFilter, AppAttentionPayload, AppChart } from "../../../api-client/app-attention";
 import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
 import { ChartTableHeader, DataTableView, PageStackView, PaneFooterScope, PaneLinkMenu, QueryBar, useChartTableSelection, usePagedRows, useTableLoadMore, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type PaneHint } from "../../../components";
@@ -14,18 +14,18 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActi
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { useOpenDescription } from "../shared/open-description";
-import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { useTickerJumpHints } from "../shared/open-description";
+import { lockedTableCell, lockedTableOverlay } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { humanLabel, listingCell, missingCell, shareCell, signedColor, toneColor, withoutQuietColumns, type StateTone } from "../shared/research-cells";
 import { AppRankView } from "./app-rank";
 import { useAttentionEvidence } from "./evidence";
 import { cachedAttention, fetchAttention, fetchPostingDetail, loadAttention, validateAttention, type AttentionPayload } from "./client";
-import { appsModel, attentionNumber, attentionPaneTabs, attentionSeries, count, hiringModel, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionPaneTab, type AttentionRow, type AttentionTab } from "./model";
+import { appsModel, attentionNumber, attentionPaneTabs, attentionSeries, count, hiringModel, OBSERVED_LABELS, remoteText, SIGNED_COLUMNS, sortAttentionRows, type AttentionKind, type AttentionPaneTab, type AttentionRow, type AttentionTab } from "./model";
 import { HiringMovesView } from "./moves";
 import { HiringSignalsView } from "./signals";
 import { HiringBuildingView } from "./building";
@@ -37,6 +37,15 @@ const SIGNAL_TONES: Record<string, StateTone> = { Surge: "positive", Freeze: "ne
 /** Columns left out while every row reads the same default: a first capture has no weekly change yet. */
 const QUIET_COLUMNS: Record<string, readonly string[]> = { net: [""], z: [""], change: [""], velocity: [""], drift: [""], growth: [""], added: [""], removed: [""], coverage: ["complete"], spread: [""] };
 const LABEL_COLUMNS = new Set(["chart"]);
+/**
+ * What a narrow desktop pane gives up first. In a table of postings or other
+ * evidence: the confidence, then where a role is, before its seniority and its
+ * function, so what was seen and the day it was observed stay. On a board of
+ * companies: the remote share and the name its ticker stands for, before a
+ * figure or the date they are as of. A table with none of these gives up its
+ * last columns.
+ */
+const NARROW_COLUMN_DROP_ORDER = ["confidence", "location", "seniority", "function", "remote", "name"] as const;
 /**
  * An evidence row read as a detail: the row's facts and, for a posting, the
  * place, date, pay, hours and description its page gave (the title is the
@@ -77,9 +86,8 @@ export function AppsPane(props: Size) {
   const [chart] = usePaneSettingValue<string>("chart", "");
   const [name] = usePaneSettingValue<string>("appRankName", appId);
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
   const focus = useMemo(() => ({ appId, name, country: (country || (store === "google-play" ? "GLOBAL" : "US")).toUpperCase(), chart: (chart || (store === "google-play" ? "unranked" : "free")) as AppChart, store: store === "google-play" ? "google-play" as const : "app-store" as const }), [appId, name, country, chart, store]);
-  if (appId) return <AppRankView {...props} focus={focus} accessKey={`${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`} />;
+  if (appId) return <AppRankView {...props} focus={focus} accessKey={session.accessKey} />;
   return <AttentionView key={symbol ?? "board"} {...props} kind="apps" symbol={symbol ?? undefined} />;
 }
 
@@ -89,10 +97,9 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   const desktop = !!useUiCapabilities().nativePaneChrome;
   const host = useRendererHost();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const openDescription = useOpenDescription();
+  const tickerJumpHints = useTickerJumpHints();
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   const upgrade = useCloudUpgradeAction(kind === "hiring" ? "hire" : "apps");
   const [openingTab] = usePaneSettingValue<string>("tab", "table");
   const [savedTab, setTab] = usePluginPaneState<string>(`${kind}:${symbol ?? "board"}:tab`, initialTab ?? openingTab);
@@ -146,8 +153,11 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
   useAttentionEvidence(kind, data ?? null, paneTab, rows.filter((row) => !row.id.startsWith("locked:")).map(rowId));
   const dataRows = useMemo(() => rows.filter((row) => !row.id.startsWith("locked:")), [rows]);
   // A company's own apps all carry its ticker; the column only earns its room on the board.
+  // The day a whole list was observed on is the footer's, not a column: once every page is in, one shared date leaves.
+  const complete = !paginated || (paged.status !== "idle" && !paged.hasMore);
   const columns = useMemo(() => !section ? [] : withoutQuietColumns(section.columns.filter((column) => !(column.id === "symbol" && kind === "apps" && symbol && tab !== "peers")),
-    dataRows, (row, id) => row.values[id] ?? "", QUIET_COLUMNS), [section, dataRows, kind, symbol, tab]);
+    dataRows, (row, id) => row.values[id] ?? "", QUIET_COLUMNS).map((column) => complete && OBSERVED_LABELS.has(column.label) ? { ...column, omitWhenSame: true } : column),
+  [complete, section, dataRows, kind, symbol, tab]);
   const maxShare = Math.max(0, ...dataRows.map((row) => typeof row.values.share === "number" ? row.values.share : 0));
   const selected = rows.find((row) => row.id === selectedId) ?? rows[0] ?? null;
   const evidence = rows.find((row) => row.id === openEvidence) ?? null;
@@ -159,7 +169,7 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
     [postingKey, snapshot]);
   const postingResource = useAsyncResource(postingLoader);
   const posting = postingKey ? postingResource.data : null;
-  const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "apps" && !symbol ? "Companies" : "Peers", evidence: "Evidence" };
+  const tabLabels: Record<AttentionTab, string> = { table: "Table", chart: "Chart", mix: kind === "hiring" ? "Mix" : "Markets", peers: kind === "hiring" ? "Peer postings" : !symbol ? "Companies" : "Peers", evidence: "Evidence" };
   const tabs = attentionPaneTabs(kind, symbol).map((value) => ({ value, label: value === "moves" ? "Moves" : value === "expansion" ? "Expansion" : value === "anomalies" ? "Anomalies" : value === "building" ? "Building" : tabLabels[value] }));
   const signInWall = !data && isCloudSessionRequired(resource.error);
   const { strip, rows: tabRows } = usePaneTabs(!signInWall && !openCompany && !app ? { tabs, activeValue: paneTab, onSelect: (value) => { setTab(value); setOpenEvidence(null); }, focused, dense: true } : null);
@@ -174,10 +184,8 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
     ...(source ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(source) }] : []),
     ...(selected && !evidence && selected.details ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpenEvidence(selected.id) }] : []),
     ...(selected?.app && selectedSymbol && !symbol ? [{ id: "company", key: "c", label: "ompany", onPress: () => setOpenCompany(selectedSymbol) }] : []),
+    ...tickerJumpHints(selectedSymbol),
     ...(selectedSymbol ? [
-      { id: "description", key: "d", label: "es", onPress: () => openDescription(selectedSymbol) },
-      { id: "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: selectedSymbol }) },
-      { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: selectedSymbol }) },
       { id: "related", key: "a", label: kind === "hiring" ? "pps" : " hiring", title: kind === "hiring" ? "App attention" : "Hiring momentum", onPress: () => createPaneFromTemplate(kind === "hiring" ? "apps-pane" : "hiring-pane", { symbol: selectedSymbol }) },
     ] : []),
     ...(model?.preview ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : []),
@@ -195,29 +203,24 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
     ...(tab === "chart" ? [{ id: "days", label: "Window", value: days, options: ["30", "90", "365", "730"].map((value) => ({ value, label: `${value}D` })), onChange: setDays }] : []),
     ...(tab === "mix" ? [{ id: "mix", label: "View", value: mix, options: [{ value: "countries", label: "Countries" }, { value: "spreads", label: "Rank spreads" }], onChange: setMix }] : []),
   ] : tab === "mix" ? [{ id: "mix", label: "Group", value: mix, options: [{ value: "functions", label: "Role family" }, { value: "seniority", label: "Seniority" }, { value: "countries", label: "Countries" }, { value: "locations", label: "Locations" }, { value: "signals", label: "Signals" }], onChange: setMix }] : []} />;
-  if (signalGroup) return <Box width={width} height={height} flexDirection="column">
+  const companyDrill = (targetTab: AttentionPaneTab) => symbol ? undefined : {
+    open: openCompany,
+    onOpen: setOpenCompany,
+    render: (company: string, detailWidth: number, detailHeight: number) => (
+      <AttentionView key={company} kind={kind} symbol={company} width={detailWidth} height={detailHeight} focused={focused} initialTab={targetTab} />
+    ),
+  };
+  if (signalGroup || paneTab === "building" || moves) return <Box width={width} height={height} flexDirection="column">
     {strip}
-    <HiringSignalsView key={signalGroup} group={signalGroup} symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey}
-      company={symbol ? undefined : { open: openCompany, onOpen: setOpenCompany,
-        render: (company, detailWidth, detailHeight) => <AttentionView key={company} kind={kind} symbol={company} width={detailWidth} height={detailHeight} focused={focused} initialTab={signalGroup} /> }} />
-  </Box>;
-  if (paneTab === "building") return <Box width={width} height={height} flexDirection="column">
-    {strip}
-    <HiringBuildingView symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey}
-      company={symbol ? undefined : { open: openCompany, onOpen: setOpenCompany,
-        render: (company, detailWidth, detailHeight) => <AttentionView key={company} kind={kind} symbol={company} width={detailWidth} height={detailHeight} focused={focused} initialTab="building" /> }} />
-  </Box>;
-  if (moves) return <Box width={width} height={height} flexDirection="column">
-    {strip}
-    <HiringMovesView symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey}
-      company={symbol ? undefined : { open: openCompany, onOpen: setOpenCompany,
-        render: (company, detailWidth, detailHeight) => <AttentionView key={company} kind={kind} symbol={company} width={detailWidth} height={detailHeight} focused={focused} initialTab="moves" /> }} />
+    {signalGroup ? <HiringSignalsView key={signalGroup} group={signalGroup} symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey} company={companyDrill(signalGroup)} />
+      : paneTab === "building" ? <HiringBuildingView symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey} company={companyDrill("building")} />
+        : <HiringMovesView symbol={symbol} width={width} height={bodyHeight} focused={focused} accessKey={accessKey} company={companyDrill("moves")} />}
   </Box>;
   return <Box width={width} height={height} flexDirection="column">
     {strip}
     <PageStackView focused={focused} detailOpen={detailOpen} onBack={() => { setOpenCompany(null); setOpenEvidence(null); setOpenApp(null); }} detailTitle={openCompany ?? app?.name ?? (evidence ? (posting ? postingTitle(posting.title, posting.externalId) : null) ?? String(evidence.values.title ?? evidence.values.name ?? evidence.id) : undefined)}
         detailContent={openCompany ? <PaneFooterScope active><AttentionView key={openCompany} kind={kind} symbol={openCompany} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : app ? <PaneFooterScope active><AppRankView focus={app} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} /></PaneFooterScope> : evidence ? <Evidence row={evidence} posting={posting} source={source} width={width} height={bodyHeight - 1} focused={focused} /> : null}
-        rootContent={<DataTableView columns={columns} items={model && section ? rows : []} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
+        rootContent={<DataTableView columns={columns} columnDropOrder={NARROW_COLUMN_DROP_ORDER} items={model && section ? rows : []} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen} scrollRef={scrollRef} onBodyScrollActivity={scrollMore}
           // A filter change reloads under the query bar, which stays.
           status={!data ? { loading: resource.loading, error: resource.error, subject: kind === "hiring" ? "hiring momentum" : "app attention" }
             : !model || !section ? { empty: true, emptyTitle: "Observations are not available yet." } : undefined}
@@ -229,8 +232,14 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
           onActivate={(row) => row.id.startsWith("locked:") ? void upgrade() : row.app ? setOpenApp(row.id) : row.symbol && row.symbol !== symbol && (tab === "peers" || !symbol) ? setOpenCompany(row.symbol) : row.details ? setOpenEvidence(row.id) : row.url ? void host.openExternal(row.url) : undefined}
           renderCell={(row, column, _index, state) => {
             if (row.id.startsWith("locked:")) {
-              if (!desktop && column.id === columns[0]?.id && row.id === "locked:0") return { text: "Upgrade for all observations", content: <UpgradeLabel text="Upgrade for all observations" onPress={upgrade} role="attention-upgrade" /> };
-              return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>Hidden</Text></Blurred> } : { text: "░░░░", color: colors.textDim };
+              return lockedTableCell({
+                desktop,
+                isLabelCell: column.id === columns[0]?.id && row.id === "locked:0",
+                upgradeText: "Upgrade for all observations",
+                onUpgrade: upgrade,
+                role: "attention-upgrade",
+                dimColor: colors.textDim,
+              });
             }
             const value = row.values[column.id];
             if (value == null || value === "") return missingCell(colors);
@@ -247,10 +256,11 @@ function AttentionView({ kind, symbol, width, height, focused, initialTab }: Siz
             if (column.id === "country" || (kind === "hiring" && tab === "mix" && mix === "countries" && column.id === "label")) {
               return withCountryFlag({ text, value, color: colors.text }, String(value), desktop);
             }
+            if ((column.id === "date" || column.id === "week") && typeof value === "string") return { ...dayCell(value), color: colors.textDim };
             return { text, value, color: numeric && SIGNED_COLUMNS.has(column.id) ? signedColor(value, colors)
               : column.id === "name" || column.id === "title" ? colors.textBright : column.id === "date" || column.id === "observed" || column.id === "confidence" ? colors.textDim : colors.text };
           }} selectedTextOverridesCellColor showHorizontalScrollbar resetScrollKey={`${kind}:${symbol}:${tab}:${mix}:${country}:${chart}`}
-          emptyStateTitle={model?.unmapped ?? section?.empty ?? ""} bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Upgrade for all observations" onPress={upgrade} role="attention-upgrade" /> : undefined} />}
+          emptyStateTitle={model?.unmapped ?? section?.empty ?? ""} bodyAfter={lockedTableOverlay(lockedRows, desktop, "Upgrade for all observations", upgrade, "attention-upgrade")} />}
       />
   </Box>;
 }

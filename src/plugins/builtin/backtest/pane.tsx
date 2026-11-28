@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import {
@@ -21,13 +22,12 @@ import { barsPerYearLabel } from "../../../market-data/bars-per-year";
 import { isFuturesInstrument, loadFuturesPriceUnit } from "../../../market-data/futures-contract";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { useAsyncResource } from "../../../react/async-resource";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { usePaneInstanceId, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, useUiCapabilities } from "../../../ui";
 import { FILL_REST } from "../../../components/ui/fill";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import { loadBacktestHistory } from "./client";
 import type { BacktestTrade } from "./engine";
 import { backtestEquityCsv } from "./export";
@@ -108,10 +108,10 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
     const { fetchedAt: _fetchedAt, ...history } = await loadBacktestHistory(instrument!, { forceRefresh: force, wholeHistory });
     return history;
   }, [instrumentKey, wholeHistory]);
-  const history = useAsyncResource(instrument ? loader : null, {
+  const history = usePaneResource(instrument ? loader : null, {
+    focused,
     savedCopy: scope && !instrument?.instrument ? { version: 2, key: ["backtest-history", scope, instrumentKey, wholeHistory] } : null,
   });
-  useAutoRefresh(history.updatedAt, history.load);
 
   const rules = useMemo(() => readRules(preset, entryText, exitText), [preset, entryText, exitText]);
   const ruleStrings = resolveRules(preset, entryText, exitText);
@@ -165,10 +165,6 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
   const edit = () => openPaneSettings(paneId);
   const cycleView = () => setView(view === "summary" ? "trades" : "summary");
   const chooseStrategy = () => strategyControl.current?.open();
-  // The footer hints bind e, v and s in both views and every load state; only
-  // the reload is the pane's own key.
-  usePaneRefreshKey(() => history.reload(), { focused });
-
   const notices = [identityError, history.error, rules.error, run.error, ...(result?.warnings ?? []), ...(result && continuation ? [continuation] : [])]
     .filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "backtest-notices", notices: [...new Set(notices)], focused });
@@ -281,12 +277,13 @@ export function BacktestPane({ width, height, focused }: PaneProps) {
             sortDirection="desc"
             exportCsv={exportCsv}
             renderCell={(trade, column) => ({
-              text: column.id === "entryDate" ? trade.entryDate
+              text: column.id === "entryDate" ? formatDay(trade.entryDate)
                 : column.id === "entryPrice" ? formatTradePrice(trade.entryPrice, symbol ?? "")
-                  : column.id === "exitDate" ? (trade.open ? "open" : trade.exitDate!)
+                  : column.id === "exitDate" ? (trade.open ? "open" : formatDay(trade.exitDate))
                     : column.id === "exitPrice" ? formatTradePrice(trade.exitPrice, symbol ?? "")
                       : column.id === "returnPct" ? (Math.abs(trade.returnPct) < 0.05 ? "0.0%" : `${trade.returnPct > 0 ? "+" : ""}${trade.returnPct.toFixed(1)}%`)
                         : String(trade.sessions),
+              ...(column.id === "entryDate" ? { value: trade.entryDate } : column.id === "exitDate" && !trade.open ? { value: trade.exitDate } : {}),
               color: column.id === "returnPct" ? (Math.abs(trade.returnPct) < 0.05 ? undefined : trade.returnPct > 0 ? colors.positive : colors.negative)
                 : trade.open && column.id === "exitDate" ? colors.textMuted : undefined,
             })}

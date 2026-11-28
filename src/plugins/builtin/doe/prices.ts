@@ -1,9 +1,9 @@
 import { apiClient } from "../../../api-client";
 import type { DoePricesPayload } from "../../../api-client/doe";
-import { createPluginCache } from "../../../data/plugin-cache";
 import type { SeriesDefinition } from "../../../series/types";
+import { isCalendarDay, isFiniteNumber, isStringArray } from "../../../utils/guards";
 import { cachedSeriesNote } from "../shared/series-warning";
-import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
+import { createCloudEndpoint } from "../shared/cloud-resource";
 
 /**
  * EIA weekly retail prices the petroleum board does not carry, served by Gloom
@@ -27,37 +27,27 @@ const PRICE_SERIES = [
   },
 ] as const;
 
-export const doePriceCache = createPluginCache<DoePricesPayload>({
-  kind: "doe-retail-prices", source: "gloom-cloud", schemaVersion: 1,
-  // Weekly data: a quarter hour is soon enough to catch a Monday release.
-  policy: { staleMs: 15 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
-});
-
-const isDate = (value: unknown) => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
-
 /** A payload that breaks the contract is refused whole rather than charted with holes in it. */
 function validatePrices(payload: DoePricesPayload): DoePricesPayload {
   if (!payload || payload.source !== "EIA" || !Number.isFinite(Date.parse(payload.generatedAt))
-    || !["available", "partial", "unavailable"].includes(payload.status)
-    || !Array.isArray(payload.gaps) || !payload.gaps.every((gap) => typeof gap === "string")
+    || !["available", "partial", "unavailable"].includes(payload.status) || !isStringArray(payload.gaps)
     || !Array.isArray(payload.series) || !payload.series.every((series) => typeof series?.id === "string"
       && typeof series.key === "string" && series.unit === "usd-per-gallon" && Array.isArray(series.points)
-      && series.points.every((point) => Array.isArray(point) && isDate(point[0])
-        && typeof point[1] === "number" && Number.isFinite(point[1])))) {
+      && series.points.every((point) => Array.isArray(point) && isCalendarDay(point[0]) && isFiniteNumber(point[1])))) {
     throw new Error("The server returned invalid EIA retail prices");
   }
   return payload;
 }
 
-/** A server without the route (404), or without its tables yet (503), has no prices to give. */
-async function fetchDoePrices(): Promise<DoePricesPayload> {
-  try {
-    return validatePrices(await apiClient.getCloudDoePrices());
-  } catch (error) {
-    throw unavailableOnServer(error, "EIA retail prices are not available yet.", [404, 503]);
-  }
-}
+const doePriceEndpoint = createCloudEndpoint<void, DoePricesPayload, typeof apiClient>({
+  kind: "doe-retail-prices", schemaVersion: 1,
+  // Weekly data: a quarter hour is soon enough to catch a Monday release.
+  policy: { staleMs: 15 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
+  key: "prices", defaultClient: apiClient,
+  fetch: (_args, client) => client.getCloudDoePrices(), validate: validatePrices,
+  unavailableMessage: "EIA retail prices are not available yet.", unavailableStatuses: [404, 503],
+});
+export const doePriceCache = doePriceEndpoint.cache;
 
 export const DOE_PRICE_SERIES: readonly SeriesDefinition[] = PRICE_SERIES.map((series) => ({
   id: `doe:${series.id}`,
@@ -70,7 +60,7 @@ export const DOE_PRICE_SERIES: readonly SeriesDefinition[] = PRICE_SERIES.map((s
   tags: ["oil", "petroleum", "EIA", "weekly", ...series.tags],
   description: "EIA weekly US retail price. Not gasoline stocks, and not the AAA daily average.",
   load: async () => {
-    const resource = await loadCloudResource(doePriceCache, "prices", () => fetchDoePrices(), { validate: validatePrices });
+    const resource = await doePriceEndpoint.load();
     const row = resource.payload.series.find((entry) => entry.id === series.id);
     if (!row?.points.length) throw new Error(`${series.name} is not available yet.`);
     return {

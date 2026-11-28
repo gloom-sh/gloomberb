@@ -4,6 +4,9 @@ import { logFailure } from "../../utils/log-failure";
 import { restrictFileSync } from "../../utils/private-files";
 import { createSqliteAccess, type SqliteAccess } from "./access";
 import {
+  CHECKPOINT_DELAY_MS,
+  CHECKPOINTER_STUCK_AFTER_MS,
+  LAZY_CHECKPOINT_DELAY_MS,
   SQLITE_BACKSTOP_AUTOCHECKPOINT_PAGES,
   SQLITE_DEFAULT_AUTOCHECKPOINT_PAGES,
   startWalCheckpointer,
@@ -92,8 +95,15 @@ export interface SqliteDatabaseOptions {
    * another program's lock (see access.ts). Commands and tests wait it out.
    */
   interactive?: boolean;
+  /**
+   * Whether the app's commits wait while the checkpointer flushes (access.ts).
+   * Windows only by default: elsewhere a commit does not wait on that flush.
+   */
+  holdCommitsDuringFlush?: boolean;
   /** Tests only: the WAL checkpointer's thread, how long it may go silent, and what it reports. */
   checkpointer?: WalCheckpointerOptions;
+  /** Overrides the command's user-write lock deadline. */
+  commandWriteWaitMs?: number;
 }
 
 export class SqliteDatabase {
@@ -159,11 +169,18 @@ export class SqliteDatabase {
       }
     }
     const checkpointer = this.checkpointer;
+    const holdCommits = checkpointer !== null && (options.holdCommitsDuringFlush ?? process.platform === "win32");
     this.access = createSqliteAccess(this.connection, {
       interactive: options.interactive,
       relaxedCommits: wal,
-      ...(checkpointer ? { onCommit: () => checkpointer.nudge(), flushedElsewhere: () => checkpointerRunning } : {}),
+      commandWriteWaitMs: options.commandWriteWaitMs ?? (onDisk && wal && process.platform === "win32" ? CHECKPOINTER_STUCK_AFTER_MS : undefined),
+      ...(checkpointer ? {
+        onCommit: (kind) => checkpointer.nudge(kind === "user" ? CHECKPOINT_DELAY_MS : LAZY_CHECKPOINT_DELAY_MS),
+        flushedElsewhere: () => checkpointerRunning,
+        ...(holdCommits ? { holdCommits: () => checkpointer.busy() } : {}),
+      } : {}),
     });
+    if (holdCommits) checkpointer?.onIdle(() => this.access.resume());
   }
 
   close(): void {

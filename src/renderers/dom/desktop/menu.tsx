@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties }
 import type { HostMenuItem, HostMenuProps } from "../../../ui/host";
 import { matchesNavigationKey, useKeybindings } from "../../../app/keybindings";
 import { toKeyEventLike } from "../input-host";
+import { isImeComposing } from "../key-event";
 import { CheckboxBox } from "./controls";
 import { WebIcon } from "./icons";
 
@@ -46,6 +47,7 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
   useEffect(() => {
     if (controlled) return;
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       const key = toKeyEventLike(event);
       const down = matchesNavigationKey(navigation, "down", key, { defaultMatches: MENU_KEYS.down.has(event.key) });
       const up = matchesNavigationKey(navigation, "up", key, { defaultMatches: MENU_KEYS.up.has(event.key) });
@@ -75,7 +77,7 @@ export function WebMenu({ items, onSelect, selection = "none", title, label, onC
       aria-label={label ?? title}
       aria-multiselectable={selection === "multi" || undefined}
       data-gloom-role="menu"
-      onKeyDown={(event) => { if (event.key === "Escape") onClose?.(); }}
+      onKeyDown={(event) => { if (event.key === "Escape" && !isImeComposing(event.nativeEvent)) onClose?.(); }}
     >
       {title ? <div className="gloom-menu-title">{title}</div> : null}
       {items.map((item) => {

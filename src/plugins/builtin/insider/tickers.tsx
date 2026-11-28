@@ -21,7 +21,7 @@ import { mapWithConcurrency } from "../../../utils/concurrency";
 import { displayWidth } from "../../../utils/format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { compareSortValues, nextHeaderSort, type SortDirection } from "../../../utils/sort-values";
+import { nextHeaderSort, sortRowsBy, type SortDirection } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { SignInWall } from "../cloud/auth-actions";
 import { listingCell } from "../shared/research-cells";
@@ -185,13 +185,9 @@ function TickersTradesView({ symbols, width, height, focused, viewBar }: Tickers
     sortStackItems(buildInsiderTableRows(entries.filter((entry) => matchesInsiderTypeFilter(entry, typeFilter))), { columnId: "date", direction: "desc" }, compareInsiderRows)
       .map((row) => ({ ...row, id: `${ticker}:${row.id}`, ticker }))), [answer, typeFilter]);
   // As given until a header is clicked: each company's lines together, newest first.
-  const sortedRows = useMemo(() => {
-    if (!sort) return rows;
-    const order = new Map(rows.map((row, index) => [row.id, index]));
-    return sortStackItems(rows, sort, (a, b, columnId) => columnId === "ticker"
-      ? a.ticker.localeCompare(b.ticker)
-      : compareInsiderRows(a, b, columnId), (a, b) => order.get(a.id)! - order.get(b.id)!);
-  }, [rows, sort]);
+  const sortedRows = useMemo(() => !sort ? rows : sortStackItems(rows, sort, (a, b, columnId) => (
+    columnId === "ticker" ? a.ticker.localeCompare(b.ticker) : compareInsiderRows(a, b, columnId)
+  )), [rows, sort]);
   // Form 4 amounts are dollars: a reader whose base currency is another one gets them named, as INS on a ticker does.
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const amountCurrency = baseCurrency.trim().toUpperCase() === FORM4_CURRENCY ? undefined : FORM4_CURRENCY;
@@ -345,11 +341,10 @@ function TickersInsidersView({ symbols, width, height, focused, renderCompany, v
 
   const [sort, setSort] = useState<{ columnId: TickerColumnId; direction: SortDirection }>({ columnId: "bought", direction: "desc" });
   const lines = useMemo(() => answer?.lines ?? [], [answer]);
-  const sortedLines = useMemo(() => {
-    const order = new Map(lines.map((line, index) => [line, index]));
-    const value = (line: TickerLine) => sort.columnId === "ticker" ? line.ticker : insiderActivitySortValue(line, sort.columnId);
-    return [...lines].sort((a, b) => compareSortValues(value(a), value(b), sort.direction) || order.get(a)! - order.get(b)!);
-  }, [lines, sort]);
+  const sortedLines = useMemo(
+    () => sortRowsBy(lines, sort.direction, (line) => sort.columnId === "ticker" ? line.ticker : insiderActivitySortValue(line, sort.columnId)),
+    [lines, sort],
+  );
   const columns = useMemo<TickerColumn[]>(() => {
     const tickerWidth = Math.max(displayWidth("Ticker") + 2, ...lines.map((line) => displayWidth(line.ticker)));
     return [

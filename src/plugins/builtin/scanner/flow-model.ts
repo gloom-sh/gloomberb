@@ -1,3 +1,4 @@
+import { utcDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import { formatExpDate } from "../../../utils/options";
 import type { ScannerFlowEvent, ScannerFlowHistoryQuery, ScannerStatus } from "../../../api-client";
@@ -214,7 +215,7 @@ const FLOW_HISTORY_PAGE = 100;
 const FLOW_KEPT_PRINTS = 20_000;
 
 /** Newest first; ties keep the server's byte order on id so pages line up. */
-export function compareFlowDesc(left: ScannerFlowEvent, right: ScannerFlowEvent): number {
+function compareFlowDesc(left: ScannerFlowEvent, right: ScannerFlowEvent): number {
   if (left.at !== right.at) return right.at - left.at;
   return left.id < right.id ? 1 : left.id > right.id ? -1 : 0;
 }
@@ -287,10 +288,6 @@ export function flowSessionSearch(filters: FlowFilters, scope: FlowScope): strin
   }));
   if (scope.symbol) params.set("symbol", scope.symbol.toUpperCase());
   return params.toString();
-}
-
-function utcDay(at: number): string {
-  return new Date(at).toISOString().slice(0, 10);
 }
 
 /** True when any row is from an earlier day in UTC, so the time column needs its date. */

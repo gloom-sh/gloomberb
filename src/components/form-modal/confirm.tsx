@@ -11,13 +11,10 @@ import { ConfirmDialog } from "../ui/confirm-dialog";
 import { Spinner } from "../ui/loading";
 import { TERMINAL_DIALOG_INSET, type FormModalRuntime } from "./content";
 import type { ConfirmModalOptions } from "./request";
+import { errorMessage } from "../../utils/errors";
 
 /** Confirms say one or two lines; they do not need a form's width. */
 export const CONFIRM_MODAL_WIDTH = 60;
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : t("Could not complete that action.");
-}
 
 /**
  * The bar's confirms named their cancel "Back", which returned to the list the
@@ -73,14 +70,15 @@ export function ConfirmModalContent({
       await confirm.onConfirm();
     } catch (failure) {
       pendingRef.current = false;
+      const message = errorMessage(failure, t("Could not complete that action."));
       if (!mountedRef.current) {
         // Closed while it ran: the inline error has nowhere to go.
         if (confirm.onFailureAfterClose) confirm.onFailureAfterClose(failure);
-        else runtime.getDeps().pluginRegistry.notify({ body: errorMessage(failure), type: "error" });
+        else runtime.getDeps().pluginRegistry.notify({ body: message, type: "error" });
         return;
       }
       setPending(false);
-      setError(errorMessage(failure));
+      setError(message);
       return;
     }
     pendingRef.current = false;

@@ -3,7 +3,7 @@ export { ListView } from "./list-view";
 export type { ListViewItem, ListViewProps, ListRowState } from "./list-view";
 
 export { DataTable } from "./data-table";
-export type { DataTableCell, DataTableColumn, DataTableColumnReorder, DataTableProps, DataTableRowSource, DataTableVisibleRange } from "./data-table";
+export type { DataTableCell, DataTableColumn, DataTableColumnFit, DataTableColumnReorder, DataTableProps, DataTableRowSource, DataTableVisibleRange } from "./data-table";
 
 export { Button, terminalButtonColumns } from "./button";
 export { Icon, IconButton, ICON_GLYPHS } from "./icon";
@@ -54,10 +54,10 @@ export { DialogFrame } from "./frame";
 export type { DialogFrameProps } from "./frame";
 export { ConfirmDialog, confirmDialog } from "./confirm-dialog";
 export type { ConfirmDialogOptions } from "./confirm-dialog";
-export { ChoiceDialog } from "./choice-dialog";
-export { TextPromptDialog } from "./text-prompt-dialog";
-export type { TextPromptDialogProps } from "./text-prompt-dialog";
+export { ChoiceDialog, choiceDialog } from "./choice-dialog";
 export type { ChoiceDialogChoice } from "./choice-dialog";
+export { TextPromptDialog, textPromptDialog } from "./text-prompt-dialog";
+export type { TextPromptDialogProps } from "./text-prompt-dialog";
 export { Tabs } from "./tabs";
 export type { TabsProps } from "./tabs";
 export { SegmentedControl } from "./toggle";
@@ -66,6 +66,8 @@ export { EmptyState, PaneStatusBody, Notice, RowNote, loadingText, unavailableTe
 export type { EmptyStateProps, PaneStatusBodyProps, NoticeProps, StatusRetry } from "./status";
 export { Badge, BulletList, Divider, FigureList, KeyValueRow, Prose, READING_WIDTH, Section, SectionHeading } from "./display";
 export { Card } from "./card";
+export { dayCell, formatDay, formatDayTime } from "./day-cell";
+export type { DayCellForm } from "./day-cell";
 export type { CardProps } from "./card";
 export type {
   BadgeProps, BulletListProps, DividerProps, FigureListItem, FigureListProps, KeyValueRowProps, ProseProps, SectionProps,

@@ -91,7 +91,7 @@ export interface CompanyPick {
  * portfolio (holding or followed) and a watchlist that is empty or the
  * untouched starter list.
  */
-export function needsCompanyPicks(tickers: Iterable<TickerRecord>, watchlistId: string | undefined): boolean {
+function needsCompanyPicks(tickers: Iterable<TickerRecord>, watchlistId: string | undefined): boolean {
   let starters = 0;
   for (const ticker of tickers) {
     if (ticker.metadata.portfolios.length > 0 || ticker.metadata.positions.length > 0) return false;
@@ -102,7 +102,7 @@ export function needsCompanyPicks(tickers: Iterable<TickerRecord>, watchlistId: 
   return starters === 0 || starters >= SEEDED_LIST_MIN_STARTERS;
 }
 
-export function isNewAccount(user: Pick<AuthUser, "createdAt"> | null, now = Date.now()): boolean {
+function isNewAccount(user: Pick<AuthUser, "createdAt"> | null, now = Date.now()): boolean {
   const created = user?.createdAt ? Date.parse(user.createdAt) : Number.NaN;
   return Number.isFinite(created) && now - created >= 0 && now - created < NEW_ACCOUNT_MS;
 }
@@ -115,7 +115,7 @@ export interface CompanyPickPlan {
 }
 
 /** The writes that make the watchlist the picks, minus seeded names nobody picked. */
-export function planCompanyPicks(
+function planCompanyPicks(
   tickers: ReadonlyMap<string, TickerRecord>,
   watchlistId: string,
   picks: readonly CompanyPick[],
@@ -260,7 +260,7 @@ function CompanyCard({
   );
 }
 
-export function CompanyPicker({
+function CompanyPicker({
   searchCompanies,
   onDone,
 }: {

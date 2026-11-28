@@ -3,7 +3,7 @@ import type { DataTableColumn, StatItem } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { dropColumnsToFit } from "../../../components/ui/table-layout";
 import type { ResolvedSeries } from "../../../time-series/types";
-import { MISSING_VALUE, displayWidth } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCompact } from "../../../utils/format";
 
 export const CREDIT_TABS = [{ value: "capital", label: "Capital" }, { value: "covenants", label: "Covenants" }, { value: "maturities", label: "Maturities" }, { value: "screen", label: "Screen" }] as const;
 export type CreditTab = typeof CREDIT_TABS[number]["value"];
@@ -14,6 +14,8 @@ export const fieldLabel = (field: string) => field.replace(/_/g, " ").replace(/(
 export const NO_VALUE = MISSING_VALUE;
 export const sentence = (value: string) => value.replace(/^./, (first) => first.toUpperCase());
 export const creditAmount = (value: number | null | undefined): string => value == null ? NO_VALUE : new Intl.NumberFormat("en-US", { notation: "compact", maximumFractionDigits: 2 }).format(value);
+/** An amount in a table's column, its decimals kept so the column lines up: 960.33M over 5.50B. */
+export const creditFigure = (value: number | null | undefined): string => value == null ? NO_VALUE : formatCompact(value, { fixedDecimals: true });
 export const creditPercent = (value: number | null | undefined): string => value == null ? NO_VALUE : `${value.toFixed(1)}%`;
 function creditValue(value: CreditValue): string {
   if (value === null) return "Not disclosed";
@@ -112,21 +114,72 @@ function marginBasisPoints(margin: CreditFact): number | null {
 }
 /** SOFR is written `S`, as a floating spread is quoted; any other named base keeps its name. */
 const baseLabel = (reference: string) => /\bSOFR\b/i.test(reference) ? "S" : reference;
+/** Words that make a line's rate float, where a name's percent is a margin or a floor, never a coupon. */
+const FLOATING_NAME = /\b(?:floating|float|frn|sofr|libor|euribor|sonia|estr|term rate|variable|reset)\b|\+/i;
+/** A rate a note's name states (`3.500% Notes due 2027`, `6 7/8% Senior Notes`): its whole, decimal and fraction parts. */
+const NAMED_COUPON = /(?:^|[\s(])(\d{1,2})(?:\.(\d{1,4}))?(?:\s+(\d)\/(\d{1,2}))?\s?%/;
 /**
- * What an instrument pays: a fixed coupon as its percentage, a floating margin
- * as its spread over the base in basis points (`S+148`, `EURIBOR+175`). A
+ * The coupon a fixed-rate note's name states, when the filing gave none as a
+ * fact, with the decimals the name writes it in; null for a floating line or
+ * a name with no rate in it.
+ */
+function namedCoupon(name: string): { value: number; digits: number } | null {
+  if (FLOATING_NAME.test(name)) return null;
+  const match = NAMED_COUPON.exec(name);
+  if (!match) return null;
+  const decimals = match[2] ?? "";
+  const fraction = match[3] && match[4] ? Number(match[3]) / Number(match[4]) : 0;
+  const value = Number(match[1]) + (decimals ? Number(`0.${decimals}`) : 0) + fraction;
+  const digits = fraction ? String(fraction).split(".")[1]?.length ?? 0 : decimals.length;
+  return Number.isFinite(value) && value > 0 && value < 30 ? { value, digits: Math.min(3, digits) } : null;
+}
+/** A coupon as a number of percent and the decimals it is stated in: the filing's fact, else the rate the note's name states. */
+function couponReading(row: CreditInstrument): { value: number; digits: number } | null {
+  const coupon = instrumentFact(row, "coupon");
+  if (coupon) {
+    const stated = typeof coupon.value === "number" && Number.isFinite(coupon.value) && ["percent", "%"].includes(coupon.unit ?? "");
+    return stated ? { value: coupon.value as number, digits: String(coupon.value).split(".")[1]?.length ?? 0 } : null;
+  }
+  return instrumentFact(row, "margin") || instrumentFact(row, "reference_rate") ? null : namedCoupon(row.name);
+}
+const couponDigitsByData = new WeakMap<object, number>();
+/**
+ * The decimals a column of coupons shares: the finest any states, at most
+ * three, so 4.400% sits over 7.087% as the notes' own names write them.
+ */
+function couponDigits(data: Pick<CreditDocumentsPayload, "instruments">): number {
+  const known = couponDigitsByData.get(data);
+  if (known !== undefined) return known;
+  const digits = Math.min(3, Math.max(0, ...data.instruments.map((row) => couponReading(row)?.digits ?? 0)));
+  couponDigitsByData.set(data, digits);
+  return digits;
+}
+/**
+ * A fixed coupon as its percentage, in the decimals its column shares; a
+ * floating line's rate is its margin. A note the filing gave no coupon for
+ * reads the one its name states (`3.500% Notes due 2027`).
+ */
+function creditCoupon(row: CreditInstrument, data?: Pick<CreditDocumentsPayload, "instruments">): string {
+  const coupon = instrumentFact(row, "coupon");
+  const reading = couponReading(row);
+  if (coupon) return reading && data ? `${reading.value.toFixed(couponDigits(data))}%` : factValue(coupon);
+  return reading ? `${reading.value.toFixed(data ? couponDigits(data) : reading.digits)}%` : NO_VALUE;
+}
+/**
+ * What a floating line pays over its base, in basis points (`S+148`,
+ * `EURIBOR+175`), or the base alone when the filing names no margin. A
  * margin with no named base is read as SOFR for a dollar or undated currency
  * instrument, the market's base for dollar loans, and is left bare for any other.
  */
-export function creditCoupon(row: CreditInstrument): string {
-  const coupon = instrumentFact(row, "coupon"), margin = instrumentFact(row, "margin"), reference = instrumentFact(row, "reference_rate");
+function creditMargin(row: CreditInstrument): string {
+  const margin = instrumentFact(row, "margin"), reference = instrumentFact(row, "reference_rate");
   const named = reference ? words(typeof reference.value === "string" ? reference.value : creditValue(reference.value)) : null;
   if (margin) {
     const base = named ? baseLabel(named) : !row.currency || row.currency === "USD" ? "S" : "";
     const basisPoints = marginBasisPoints(margin);
     return basisPoints === null ? `${base}+${factValue(margin)}` : `${base}${basisPoints < 0 ? "-" : "+"}${Math.abs(basisPoints)}`;
   }
-  return coupon ? factValue(coupon) : named ?? NO_VALUE;
+  return named ?? NO_VALUE;
 }
 const rankText = (row: CreditInstrument) => {
   const fact = instrumentFact(row, "ranking") ?? instrumentFact(row, "security");
@@ -295,41 +348,69 @@ function fitColumns<Id extends string>(columns: readonly Column<Id>[], width: nu
   return dropColumnsToFit(columns, width - 1, dropOrder);
 }
 
-type CapitalColumnId = "name" | "facility" | "coupon" | "maturity" | "principal" | "currency" | "ranking" | "control";
+type CapitalColumnId = "name" | "facility" | "coupon" | "margin" | "maturity" | "principal" | "commitment" | "currency" | "ranking" | "control";
+/**
+ * Notes and loans each fill their own columns: a note's fixed coupon and its
+ * principal, a line's margin over its base, what is drawn and the commitment.
+ */
 const CAPITAL_COLUMNS: Column<CapitalColumnId>[] = [
   { id: "name", label: "Instrument", width: 24, flexGrow: 1, align: "left" },
   { id: "facility", label: "Type", width: 12, align: "left" },
-  { id: "coupon", label: "Coupon/Margin", width: 20, align: "left" },
-  { id: "maturity", label: "Maturity", width: 10, align: "left" },
+  { id: "coupon", label: "Coupon", width: 7, align: "right" },
+  { id: "margin", label: "Margin", width: 16, align: "left" },
+  { id: "maturity", label: "Maturity", width: 11, align: "left" },
   { id: "principal", label: "Outstanding", width: 11, align: "right" },
+  { id: "commitment", label: "Commitment", width: 10, align: "right" },
   { id: "currency", label: "CCY", width: 3, align: "left" },
   { id: "ranking", label: "Rank", width: 26, align: "left" },
   { id: "control", label: "CoC put", width: 7, align: "right" },
 ];
 /** Text columns take the width their values and their label need, up to the column's own width. */
-const FITTED_CAPITAL = new Set<CapitalColumnId>(["facility", "coupon", "ranking"]);
+const FITTED_CAPITAL = new Set<CapitalColumnId>(["facility", "coupon", "margin", "ranking"]);
 const SPARSE_CAPITAL = new Set<CapitalColumnId>(["ranking", "control"]);
+/**
+ * The one currency every instrument with an amount is in, which the amount
+ * columns' labels then carry instead of a CCY column; null for several, or an
+ * amount whose currency the filing does not give.
+ */
+function capitalSharedCurrency(data: Pick<CreditDocumentsPayload, "instruments">): string | null {
+  const priced = data.instruments.filter((row) => instrumentOutstanding(row) != null || row.commitment != null);
+  const currencies = new Set(data.instruments.map((row) => row.currency).filter(Boolean));
+  return priced.length > 0 && currencies.size === 1 && priced.every((row) => row.currency) ? [...currencies][0]! : null;
+}
 export function capitalColumns(data: CreditDocumentsPayload, width: number): DataTableColumn[] {
   const rows = data.instruments;
-  const disclosed = (id: CapitalColumnId) => rows.filter((row) => capitalCell(row, id, data) !== NO_VALUE).length;
-  // A column nothing discloses is left out; ranking and puts need most instruments.
-  const columns = CAPITAL_COLUMNS.filter((column) => column.id === "name" || column.id === "principal" || (SPARSE_CAPITAL.has(column.id) ? disclosed(column.id) * 2 > rows.length : disclosed(column.id) > 0))
+  const texts = (id: CapitalColumnId) => rows.map((row) => capitalCell(row, id, data));
+  const disclosed = (id: CapitalColumnId) => texts(id).filter((text) => text !== NO_VALUE).length;
+  const shared = capitalSharedCurrency(data);
+  // A column nothing discloses is left out (ranking and puts need most
+  // instruments), and so is a type every instrument has.
+  const columns = CAPITAL_COLUMNS.filter((column) => column.id === "name"
+    || (column.id === "facility" && rows.length > 1 && new Set(texts("facility")).size === 1 ? false
+      : column.id === "currency" && shared ? false
+        : SPARSE_CAPITAL.has(column.id) ? disclosed(column.id) * 2 > rows.length : disclosed(column.id) > 0))
     .map((column) => FITTED_CAPITAL.has(column.id) ? { ...column, width: Math.min(column.width, Math.max(4, displayWidth(column.label), ...rows.map((row) => displayWidth(capitalCell(row, column.id, data))))) } : column);
-  // One currency is said by the figures; several keep their column at every width.
-  const single = new Set(rows.map((row) => row.currency).filter(Boolean)).size <= 1;
-  return fitColumns(columns, width, ["control", "ranking", ...(single ? ["currency" as const] : []), "facility", "coupon", "maturity"]);
+  const fit = (fitted: Column<CapitalColumnId>[]) => fitColumns(fitted, width, ["control", "ranking", "facility", "margin", "coupon", "maturity", "commitment"]);
+  if (!shared) return fit(columns);
+  // The amounts' labels carry the one currency while that costs no column.
+  const labelled = fit(columns.map((column) => {
+    if (column.id !== "principal" && column.id !== "commitment") return column;
+    const label = `${column.label} ${shared}`;
+    return { ...column, label, width: Math.max(column.width, displayWidth(label)) };
+  }));
+  const plain = fit(columns);
+  return labelled.length >= plain.length ? labelled : plain;
 }
-/** A revolver reads as drawn of commitment; the strip carries the undrawn total. */
-export const outstandingText = (outstanding: number | null, commitment: number | null): string =>
-  commitment != null && commitment !== outstanding ? `${creditAmount(outstanding)} of ${creditAmount(commitment)}` : creditAmount(outstanding);
 export function capitalCell(row: CreditInstrument, column: string, data: CreditDocumentsPayload): string {
   const control = data.changeOfControl.find((entry) => entry.instrumentId === row.id);
   switch (column) {
     case "name": return isClosed(row) ? `${row.name} (${row.lifecycle})` : row.name;
-    case "principal": return outstandingText(instrumentOutstanding(row), row.commitment);
+    case "principal": return creditFigure(instrumentOutstanding(row));
+    case "commitment": return creditFigure(row.commitment);
     case "currency": return row.currency ?? NO_VALUE;
     case "maturity": return row.maturity ?? NO_VALUE;
-    case "coupon": return creditCoupon(row);
+    case "coupon": return creditCoupon(row, data);
+    case "margin": return creditMargin(row);
     case "facility": return row.facilityType ? fieldLabel(row.facilityType) : NO_VALUE;
     case "ranking": return rankText(row);
     case "control": return control ? (control.putPercent === null ? "Trigger" : `${control.putPercent}%`) : NO_VALUE;
@@ -345,7 +426,7 @@ const COVENANT_COLUMNS: Column<CovenantColumnId>[] = [
   { id: "headroom", label: "Headroom", width: 8, align: "right" },
   { id: "usage", label: "Usage", width: 12, align: "left" },
   { id: "status", label: "Status", width: 12, align: "left" },
-  { id: "date", label: "As of", width: 10, align: "left" },
+  { id: "date", label: "As of", width: 11, align: "left" },
   { id: "instrument", label: "Instrument", width: 22, align: "left" },
 ];
 export const covenantColumns = (width: number): DataTableColumn[] => fitColumns(COVENANT_COLUMNS, width, ["instrument", "usage", "date", "current"]);
@@ -378,7 +459,7 @@ const SCREEN_COLUMNS: Column<ScreenColumnId>[] = [
   { id: "symbol", label: "Issuer", width: 8, align: "left" },
   { id: "kind", label: "Signal", width: 18, align: "left" },
   { id: "value", label: "Headroom", width: 8, align: "right" },
-  { id: "date", label: "Date", width: 10, align: "left" },
+  { id: "date", label: "Date", width: 11, align: "left" },
   { id: "instrument", label: "Instrument", width: 26, align: "left" },
   { id: "reason", label: "Condition", width: 36, align: "left" },
 ];
@@ -393,8 +474,8 @@ type FactColumnId = "field" | "value" | "asOf" | "filed" | "status";
 const FACT_COLUMNS: Column<FactColumnId>[] = [
   { id: "field", label: "Term", width: 22, align: "left" },
   { id: "value", label: "Disclosed value", width: 30, flexGrow: 1, align: "left" },
-  { id: "asOf", label: "As of", width: 10, align: "left" },
-  { id: "filed", label: "Filed", width: 10, align: "left" },
+  { id: "asOf", label: "As of", width: 11, align: "left" },
+  { id: "filed", label: "Filed", width: 11, align: "left" },
   { id: "status", label: "Revision", width: 10, align: "left" },
 ];
 /** Current terms are all in effect, so only history needs the revision column. */

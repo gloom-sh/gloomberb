@@ -1,5 +1,6 @@
-import type { FinancialStatement, TickerFinancials } from "../../../../types/financials";
+import type { FinancialStatement, StatementPeriodFiling, TickerFinancials } from "../../../../types/financials";
 import { ebitdaLacksDepreciation } from "../../../../utils/ebitda";
+import { safeExternalUrl } from "../../../../utils/external-url";
 import { longerPeriodLabel, statementPeriodLabel, ttmPeriodLabel } from "../../../../utils/fiscal-period";
 import { areNearbyFinancialPeriodEnds, fillDate, fillDateText, statementPeriodMonths } from "../../../../utils/financial-statements";
 import { formatPerShareNumber } from "../../../../utils/reported-money";
@@ -22,7 +23,6 @@ import {
 } from "./aggregation";
 import { FINANCIAL_SUB_TABS } from "./schema";
 
-export { computeTTM } from "./aggregation";
 export { FINANCIAL_SUB_TABS } from "./schema";
 export type { FinancialPeriod } from "./aggregation";
 
@@ -123,32 +123,69 @@ function statementMetricNotMeaningful(
 export const FINANCIAL_COL_W = 18;
 export const FINANCIAL_LABEL_W = 28;
 const FINANCIAL_LABEL_MIN_W = 12;
+/** The narrowest metric column that shows a statement's line names whole in the terminal, indent and all (`    Other Income/Exp`). */
+const FINANCIAL_LABEL_WHOLE_W = 20;
+/** The same on the desktop and the web, which draw a name against the column's edge. */
+const FINANCIAL_LABEL_WHOLE_FLUSH_W = 18;
+/** The narrowest metric column a second period is worth on a phone: the longest names lose a letter or two to an ellipsis. */
+const FINANCIAL_LABEL_PAIR_W = 14;
 
 /**
- * The metric column's width in a table `width` cells wide: 28 where a period
- * fits beside it, narrower (down to 12, labels cut with an ellipsis) where it
- * would otherwise take every value off screen, as a 36-column Financials pane
- * once showed nothing but metric names and "more →". The other 6 cells are the
- * pane's padding, the table's, the column gap and the scrollbar.
+ * The metric column's width in a table `width` cells wide with `periods`
+ * period columns `periodWidth` wide. It gives the room to whole periods, not
+ * to part of one: as many as fit beside names still read in full, then the
+ * names take what is left, up to 28. `flush` is the desktop and the web,
+ * where a name starts at the column's edge and so needs fewer cells; there a
+ * phone, which would show one period that way, lets its longest names lose a
+ * letter for a second, since a figure says little without the one it grew
+ * from. Narrower still, the column shrinks to 12 before it takes every value
+ * off screen, as a 36-column Financials pane once showed nothing but metric
+ * names and "more →". The other 5 cells are the pane's padding, the table's
+ * and the scrollbar; each period takes one more, the gap before it.
  */
-export function financialLabelWidth(width: number, periodWidth = FINANCIAL_COL_W): number {
-  return Math.max(FINANCIAL_LABEL_MIN_W, Math.min(FINANCIAL_LABEL_W, width - periodWidth - 6));
+export function financialLabelWidth(width: number, periodWidth = FINANCIAL_COL_W, periods = 1, flush = false): number {
+  const room = width - 5;
+  const pitch = periodWidth + 1;
+  const fit = (labelWidth: number) => Math.min(Math.max(1, periods), Math.floor((room - labelWidth) / pitch));
+  const whole = Math.max(
+    fit(flush ? FINANCIAL_LABEL_WHOLE_FLUSH_W : FINANCIAL_LABEL_WHOLE_W),
+    flush ? Math.min(2, fit(FINANCIAL_LABEL_PAIR_W)) : 0,
+  );
+  if (whole >= 1) return Math.min(FINANCIAL_LABEL_W, room - whole * pitch);
+  return Math.max(FINANCIAL_LABEL_MIN_W, Math.min(FINANCIAL_LABEL_W, room - pitch));
 }
 /** The growth after a period's value: a blank and up to six characters (`+466%`, `<-99T%`). */
 const FINANCIAL_GROWTH_W = 7;
 
+/** The cells a table keeps after a header's label for its sort mark (`tableColumnWidth`). */
+const FINANCIAL_HEADER_RESERVE_W = 2;
+
 /**
- * A terminal period column as wide as the widest value it shows and the growth
- * after it, or its header where that is wider. A fixed 18 left a short value
- * further from its own column's edge than from its growth, so each pair read
- * tight and the next period far off, and fewer periods fit.
+ * A period column as wide as the widest value it shows and the growth after
+ * it, or its header with the cells the table keeps after one, or the day it
+ * ends (`ends`, the table's first row), whichever is widest. A fixed 18 left a
+ * short value further from its own column's edge than from its growth, so
+ * each pair read tight and the next period far off, and fewer periods fit.
  */
-export function financialPeriodWidth(values: Iterable<string>, headers: Iterable<string>): number {
+export function financialPeriodWidth(values: Iterable<string>, headers: Iterable<string>, ends: Iterable<string> = []): number {
   let value = 0;
   for (const text of values) value = Math.max(value, displayWidth(text));
   let header = 0;
-  for (const text of headers) header = Math.max(header, displayWidth(text));
-  return Math.max(value + FINANCIAL_GROWTH_W, header);
+  for (const text of headers) header = Math.max(header, displayWidth(text) + FINANCIAL_HEADER_RESERVE_W);
+  let end = 0;
+  // The day is drawn in the cells the header has.
+  for (const text of ends) end = Math.max(end, text ? displayWidth(text) + FINANCIAL_HEADER_RESERVE_W : 0);
+  return Math.max(value + FINANCIAL_GROWTH_W, header, end);
+}
+
+/**
+ * A period's header, or the day it ends, centred in the cells a column
+ * `periodWidth` wide has for its header: the column less the two the table
+ * keeps after a label. The header and the day under it share those cells, so
+ * one sits centred over the other.
+ */
+export function financialPeriodHeaderLabel(text: string, periodWidth: number): string {
+  return padTo(text, Math.max(displayWidth(text), periodWidth - FINANCIAL_HEADER_RESERVE_W), "center");
 }
 
 /**
@@ -156,7 +193,7 @@ export function financialPeriodWidth(values: Iterable<string>, headers: Iterable
  * narrowing, or turning into a profit, is no percentage of the loss). An outflow, kept as a
  * negative number, grows as the money that went out does.
  */
-export function computeGrowth(current: number | undefined, previous: number | undefined, outflow = false): Rate | undefined {
+function computeGrowth(current: number | undefined, previous: number | undefined, outflow = false): Rate | undefined {
   return outflow ? outflowGrowthRate(current, previous) : growthRate(current, previous);
 }
 
@@ -228,6 +265,7 @@ function filledLine(statement: FinancialStatement, key: keyof FinancialStatement
 function comparableLine(current: FinancialStatement, previous: FinancialStatement, key: keyof FinancialStatement): boolean {
   const fill = current.filledFrom;
   if (fill?.source !== "results" || filledLine(previous, key)) return false;
+  if (fill.definitions?.some(({ field }) => field === key)) return false;
   if (fill.comparable) return fill.comparable.some((field) => field === key);
   const days = (Date.parse(current.date) - Date.parse(previous.date)) / 86_400_000;
   return !fill.periodMonths && days >= 300 && days <= 430;
@@ -338,11 +376,34 @@ export function financialColumnLabel(
   return ttmPeriodLabel(periodEnd, yearEndMonth, interimMonths);
 }
 
-export function financialFiscalHeader(statement: FinancialTableStatement, kind: FinancialPeriod, yearEndMonth: number | null): string {
-  const end = statement.date === "TTM" ? statement.aggregation?.periodEnd : statement.date.slice(0, 10);
+/** The day a column's period ends: a statement's own date, a TTM's last quarter or half. */
+export function financialPeriodEnd(statement: FinancialTableStatement): string | undefined {
+  return statement.date === "TTM" ? statement.aggregation?.periodEnd : statement.date.slice(0, 10);
+}
+
+/** A column's fiscal period as its own header names it, the day it ends aside: a half in the quarterly list as `H1 FY26`, or `6M` off the fiscal calendar. */
+function financialPeriodName(statement: FinancialTableStatement, kind: FinancialPeriod, yearEndMonth: number | null): string {
+  const end = financialPeriodEnd(statement);
   const months = kind === "quarterly" && statement.date !== "TTM" ? statementPeriodMonths(statement) : undefined;
   const longer = end && months && months > 3 ? longerPeriodLabel(end, months, yearEndMonth) : null;
-  const name = longer ?? financialColumnLabel(statement, kind, yearEndMonth);
+  return longer ?? financialColumnLabel(statement, kind, yearEndMonth);
+}
+
+/**
+ * The pane's column header: the fiscal period alone (`TTM Q2 FY27`, `FY2026`,
+ * `H1 FY26`, `6M`). The day it ends is the table's first row (`Period end`),
+ * so a column is as wide as its figures, not as its date, and more periods
+ * show side by side.
+ */
+export function financialColumnName(statement: FinancialTableStatement, kind: FinancialPeriod, yearEndMonth: number | null): string {
+  const name = financialPeriodName(statement, kind, yearEndMonth);
+  const end = financialPeriodEnd(statement);
+  return end && name.endsWith(` ${end}`) ? name.slice(0, -end.length - 1) : name;
+}
+
+function financialFiscalHeader(statement: FinancialTableStatement, kind: FinancialPeriod, yearEndMonth: number | null): string {
+  const end = financialPeriodEnd(statement);
+  const name = financialPeriodName(statement, kind, yearEndMonth);
   return end && !name.endsWith(end) ? `${name} ${end}` : name;
 }
 
@@ -351,9 +412,21 @@ export function financialColumnPeriod(statement: FinancialTableStatement, period
   return period === "annual" && (statement.date === "TTM" || annualDates.has(statement.date)) ? "annual" : "quarterly";
 }
 
+/** An issuer's report for the displayed period, even when the figures come from a provider. */
+export function financialPeriodFiling(
+  filings: readonly StatementPeriodFiling[] | undefined,
+  statement: FinancialTableStatement,
+  period: FinancialPeriod,
+): StatementPeriodFiling | undefined {
+  if (statement.date === "TTM") return undefined;
+  const end = financialPeriodEnd(statement);
+  return filings?.find((filing) => filing.periodEnd === end
+    && (filing.periodMonths === 12) === (period === "annual") && typeof filing.url === "string" && !!safeExternalUrl(filing.url));
+}
+
 export function latestFinancialPeriodEnd(statements: readonly FinancialTableStatement[]): string | undefined {
   return statements
-    .map((statement) => statement.date === "TTM" ? statement.aggregation?.periodEnd : statement.date.slice(0, 10))
+    .map(financialPeriodEnd)
     .reduce<string | undefined>((max, end) => (end && (!max || end > max) ? end : max), undefined);
 }
 
@@ -882,14 +955,20 @@ export function financialStatementPeriods(
 }
 
 /**
- * Whether a column has its lead line, or Gloom Cloud left it blank on purpose: the company's announcements
- * count it otherwise than the statements source (HSBC's revenue, `filledFrom.omitted`), so the period is in.
+ * A period is ready when its lead line is present, intentionally omitted, or accompanied by a filed
+ * income or cash flow figure. Banks' filings can report net income under a separate revenue convention.
  */
 function hasLeadLine(lead: FinancialRowDef, statement: FinancialStatement): boolean {
   if (hasFinancialRowValue(lead, [statement])) return true;
   const key = isFinancialGroup(lead) ? lead.summaryKey : lead.key;
   const fill = statement.filledFrom;
-  return !!key && fill?.source === "results" && (fill.omitted ?? []).some((field) => field === key);
+  if (!key || fill?.source !== "results") return false;
+  if (fill.omitted?.some((field) => field === key)) return true;
+  const filedLine = key === "totalRevenue" ? "netIncome" : key === "freeCashFlow" ? "operatingCashFlow" : undefined;
+  if (!filedLine || !fill.fields.includes(filedLine) || !Number.isFinite(statement[filedLine])) return false;
+  const document = fill.lines[filedLine]?.document;
+  const url = document === undefined ? undefined : fill.documents[document]?.url;
+  return typeof url === "string" && !!safeExternalUrl(url);
 }
 
 /**
@@ -901,7 +980,7 @@ function hasLeadLine(lead: FinancialRowDef, statement: FinancialStatement): bool
  * an all-dash one. A trailing-twelve-month column is kept: it is summed, and
  * so is a period whose lead line was left blank on purpose (`hasLeadLine`).
  */
-export function splitPeriodsNotInYet<T extends FinancialTableStatement>(
+function splitPeriodsNotInYet<T extends FinancialTableStatement>(
   statements: readonly T[],
   subTab: Pick<FinancialSubTab, "rows">,
 ): { shown: T[]; notInYet: T[] } {

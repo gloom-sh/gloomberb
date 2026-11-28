@@ -1,16 +1,15 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, QueryBar, StatGrid, statGridRows, usePaneFooter, usePaneNoticeFooter,
   usePaneTicker, type DataTableCell, type DataTableColumn, type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { tableColumnWidth } from "../../../components/ui/table-layout";
 import { MISSING_VALUE, displayWidth } from "../../../utils/format";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
-import { useAsyncResource } from "../../../react/async-resource";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
 import { usePaneInstance } from "../../../state/app/context";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -32,12 +31,18 @@ const SURPRISE_OPTIONS = [{ value: "all", label: "All" }, ...MACRO_SURPRISES.map
 
 const times = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${value.toFixed(1)}x`;
 
-const DATE: DataTableColumn = { id: "date", label: "Date", width: 19, align: "left" };
+const DATE: DataTableColumn = { id: "date", label: "Date", width: 20, align: "left" };
 /** The move and its multiple of a normal day's; a yield's move is in basis points, and its header says so. */
 const moveColumns = (basis: MacroDayMoveBasis): DataTableColumn[] => [
   { id: "move", label: basis === "yield" ? "Move bp" : "Move", width: 9, align: "right" },
   { id: "multiple", label: "vs Normal", width: 10, align: "right" },
 ];
+/**
+ * What a narrow desktop pane gives up first: the figures the economic calendar
+ * also holds, from the prior print to the actual. The day, its release and the
+ * move are what the pane is for.
+ */
+const COLUMN_DROP_ORDER = ["prior", "forecast", "surprise", "actual"] as const;
 /** What each release came out with, under the labels the economic calendar gives them. */
 const FIGURES = [["actual", "Actual"], ["forecast", "Forecast"], ["prior", "Prior"]] as const;
 
@@ -45,7 +50,7 @@ const FIGURES = [["actual", "Actual"], ["forecast", "Forecast"], ["prior", "Prio
  * Whether the print came in hot, cool or in line, in words, so it never rests on the Actual's colour alone; a
  * surprise read from another print than the headline's names it: "Hot (core m/m)".
  */
-export function macroSurpriseText(event: Pick<MacroDayEvent, "figures">): string {
+function macroSurpriseText(event: Pick<MacroDayEvent, "figures">): string {
   const surprise = macroSurpriseOf(event.figures);
   if (!surprise) return "";
   const basis = macroSurpriseBasisLabel(event.figures);
@@ -65,7 +70,7 @@ function figureColumns(rows: readonly MacroDayEvent[]): DataTableColumn[] {
  * With every release listed, the release's name, widened to take a policy decision and the earnings marker where a row
  * has them. With one selected, a column only for those: every row would repeat the name.
  */
-export function columnsFor(release: string, rows: readonly MacroDayEvent[], basis: MacroDayMoveBasis = "return"): DataTableColumn[] {
+function columnsFor(release: string, rows: readonly MacroDayEvent[], basis: MacroDayMoveBasis = "return"): DataTableColumn[] {
   const values = [...figureColumns(rows), ...moveColumns(basis)];
   if (release === "all") return [DATE, { id: "release", label: "Release", align: "left",
     width: tableColumnWidth({ label: "Release", width: Math.max(6, ...rows.map((event) => displayWidth(macroDayEventLabel(event)))) }) }, ...values];
@@ -75,7 +80,7 @@ export function columnsFor(release: string, rows: readonly MacroDayEvent[], basi
 }
 
 /** By the sign the text shows: an average that rounds to 0.00% (or 0.0bp) is neither up nor down. */
-export const moveTone = (value: number | null, basis: MacroDayMoveBasis = "return") =>
+const moveTone = (value: number | null, basis: MacroDayMoveBasis = "return") =>
   value == null || !/[1-9]/.test((value * 100).toFixed(macroDayMoveDecimals(basis))) ? undefined
     : value > 0 ? "positive" as const : "negative" as const;
 
@@ -150,17 +155,15 @@ function MacroDayComparisonPane({ width, height, focused, list }: PaneProps & { 
     if (targets.every((target) => !target.history.length && target.error)) throw new Error(targets[0]!.error!);
     return { releases, targets };
   }, [list]);
-  const history = useAsyncResource(scope ? loader : null, { savedCopy: scope ? { key: ["macro-day-compare", scope, list] } : null,
+  const history = usePaneResource(scope ? loader : null, { focused, savedCopy: scope ? { key: ["macro-day-compare", scope, list] } : null,
     shouldSave: (answer) => answer.targets.every((target) => !target.stale && !target.error) });
   useEffect(() => () => controller.current?.abort(), [loader]);
-  useAutoRefresh(history.updatedAt, history.load);
-  usePaneRefreshKey(() => history.reload(), { focused });
 
   const models = useMemo(() => history.data ? projectMacroDayTargets(history.data.targets, history.data.releases, Number(lookback) || 5) : [], [history.data, lookback]);
   const scoped = useMemo(() => compareMacroDays(models).filter((event) => release === "all" || event.kind === release), [models, release]);
   const rows = useMemo(() => scoped.filter((event) => matchesSurprise(event, surprise)), [scoped, surprise]);
   const columns = useMemo<DataTableColumn[]>(() => [
-    { ...DATE, width: 10 }, { id: "release", label: "Release", width: 12, align: "left" },
+    { ...DATE, width: 11 }, { id: "release", label: "Release", width: 12, align: "left" },
     ...models.map((model) => ({ id: model.symbol, label: macroDayComparisonHeader(model),
       width: Math.max(8, displayWidth(macroDayComparisonHeader(model))), align: "right" as const })),
     ...figureColumns(rows),
@@ -182,7 +185,7 @@ function MacroDayComparisonPane({ width, height, focused, list }: PaneProps & { 
     { id: "basis", parts: [{ text: "daily close-to-close", tone: "muted" as const }] },
   ] }), [stale]);
   const renderCell = (event: MacroDayComparisonRow, column: DataTableColumn): DataTableCell => {
-    if (column.id === "date") return { text: event.date };
+    if (column.id === "date") return dayCell(event.date);
     if (column.id === "release") return { text: macroDayEventLabel(event) };
     if (column.id === "actual" || column.id === "forecast" || column.id === "prior") return { text: event.figures?.[column.id] ?? "" };
     if (column.id === "surprise") return { text: macroSurpriseText(event) };
@@ -221,12 +224,11 @@ function SingleMacroDayPane({ width, height, focused }: PaneProps) {
     return { ...snapshot, releases, earnings };
   }, [instrumentKey]);
   const scope = useCloudDisplayScope();
-  const history = useAsyncResource(scope && instrument ? loader : null, {
+  const history = usePaneResource(scope && instrument ? loader : null, {
+    focused,
     savedCopy: scope && !instrument?.instrument ? { key: ["macro-day", scope, instrumentKey] } : null,
   });
   useEffect(() => () => controller.current?.abort(), [loader]);
-  useAutoRefresh(history.updatedAt, history.load);
-  usePaneRefreshKey(() => { history.reload(); }, { focused });
 
   const model = useMemo(() => history.data ? projectMacroDays(history.data.history, { symbol: symbol ?? "", lookbackYears: Number(lookback) || 5,
     releases: history.data.releases.releases, coveredThrough: history.data.releases.coveredThrough, earnings: history.data.earnings.reports }) : null,
@@ -255,7 +257,7 @@ function SingleMacroDayPane({ width, height, focused }: PaneProps) {
   ] }), [history.loading, history.data?.stale, history.data?.earnings.stale, model?.start, model?.asOf]);
 
   const renderCell = useCallback((event: MacroDayEvent, column: DataTableColumn): DataTableCell => {
-    if (column.id === "date") return { text: event.session === event.date ? event.date : `${event.date} → ${event.session.slice(5)}`, value: event.date };
+    if (column.id === "date") return { text: event.session === event.date ? formatDay(event.date) : `${formatDay(event.date)} → ${formatDay(event.session, "no-year")}`, value: event.date };
     if (column.id === "release") return { text: release === "all" ? macroDayEventLabel(event) : macroDayEventNote(event) };
     // The print colored against the consensus, as the economic calendar colors it.
     if (column.id === "actual") return { text: event.figures?.actual ?? "", color: event.figures?.surprise === "hot" ? colors.positive
@@ -281,7 +283,7 @@ function SingleMacroDayPane({ width, height, focused }: PaneProps) {
       error={!model ? history.error ?? identityError ?? null : null} empty={!!model && !model.events.length}>
       {model ? <>
         <StatGrid items={stats} width={width} maxLines={statMaxLines} />
-        <DataTableView<MacroDayEvent> focused={focused} columns={columns} items={rows} rootWidth={width} rootHeight={contentHeight}
+        <DataTableView<MacroDayEvent> focused={focused} columns={columns} columnDropOrder={COLUMN_DROP_ORDER} items={rows} rootWidth={width} rootHeight={contentHeight}
           getItemKey={macroDayKey} emptyStateTitle={surprise === "all" ? "No release days." : `No ${MACRO_SURPRISE_LABELS[surprise].toLowerCase()} prints.`} sortColumnId={null} sortDirection="desc" selectedTextOverridesCellColor
           selection={{ kind: "id", selectedId: selectedRow, getId: macroDayKey, onChange: setSelectedRow }}
           getExportMetadata={() => [["symbol", model.symbol], ["from", model.start ?? ""], ["to", model.asOf ?? ""],

@@ -53,7 +53,7 @@ const POINTER_HELP = "click a window to select it, drag to resize";
  * still do not fit stay on the last line, which CSS cuts where the panel
  * ends: its end holds the least used ones.
  */
-export function wrapWindowEditHelp(items: readonly string[], width: number, lineCount: number): string[] {
+function wrapWindowEditHelp(items: readonly string[], width: number, lineCount: number): string[] {
   const lines: string[] = [];
   let current = "";
   for (const item of items) {

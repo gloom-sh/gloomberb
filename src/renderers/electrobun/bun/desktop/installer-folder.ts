@@ -30,7 +30,7 @@ import { psString, runScriptInBackground, writePowerShellScript } from "./window
  */
 
 /** The installer's AppId, which names its uninstall entry (windows-installer.iss). */
-export const WINDOWS_INSTALLER_APP_ID = "{D7B2304C-840B-4E5F-956A-3D1C66E67B35}";
+const WINDOWS_INSTALLER_APP_ID = "{D7B2304C-840B-4E5F-956A-3D1C66E67B35}";
 const INSTALLER_ENTRY = `${WINDOWS_INSTALLER_APP_ID}_is1`;
 
 export interface InstallerFolderContext {
@@ -68,7 +68,7 @@ function isDesktopIdentifierName(name: string): boolean {
  * `<local app data>\<identifier>\<channel>\app`, under either identifier the
  * app has carried. Null anywhere else.
  */
-export function updaterAppFolder(execPath: string, localAppData: string): { folder: string; channel: string } | null {
+function updaterAppFolder(execPath: string, localAppData: string): { folder: string; channel: string } | null {
   const relative = win32.relative(localAppData, execPath);
   if (!relative || relative.startsWith("..") || win32.isAbsolute(relative)) return null;
   const [identifier, channel, app, bin, ...rest] = relative.split("\\");
@@ -78,7 +78,7 @@ export function updaterAppFolder(execPath: string, localAppData: string): { fold
 }
 
 /** The value `name` holds in a `.reg` export, unescaped; null when it holds none or no string. */
-export function regExportValue(text: string, name: string): string | null {
+function regExportValue(text: string, name: string): string | null {
   const prefix = `${JSON.stringify(name)}=`;
   for (const line of text.split(/\r?\n/)) {
     if (!line.startsWith(prefix)) continue;
@@ -294,7 +294,7 @@ try {
  * The script that retires the installer's folder `folder` for the app in
  * `app`, with its paths written in. It removes `pending` once it finished.
  */
-export function installerFolderScript({ folder, app, log, pending }: { folder: string; app: string; log: string; pending: string }): string {
+function installerFolderScript({ folder, app, log, pending }: { folder: string; app: string; log: string; pending: string }): string {
   const header = [
     "$ErrorActionPreference = 'Stop'",
     `$Folder = ${psString(folder)}`,

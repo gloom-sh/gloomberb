@@ -1,7 +1,7 @@
 import { useCallback, useMemo } from "react";
 import { listingIdentity } from "../shared/ticker-request";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
+import { usePaneSettingValue, usePluginPaneState, useUpdatedAgo } from "../../../public/react";
 import { ChartTableHeader, DataTableStackView, EmptyState, formatPercentAxis, KeyValueRow, PaneStatusBody, useChartTableSelection, usePaneNoticeFooter, usePaneStatusLinkFooter, type DataTableCell, type StatItem } from "../../../components";
 import { ageFooterSegment } from "../../../components/layout/pane/footer";
 import { colors } from "../../../theme/colors";
@@ -10,21 +10,22 @@ import { isAccessDenied } from "../../../api-client/errors";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { SignInWall } from "../cloud/auth-actions";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { cachedShortVolume, loadShortVolume } from "./client";
 import { shortVolumeHeadless } from "./headless";
 import { reportFooterSegment } from "../shared/source-footer";
-import { exactQuantity, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, type VolumeColumn, type VolumeSort } from "./model";
+import { formatDay } from "../../../components/ui/day-cell";
+import { exactQuantity, sortedVolumeHistory, VOLUME_COLUMNS, volumeChange, volumeHistoryPoints, volumePercent, volumePointStatus, volumeQuantity, volumeRowStatus, type VolumeColumn, type VolumeSort } from "./model";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 
 const DETAIL_LABEL_WIDTH = 26;
 const rowDate = (row: ShortVolumeObservation) => row.ratioPercent == null ? null : new Date(row.date);
 function renderCell(row: ShortVolumeObservation, column: VolumeColumn, _index: number, state: { selected: boolean }): DataTableCell {
-  const text = column.id === "date" ? row.date : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
-    : column.id === "status" ? volumePointStatus(row) : volumeQuantity(row[column.id]);
-  return { text, color: state.selected ? colors.selectedText : column.id === "ratioPercent" ? colors.warning
+  const text = column.id === "date" ? formatDay(row.date) : column.id === "ratioPercent" ? volumePercent(row.ratioPercent)
+    : column.id === "status" ? volumeRowStatus(row) : volumeQuantity(row[column.id]);
+  return { text, ...(column.id === "status" ? { value: volumePointStatus(row) } : column.id === "date" ? { value: row.date } : {}), color: state.selected ? colors.selectedText : column.id === "ratioPercent" ? colors.warning
     : row.unavailableReason ? colors.textMuted : colors.text };
 }
 function VolumeDetail({ row, width, height }: { row: ShortVolumeObservation; width: number; height: number }) {
@@ -48,7 +49,8 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
   const symbol = sourceSymbol.trim() || listingIdentity(ticker?.metadata.ticker)?.symbol || null;
   const session = useResearchCloudSession();
   const loader = useCallback((force: boolean) => loadShortVolume(symbol!, scope, force), [symbol, scope, session.requestKey]);
-  const resource = useAsyncResource(symbol ? loader : null, {
+  const resource = usePaneResource(symbol ? loader : null, {
+    focused,
     initialData: () => symbol ? cachedShortVolume(symbol, scope) : null, clearOnError: isAccessDenied,
   });
   const data = resource.data?.payload;
@@ -76,12 +78,10 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
   const figures: StatItem[] = [
     { id: "ratio", label: scope === "otc" ? "OTC short %" : "Short %", value: volumePercent(latest?.ratioPercent ?? null),
       detail: formatPercentileRank(stats?.value, stats?.completeWindow ? "1Y" : "sample") },
-    { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${latest.previousDate}` : undefined },
+    { id: "change", label: "Daily change", value: volumeChange(latest?.changePp ?? null), detail: latest?.previousDate ? `since ${formatDay(latest.previousDate)}` : undefined },
     { id: "range", label: stats?.completeWindow ? "1Y range" : "Sample range", value: `${volumePercent(stats?.min ?? null)} to ${volumePercent(stats?.max ?? null)}`,
-      detail: stats ? `${stats.historyStart ?? MISSING_VALUE} to ${stats.historyEnd ?? MISSING_VALUE}` : undefined },
+      detail: stats ? `${formatDay(stats.historyStart)} to ${formatDay(stats.historyEnd)}` : undefined },
   ];
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({ registrationId: "short-volume:notices", focused,
     notices: [...(data?.warnings ?? []), ...(resource.data?.refreshError ? [resource.data.refreshError] : [])] });
   usePaneStatusLinkFooter({ registrationId: "short-volume", focused, loading: resource.loading, error: resource.error,
@@ -101,7 +101,7 @@ export function ShortVolumePane({ width, height, focused }: Pick<PaneProps, "wid
         getItemKey={rowKey} renderCell={renderCell} resetScrollKey={identity}
         selection={{ kind: "index", selectedIndex: rows.length ? selectedIndex : -1, onChange: (index) => setSelectedId(rows[index] ? rowKey(rows[index]!) : null) }}
         onActivate={(row) => setOpenId(rowKey(row))} detailOpen={!!openRow} onBack={() => setOpenId(null)}
-        detailTitle={openRow?.date} detailContent={openRow ? <VolumeDetail row={openRow} width={width} height={Math.max(3, height - 2)} /> : null}
+        detailTitle={openRow ? formatDay(openRow.date) : undefined} detailContent={openRow ? <VolumeDetail row={openRow} width={width} height={Math.max(3, height - 2)} /> : null}
         sortColumnId={sort.column} sortDirection={sort.direction}
         onHeaderClick={(column) => setSort((current) => ({ column: column as VolumeSort["column"], direction: current.column === column && current.direction === "desc" ? "asc" : "desc" }))}
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={VOLUME_COLUMNS} figures={figures} chart={{

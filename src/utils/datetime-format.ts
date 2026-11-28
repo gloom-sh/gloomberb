@@ -1,6 +1,6 @@
 import { MISSING_VALUE } from "./format";
 import { toTimestampMillis } from "./timestamp";
-import { timeZoneLabel } from "./zoned-date-time";
+import { timeZoneLabel, zonedDateTimeParts } from "./zoned-date-time";
 
 export type DisplayDateValue = Date | string | number | null | undefined;
 
@@ -271,4 +271,26 @@ export function formatDetailTime(value: DisplayDateValue, fallback = MISSING_VAL
   const date = parseDisplayDate(value);
   if (!date) return fallback;
   return `${formatClockTime(date, fallback, timeZone)} ${localTimeZoneShortName(date, timeZone)}`;
+}
+
+const zonedDayFormatters = new Map<string, Intl.DateTimeFormat>();
+
+/**
+ * An instant on the host's clock (or `timeZone`'s) with its day and zone
+ * named, the year only when it is not this one: "20 Nov 14:30 HKT", "3 Mar
+ * 2025 09:31 ET". For one moment several panes name on the same clock, such
+ * as the tab's pinned crosshair, whatever clock their own rows read on.
+ */
+export function formatZonedMoment(value: DisplayDateValue, now = Date.now(), timeZone?: string): string {
+  const date = parseDisplayDate(value);
+  if (!date) return MISSING_VALUE;
+  const zone = timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone ?? "UTC";
+  const withYear = zonedDateTimeParts(date.getTime(), zone).year !== zonedDateTimeParts(now, zone).year;
+  const key = `${zone}:${withYear}`;
+  let formatter = zonedDayFormatters.get(key);
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat("en-US", { day: "numeric", month: "short", year: withYear ? "numeric" : undefined, timeZone: zone });
+    zonedDayFormatters.set(key, formatter);
+  }
+  return `${dayFirstParts(formatter, date)} ${formatDetailTime(date, MISSING_VALUE, zone)}`;
 }

@@ -526,20 +526,25 @@ export function bindAppPanePluginRegistry({
       removeExternalPlugin(pluginId, directory);
     },
     contributions: (pluginId) => {
+      // A bad entry is left out of the list: one plugin's mistake must not take the Plugins pane down.
+      const hasId = (id: unknown): id is string => typeof id === "string" && id !== "";
+      const text = (value: unknown, fallback: string) => typeof value === "string" && value !== "" ? value : fallback;
       // An unlisted function (`listed: false`) and a pane only it opens are left out, as of every list.
       const registered = pluginRegistry.getPluginPaneTemplateIds(pluginId)
+        .filter(hasId)
         .map((id) => ({ id, template: pluginRegistry.paneTemplates.get(id) }));
       const listedPaneIds = new Set(registered.flatMap(({ template }) => template && template.listed !== false ? [template.paneId] : []));
       const unlistedPaneIds = new Set(registered.flatMap(({ template }) => template?.listed === false && !listedPaneIds.has(template.paneId) ? [template.paneId] : []));
       const panes = pluginRegistry.getPluginPaneIds(pluginId)
+        .filter(hasId)
         .filter((id) => !unlistedPaneIds.has(id))
-        .map((id) => ({ id, name: pluginRegistry.panes.get(id)?.name ?? id }));
+        .map((id) => ({ id, name: text(pluginRegistry.panes.get(id)?.name, id) }));
       const templates = registered
         .filter(({ template }) => template?.listed !== false)
-        .map(({ id, template }) => ({ id, label: template?.label ?? id, ...(template?.shortcut?.prefix ? { prefix: template.shortcut.prefix } : {}) }));
+        .map(({ id, template }) => ({ id, label: text(template?.label, id), ...(template?.shortcut?.prefix ? { prefix: template.shortcut.prefix } : {}) }));
       const commands = [...pluginRegistry.commands.entries()]
-        .filter(([id]) => pluginRegistry.getCommandPluginId(id) === pluginId && !id.endsWith(":setup"))
-        .map(([id, command]) => ({ id, label: command.label, ...(command.shortcut ? { shortcut: command.shortcut } : {}) }));
+        .filter(([id]) => hasId(id) && pluginRegistry.getCommandPluginId(id) === pluginId && !id.endsWith(":setup"))
+        .map(([id, command]) => ({ id, label: text(command?.label, id), ...(command?.shortcut ? { shortcut: command.shortcut } : {}) }));
       const capabilities = pluginRegistry.capabilities.manifests()
         .filter((manifest) => pluginRegistry.getCapabilityPluginId(manifest.id) === pluginId).length;
       const broker = [...pluginRegistry.brokers.keys()].some((type) => pluginRegistry.getBrokerPluginId(type) === pluginId);

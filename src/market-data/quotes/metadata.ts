@@ -43,8 +43,48 @@ export function mergeQuoteMetadata(known: QuoteMetadata | null | undefined, load
   return Object.keys(fields).length ? { ...merged, fieldSources: fields } : merged;
 }
 
+const OTC_QUOTE_VENUES: ReadonlyMap<string, string> = new Map([
+  ["OTC", "OTC"], ["OTC MARKETS", "OTC"], ["OTHER OTC", "OTC"],
+  ["OQX", "OTCQX"], ["OTCQX", "OTCQX"], ["OTC MARKETS OTCQX", "OTCQX"],
+  ["OQB", "OTCQB"], ["OTCQB", "OTCQB"], ["OTC MARKETS OTCQB", "OTCQB"],
+  ["OID", "OTCID"], ["OTCID", "OTCID"], ["OTC MARKETS OTCID", "OTCID"],
+  ["PNK", "PINK"], ["PINK", "PINK"], ["OTCPK", "PINK"], ["OTC MARKETS OTCPK", "PINK"],
+  ["PINX", "PINK"], ["PINK SHEETS", "PINK"],
+  ["OBB", "OTCBB"], ["OTCBB", "OTCBB"], ["NASDAQ OTCBB", "OTCBB"],
+  ["OEM", "EXMKT"], ["EXMKT", "EXMKT"], ["EXPM", "EXMKT"],
+]);
+
+export function isOtcQuoteVenue(exchange?: string): boolean {
+  return OTC_QUOTE_VENUES.has(canonicalExchange(exchange));
+}
+
+function otcTier(exchange: string): string | undefined {
+  const venue = OTC_QUOTE_VENUES.get(exchange);
+  return venue === "OTC" ? undefined : venue;
+}
+
+/** Declarations can coexist when one names OTC generally and the other names a tier. */
+function quoteListingExchangesCompatible(left: string, right: string): boolean {
+  if (left === right) return true;
+  const leftOtc = OTC_QUOTE_VENUES.get(left);
+  const rightOtc = OTC_QUOTE_VENUES.get(right);
+  return !!leftOtc && !!rightOtc && (leftOtc === rightOtc || leftOtc === "OTC" || rightOtc === "OTC");
+}
+
 /** Qualified listings must agree; provider suffix spellings use the existing exact-listing normalizer. */
-export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: string, exchange?: string): boolean {
+export function quoteMetadataMatchesTarget(
+  metadata: QuoteMetadata,
+  symbol: string,
+  exchange?: string,
+  options?: { allowUnnamedListing?: boolean },
+): boolean {
+  if (options?.allowUnnamedListing && !metadata.listingExchangeName && !parsePublicTickerKey(metadata.symbol).exchange) {
+    const target = parsePublicTickerKey(symbol);
+    if (!otcTier(canonicalExchange(target.exchange || exchange))) {
+      symbol = target.symbol;
+      exchange = undefined;
+    }
+  }
   // A crypto exchange's line of a pair (BTC/GBP on COINBASE PRO) is priced as the crypto venue's listing, BTC-GBP on
   // CCC, and a quote kept under the line's key is that listing's.
   const line = exchangeLineCoinListing(symbol, exchange);
@@ -53,14 +93,17 @@ export function quoteMetadataMatchesTarget(metadata: QuoteMetadata, symbol: stri
   if (quotedLine) metadata = { ...metadata, symbol: quotedLine.symbol, listingExchangeName: quotedLine.exchange };
   const target = parsePublicTickerKey(symbol);
   const actual = parsePublicTickerKey(metadata.symbol);
+  const requestedExchange = canonicalExchange(target.exchange || exchange);
+  const requestedTier = otcTier(requestedExchange);
   // An index is one series whatever its venue is called: search files ^VIX under CXI and ^RUT under WCB, while
   // their quotes name CBOE INDICES and CHICAGO OPTIONS. Saved from search, the index must still match its quote.
-  if (target.symbol.startsWith("^") && target.symbol === actual.symbol) return true;
-  const requestedExchange = canonicalExchange(target.exchange || exchange);
+  if (target.symbol.startsWith("^") && target.symbol === actual.symbol && !isOtcQuoteVenue(requestedExchange)) return true;
   const symbolExchange = canonicalExchange(actual.exchange);
   const actualExchange = canonicalExchange(metadata.listingExchangeName) || symbolExchange;
-  if (symbolExchange && actualExchange && symbolExchange !== actualExchange) return false;
-  if (requestedExchange && actualExchange !== requestedExchange) return false;
+  if (symbolExchange && actualExchange && !quoteListingExchangesCompatible(symbolExchange, actualExchange)) return false;
+  if (requestedExchange && (!quoteListingExchangesCompatible(requestedExchange, actualExchange)
+    || (symbolExchange && !quoteListingExchangesCompatible(requestedExchange, symbolExchange)))) return false;
+  if (requestedTier && requestedTier !== otcTier(actualExchange) && requestedTier !== otcTier(symbolExchange)) return false;
   if (target.symbol === actual.symbol) return true;
   // Gloom Cloud answers a currency pair in one spelling however it was asked
   // for: EUR/USD and EURUSD:CCY come back as EURUSD=X on its currency venue.

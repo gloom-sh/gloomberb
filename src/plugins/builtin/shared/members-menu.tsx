@@ -1,12 +1,12 @@
-import { logFailure } from "../../../utils/log-failure";
-import { ChoiceDialog, TextPromptDialog, usePaneMenuItems } from "../../../components";
+import { usePaneMenuItems } from "../../../components";
+import { choiceDialog, textPromptDialog } from "../../../components/ui";
 import { createFormCollectionActions } from "../../../components/form-modal/deps";
 import { t, tf } from "../../../i18n";
 import { usePluginAppActions } from "../../../public/react";
 import { useAppDispatch, useAppGetState, useAppSelector } from "../../../state/app/context";
 import { formatTickerListInput, MAX_TICKER_LIST_SIZE } from "../../../tickers/list";
 import type { TickerMetadata, TickerRecord } from "../../../types/ticker";
-import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
+import { useOptionalDialog } from "../../../ui/dialog";
 import { canonicalExchange, publicTickerKey } from "../../../utils/exchanges";
 import { slugifyName } from "../../../utils/slugify";
 import { getSharedRegistry } from "../../registry";
@@ -15,7 +15,7 @@ import { ROTATION_LIMIT } from "../relative-rotation/model";
 import { SHORT_WATCH_LIMIT } from "../short-interest/watch-model";
 
 /** One member of a theme, a fund or a screen's matches, in the order its list shows it. */
-export interface MemberListing {
+interface MemberListing {
   symbol: string;
   name?: string | null;
   exchange?: string | null;
@@ -53,7 +53,7 @@ interface MemberDestination {
  * RIPL resolve the list the way the command bar does, which takes ten
  * tickers; RIPL's own setting takes more, but not through a new pane.
  */
-export const MEMBER_DESTINATIONS: readonly MemberDestination[] = [
+const MEMBER_DESTINATIONS: readonly MemberDestination[] = [
   { templateId: "relative-rotation-rrg", label: "Relative Rotation (RRG)", limit: ROTATION_LIMIT, minimum: 1 },
   { templateId: "correlation-pane", label: "Correlation Matrix (CORR)", limit: MAX_CORRELATION_TICKERS, minimum: 2 },
   { templateId: "short-watch-pane", label: "Short Squeeze Watch (SIW)", limit: SHORT_WATCH_LIMIT, minimum: 1 },
@@ -64,13 +64,13 @@ export const MEMBER_DESTINATIONS: readonly MemberDestination[] = [
  * A watchlist is a list to read and follow; a whole Russell 2000 stays in
  * MEMB. Larger lists save their first 100 as listed.
  */
-export const MEMBER_WATCHLIST_LIMIT = 100;
+const MEMBER_WATCHLIST_LIMIT = 100;
 
 /**
  * Distinct members in list order, as `SYMBOL:EXCHANGE` when the list names the
  * listing: CORR and RIPL resolve each one, and a bare CCJ also matches Xetra.
  */
-export function memberSymbols(members: readonly MemberListing[]): string[] {
+function memberSymbols(members: readonly MemberListing[]): string[] {
   const seen = new Set<string>();
   return members.flatMap((member) => {
     const symbol = member.symbol.trim().toUpperCase();
@@ -86,7 +86,7 @@ export function memberSymbols(members: readonly MemberListing[]): string[] {
  * disabled below its minimum. A disabled row cannot be selected, so its reason
  * sits beside the label rather than in the description under the list.
  */
-export function memberDestinationChoices(symbols: readonly string[], destinations: readonly MemberDestination[]) {
+function memberDestinationChoices(symbols: readonly string[], destinations: readonly MemberDestination[]) {
   return destinations.map((destination) => {
     const taken = symbols.slice(0, destination.limit);
     const tooFew = taken.length < destination.minimum;
@@ -109,7 +109,7 @@ export function memberDestinationChoices(symbols: readonly string[], destination
  * reads as the whole fund; so does a list that is the first part of a larger
  * one (`total`), as a screen's loaded matches are.
  */
-export function memberListText(list: Pick<MemberList, "title" | "search" | "noun" | "total">, count: number) {
+function memberListText(list: Pick<MemberList, "title" | "search" | "noun" | "total">, count: number) {
   const noun = list.noun ?? "members";
   const query = list.search?.query.trim();
   const search = query ? { query, total: list.search!.total } : null;
@@ -129,13 +129,13 @@ export function memberListText(list: Pick<MemberList, "title" | "search" | "noun
 }
 
 /** The save dialog's choice that names a new watchlist rather than one already there. */
-export const NEW_WATCHLIST_CHOICE = "watchlist:new";
+const NEW_WATCHLIST_CHOICE = "watchlist:new";
 
 /**
  * Where a list can be saved: a new watchlist, then each watchlist there is,
  * in the order the app lists them, with how many tickers it holds.
  */
-export function watchlistTargetChoices(
+function watchlistTargetChoices(
   watchlists: readonly { id: string; name: string }[],
   tickers: ReadonlyMap<string, TickerRecord>,
 ) {
@@ -153,7 +153,7 @@ export function watchlistTargetChoices(
 }
 
 /** The requested name, numbered when a watchlist already has that name or id. */
-export function uniqueWatchlistName(requested: string, watchlists: readonly { id: string; name: string }[]): string {
+function uniqueWatchlistName(requested: string, watchlists: readonly { id: string; name: string }[]): string {
   const base = requested.trim();
   const taken = (name: string) => watchlists.some((list) =>
     list.name.toLowerCase() === name.toLowerCase() || list.id === slugifyName(name, "watchlist"));
@@ -168,7 +168,7 @@ export function uniqueWatchlistName(requested: string, watchlists: readonly { id
  * symbol on another venue (CCJ on Xetra) stays as it is: the member's listing
  * gets its own `SYMBOL:EXCHANGE` record, the way search opens a second listing.
  */
-export function planMemberWatchlist(
+function planMemberWatchlist(
   tickers: ReadonlyMap<string, TickerRecord>,
   watchlistId: string,
   members: readonly MemberListing[],
@@ -228,15 +228,16 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
     const text = memberListText(list, symbols.length);
     const noun = list.noun ?? "members";
     const openIn = () => {
-      void dialog.prompt<string>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<string>) => <ChoiceDialog {...context} title={text.openTitle}
-          choices={choices.map(({ id, label, description, detail, disabled }) => ({ id, label: t(label), description, detail, disabled }))} />,
+      void choiceDialog(dialog, {
+        title: text.openTitle,
+        choices: choices.map(({ id, label, description, detail, disabled }) => ({ id, label: t(label), description, detail, disabled })),
+        logSource: "shared.members-menu",
+        logMessage: "Open members in a function failed",
       }).then((templateId) => {
         const choice = choices.find((item) => item.id === templateId && !item.disabled);
         // CORR and RIPL resolve `arg` like the command bar; RRG and SIW read `symbols`.
         if (choice) createPaneFromTemplate(choice.id, { symbols: choice.symbols, arg: formatTickerListInput(choice.symbols) });
-      }).catch(logFailure("shared.members-menu", "Open members in a function failed"));
+      });
     };
     const saveToWatchlist = async (target: { name: string } | { id: string }) => {
       // The writes hold the app for about a second with a hundred names; let the dialog close on screen first.
@@ -293,13 +294,19 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
     };
     const nameNewWatchlist = () => {
       // 54 columns fill the dialog; the prompt's default field is wider and runs past its frame.
-      void dialog.prompt<string>({
+      void textPromptDialog(dialog, {
         closeOnClickOutside: true,
-        content: (context: PromptContext<string>) => <TextPromptDialog {...context} title={t("New Watchlist")}
-          body={[text.saveBody]} label={t("Name")} initialValue={list.watchlistName} confirmLabel={t("Save")} width={54} />,
+        title: t("New Watchlist"),
+        body: [text.saveBody],
+        label: t("Name"),
+        initialValue: list.watchlistName,
+        confirmLabel: t("Save"),
+        width: 54,
+        logSource: "shared.members-menu",
+        logMessage: "Open save members as watchlist prompt failed",
       }).then((name) => {
         if (name?.trim()) save({ name });
-      }).catch(logFailure("shared.members-menu", "Open save members as watchlist prompt failed"));
+      });
     };
     return [
       ...(choices.length ? [{ id: "members-open-in", label: t("Open Members In…"), onSelect: openIn }] : []),
@@ -310,16 +317,18 @@ export function useMembersMenu(registrationId: string, list: MemberList | null) 
           nameNewWatchlist();
           return;
         }
-        void dialog.prompt<string>({
-          closeOnClickOutside: true,
-          content: (context: PromptContext<string>) => <ChoiceDialog {...context} title={text.saveTitle}
-            choices={watchlistTargetChoices(watchlists, getState().tickers)} footer={text.saveBody} />,
+        void choiceDialog(dialog, {
+          title: text.saveTitle,
+          choices: watchlistTargetChoices(watchlists, getState().tickers),
+          footer: text.saveBody,
+          logSource: "shared.members-menu",
+          logMessage: "Open save members to watchlist choice failed",
         }).then((id) => {
           if (!id) return;
           // The name prompt opens once the choice has closed and handed focus back, so its field takes the keys.
           if (id === NEW_WATCHLIST_CHOICE) setTimeout(nameNewWatchlist, 0);
           else save({ id });
-        }).catch(logFailure("shared.members-menu", "Open save members to watchlist choice failed"));
+        });
       } },
     ];
   }, [createPaneFromTemplate, dialog, disabledPlugins, dispatch, getState, list, notify]);

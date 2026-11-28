@@ -2,10 +2,11 @@ import { useCallback, useMemo, type ReactNode } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { PerpDepthRow, PerpLiquidationMarket, PerpLiquidationPrint } from "../../../api-client/perps";
 import { ChartTableHeader, DataTableView, PaneStatusBody, QueryBar, useChartTableSelection, usePaneNoticeFooter, usePaneStatusFooter, useQueryBarSearch } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
+import { usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box } from "../../../ui";
+import { formatDay } from "../../../utils/day-format";
 import { SignInWall } from "../cloud/auth-actions";
 import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { UpgradeLabel } from "../shared/locked-rows";
@@ -28,7 +29,7 @@ export interface CascadeTabProps {
   onOpenMarket: (marketId: string) => void;
 }
 
-const stamp = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)} UTC` : "";
+const stamp = (s: string | null | undefined) => s ? `${formatDay(s, "no-year")} ${s.slice(11, 16)} UTC` : "";
 const magnitude = (n: number) => compact(Math.abs(n));
 const HOUR = 3_600_000;
 
@@ -52,10 +53,8 @@ export function Liquidations({ asset, onAssetChange, accessKey, width, height, f
   const [selectedPrint, setSelectedPrint] = usePluginPaneState<string | null>("perps:liquidation-print", null);
   const base = asset.trim().toUpperCase() || "BTC";
   const loader = useCallback((force: boolean) => loadPerpsLiquidations(base, accessKey, force), [base, accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsLiquidations(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
+  const resource = usePaneResource(loader, { focused: focused && !querySearch.active, initialData: () => cachedPerpsLiquidations(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope, autoRefresh: { intervalMs: 60_000 } });
   const data = resource.data?.payload;
-  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
   const declare = useCallback(() => data ? liquidationFreshness(data) : null, [data]);
   const line = useFreshnessStatusLine(declare, resource.updatedAt);
   usePaneStatusFooter({ registrationId: "perps:liquidations", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
@@ -123,10 +122,8 @@ export function Depth({ asset, onAssetChange, accessKey, width, height, focused,
   const [selectedId, setSelected] = usePluginPaneState<string | null>("perps:depth-selected", null);
   const base = asset.trim().toUpperCase() || "BTC";
   const loader = useCallback((force: boolean) => loadPerpsDepth(base, accessKey, force), [base, accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsDepth(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
+  const resource = usePaneResource(loader, { focused: focused && !querySearch.active, initialData: () => cachedPerpsDepth(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope, autoRefresh: { intervalMs: 300_000 } });
   const data = resource.data?.payload;
-  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 300_000 });
-  usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
   const declare = useCallback(() => data?.rows.length ? depthFreshness(data) : null, [data]);
   const line = useFreshnessStatusLine(declare, resource.updatedAt);
   usePaneStatusFooter({ registrationId: "perps:depth", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });

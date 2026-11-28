@@ -43,12 +43,5 @@ export const creditBoardsModule: PluginModule = {
       }, "credit", "sovereign"),
     },
   ],
-  setup(ctx) {
-    cdxBoardCache.attach(ctx.persistence);
-    sovrBoardCache.attach(ctx.persistence);
-  },
-  dispose() {
-    cdxBoardCache.reset();
-    sovrBoardCache.reset();
-  },
+  caches: [cdxBoardCache, sovrBoardCache],
 };

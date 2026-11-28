@@ -1,3 +1,4 @@
+import { errorMessage } from "../../../utils/errors";
 import { logFailure } from "../../../utils/log-failure";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { DataTableCell, DataTableVisibleRange, PaneFooterSegment } from "../../../components";
@@ -87,10 +88,6 @@ const QUOTE_REFRESH_MIN_BATCH = 8;
 const QUOTE_REFRESH_TIMEOUT_MS = 5_000;
 
 const EMPTY_STATE: BoardQuoteState = { quote: null, loading: false, error: null, stale: false };
-
-function errorMessage(value: unknown): string {
-  return value instanceof Error ? value.message : String(value);
-}
 
 function boardInstrument(symbol: string): InstrumentRef {
   return { symbol, exchange: "" };
@@ -738,6 +735,7 @@ export interface QuoteBoardCellFormat {
   sessionText?: boolean;
   /** The moment the status cell reads the venue's session at, in ms; the current time when omitted. */
   now?: number;
+  useObservation?: boolean;
   /** Called with the quote at its headline: a finite price. */
   formatPrice: (quote: Quote) => string;
   /** Called with the quote at its headline: a finite change; the text carries its sign. */
@@ -781,7 +779,7 @@ export function renderQuoteBoardCell(
   state: BoardQuoteState | undefined,
   format: QuoteBoardCellFormat,
 ): DataTableCell {
-  const quote = state?.quote ? boardHeadlineQuote(state.quote) : state?.quote;
+  const quote = state?.quote && !format.useObservation ? boardHeadlineQuote(state.quote) : state?.quote;
   // One row must not mix a loading marker with a no-data marker.
   if (isBoardRowLoading(state)) return { text: kind === "status" ? "" : "…", color: colors.textDim };
 

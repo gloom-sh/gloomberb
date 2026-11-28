@@ -60,7 +60,7 @@ export function chartSeriesEvidence(
   };
 }
 
-export function chartSeriesEvidenceWithinRange(
+function chartSeriesEvidenceWithinRange(
   symbol: string,
   points: PricePoint[],
   range: TimeRange,

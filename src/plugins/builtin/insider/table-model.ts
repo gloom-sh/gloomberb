@@ -1,5 +1,6 @@
 import type { DataTableColumn } from "../../../components";
-import { MISSING_VALUE, displayWidth, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatCurrency, formatNumber } from "../../../utils/format";
+import { COLUMN_GAP, TABLE_PADDING, fitColumnWidth, sumColumnWidths } from "../shared/column-fit";
 import { formatFilingDate, formatShortDate } from "../../../utils/datetime-format";
 import { isAmendedInsiderFiling } from "./amendments";
 import { insiderSecurityTag, insiderTypeLabel, insiderTypeTone, isOpenMarketTrade, type InsiderTypeTone } from "./display";
@@ -15,8 +16,6 @@ export type InsiderColumnId = "date" | "insider" | "role" | "type" | "security" 
 
 export interface InsiderColumn extends DataTableColumn {
   id: InsiderColumnId;
-  /** The type column has room for the 10b5-1 marker. */
-  plan?: boolean;
   /**
    * The currency the CCY column names, and that Price and Value are written
    * in without a sign, as PF writes LAST beside CCY. Unset when the amounts
@@ -38,7 +37,11 @@ export interface InsiderTableRow {
   tone: InsiderTypeTone;
   /** An amended filing (Form 4/A), marked after the type at every width. */
   amended: boolean;
-  /** An open-market trade on a form with the Rule 10b5-1 box checked, marked after the type when there is room. */
+  /**
+   * An open-market trade on a form with the Rule 10b5-1 box checked. Its type
+   * reads in the plan tone the chart's Plan sales and Plan buys name once,
+   * rather than "10b5-1" after every row; the export keeps the words.
+   */
   plan: boolean;
   security: string | null;
   shares: number | null;
@@ -132,71 +135,59 @@ export function insiderCurrencyText(row: Pick<InsiderTableRow, "price" | "value"
   return row.price == null && row.value == null ? MISSING_VALUE : currency;
 }
 
-/** The quieter words after the type: "4/A" always, "10b5-1" when the column has room. */
-export function insiderTypeMarkers(row: InsiderTableRow, plan: boolean): string[] {
-  return [...(row.amended ? ["4/A"] : []), ...(plan && row.plan ? ["10b5-1"] : [])];
+/** The quieter word after the type: "4/A", an amended filing. */
+export function insiderTypeMarkers(row: InsiderTableRow): string[] {
+  return row.amended ? ["4/A"] : [];
 }
 
-export function insiderTypeText(row: InsiderTableRow, plan: boolean): string {
-  return [row.type, ...insiderTypeMarkers(row, plan)].filter(Boolean).join(" ");
-}
-
-/** Cells left and right of the columns, and between two of them. */
-const TABLE_PADDING = 2;
-const COLUMN_GAP = 1;
-/** The kit widens a column to fit its header plus the sort arrow. */
-const HEADER_EXTRA = 2;
-
-function fitWidth(texts: readonly string[], label: string, max: number): number {
-  const widest = texts.reduce((width, text) => Math.max(width, displayWidth(text)), 0);
-  return Math.max(displayWidth(label) + HEADER_EXTRA, Math.min(max, widest));
+/** The type as the cell reads it; `exported`, as CSV writes it, adds "10b5-1" to a plan trade. */
+export function insiderTypeText(row: InsiderTableRow, exported = false): string {
+  return [row.type, ...insiderTypeMarkers(row), ...(exported && row.plan ? ["10b5-1"] : [])].filter(Boolean).join(" ");
 }
 
 /**
  * The columns that fit `width` terminal cells (the desktop passes its width
  * in the same cells). Every column takes the width its widest value needs.
  * When the pane runs short, the role goes first, then the price, the
- * 10b5-1 marker, the security and the share count, and only then does the name
+ * security and the share count, and only then does the name
  * column shrink below 16 cells (to 6, and 4 with a two-digit year), so a narrow pane still reads date, name,
  * type and value. With `currency` (Form 4 amounts read by someone whose base
  * currency is not the dollar), CCY follows Value and is kept with it, as PF
  * shows CCY once a row is in another currency than the totals.
  */
 export function buildInsiderColumns(width: number, rows: readonly InsiderTableRow[], currency?: string): InsiderColumn[] {
-  const anyPlan = rows.some((row) => row.plan);
   const anySecurity = rows.some((row) => row.security);
   const names = rows.map((row) => row.name);
   const widths = {
-    date: fitWidth(rows.map((row) => formatInsiderDate(row.date)), "Date", 11),
-    insider: fitWidth(names, "Insider", 28),
-    role: fitWidth(rows.map((row) => row.role), "Role", 12),
-    typeBase: fitWidth(rows.map((row) => insiderTypeText(row, false)), "Type", 12),
-    typePlan: fitWidth(rows.map((row) => insiderTypeText(row, true)), "Type", 19),
-    security: fitWidth(rows.map((row) => row.security ?? ""), "Security", 12),
-    shares: fitWidth(rows.map((row) => formatInsiderShares(row.shares)), "Shares", 9),
-    price: fitWidth(rows.map((row) => formatInsiderPrice(row.price, currency)), "Price", 10),
-    value: fitWidth(rows.map((row) => formatInsiderValue(row.value, currency)), "Value", 9),
-    ccy: currency ? fitWidth(rows.map((row) => insiderCurrencyText(row, currency)), "CCY", 4) : 0,
+    date: fitColumnWidth(rows.map((row) => formatInsiderDate(row.date)), "Date", 11),
+    insider: fitColumnWidth(names, "Insider", 28),
+    role: fitColumnWidth(rows.map((row) => row.role), "Role", 12),
+    type: fitColumnWidth(rows.map((row) => insiderTypeText(row)), "Type", 12),
+    security: fitColumnWidth(rows.map((row) => row.security ?? ""), "Security", 12),
+    shares: fitColumnWidth(rows.map((row) => formatInsiderShares(row.shares)), "Shares", 9),
+    price: fitColumnWidth(rows.map((row) => formatInsiderPrice(row.price, currency)), "Price", 10),
+    value: fitColumnWidth(rows.map((row) => formatInsiderValue(row.value, currency)), "Value", 9),
+    ccy: currency ? fitColumnWidth(rows.map((row) => insiderCurrencyText(row, currency)), "CCY", 4) : 0,
   };
-  const show = { role: true, price: true, plan: anyPlan, security: anySecurity, shares: true };
+  const show = { role: true, price: true, security: anySecurity, shares: true };
   let insider = widths.insider;
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
-  const total = () => [
+  const total = () => sumColumnWidths([
     widths.date,
     insider,
     show.role ? widths.role : 0,
-    show.plan ? widths.typePlan : widths.typeBase,
+    widths.type,
     show.security ? widths.security : 0,
     show.shares ? widths.shares : 0,
     show.price ? widths.price : 0,
     widths.value,
     widths.ccy,
-  ].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0);
+  ]);
   const shrinkInsider = (floor: number) => {
     insider = Math.max(Math.min(insider, floor), insider - Math.max(0, total() - available));
   };
   shrinkInsider(16);
-  for (const drop of ["role", "price", "plan", "security", "shares"] as const) {
+  for (const drop of ["role", "price", "security", "shares"] as const) {
     if (total() <= available) break;
     show[drop] = false;
     shrinkInsider(16);
@@ -206,18 +197,17 @@ export function buildInsiderColumns(width: number, rows: readonly InsiderTableRo
   // its century and the name its last cells, before any column is cut.
   const compact = total() > available;
   if (compact) {
-    widths.date = fitWidth(rows.map((row) => formatInsiderDate(row.date, true)), "Date", 10);
+    widths.date = fitColumnWidth(rows.map((row) => formatInsiderDate(row.date, true)), "Date", 10);
     shrinkInsider(3);
   }
   // A dropped column can leave room for more of the names.
   insider = Math.min(widths.insider, insider + Math.max(0, available - total()));
 
-  const typeWidth = show.plan ? widths.typePlan : widths.typeBase;
   const columns: InsiderColumn[] = [
     { id: "date", label: "Date", width: widths.date, align: "left", ...(compact ? { compact } : {}) },
     { id: "insider", label: "Insider", width: insider, align: "left" },
     ...(show.role ? [{ id: "role" as const, label: "Role", width: widths.role, align: "left" as const }] : []),
-    { id: "type", label: "Type", width: typeWidth, align: "left", plan: show.plan },
+    { id: "type", label: "Type", width: widths.type, align: "left" },
     ...(show.security ? [{ id: "security" as const, label: "Security", width: widths.security, align: "left" as const }] : []),
     ...(show.shares ? [{ id: "shares" as const, label: "Shares", width: widths.shares, align: "right" as const }] : []),
     ...(show.price ? [{ id: "price" as const, label: "Price", width: widths.price, align: "right" as const, currency }] : []),

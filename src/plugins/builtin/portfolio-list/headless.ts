@@ -39,7 +39,7 @@ import { futuresQuantityText, isFuturesTicker } from "../../../portfolio/futures
 import { dailyFuturesHistory, loadPortfolioFuturesTerms } from "../../../portfolio/futures-terms";
 import { loadPurchaseDateCostFx } from "../../../portfolio/cost-fx";
 import {
-  EXTENDED_SESSION_LABELS, extendedPrintTime, getCompletedRegularSessionDisplay, quoteHeadlineTime, type ExtendedSession,
+  extendedPrintTime, getCompletedRegularSessionDisplay, quoteHeadlineTime, type ExtendedSession,
 } from "../../../market-data/market/status";
 import {
   BROKER_ACCOUNT_MISSING_NOTE,
@@ -55,11 +55,11 @@ import {
 import { currencyPriceMinDigits, formatMarketPrice, formatMarketQuantity } from "../../../market-data/market/format";
 import { resolvePortfolioTotalsCurrency } from "./summary/totals";
 import { bookSource, brokerNameOf, quoteFreshnessFields } from "../shared/report-freshness";
-import { extendedPrintTimeColumn, withExtendedPrintTime } from "../shared/extended-print";
+import { extendedPriceColumn, extendedPrintTimeColumn } from "../shared/extended-print";
 import { importedFromText } from "./imported-from";
 import { describeCollections } from "../../../portfolio/collection-name";
 import { currentListingName } from "../../../tickers/listing-name";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { clampLimit, limitOption } from "../shared/headless-options";
 import { readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { loadPeriodPnl, periodBasisText, periodBoughtText, periodCurrencyParts, periodFxLabel, periodFxMarks, periodUnpricedText } from "./period-pnl";
 
@@ -148,21 +148,15 @@ const TARGET_COLUMNS: HeadlessPaneColumn[] = [
 ];
 
 /** The pre-market or after-hours print and its move from the regular close, for the rows that have one. */
-function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
-  return {
-    key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
-    align: "right",
-    format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? `${unitMoney("priceCurrency")(value, row)} ${percent(row.extendedChangePercent)}`
-      : formatNumber(undefined),
-    // The text report dates the print beside it, as `quote` does: Last is the close, dated at the close.
-    textFormat: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? withExtendedPrintTime(`${unitMoney("priceCurrency")(value, row)} ${percent(row.extendedChangePercent)}`, row)
-      : formatNumber(undefined),
+const extendedColumn = (session: ExtendedSession): HeadlessPaneColumn => extendedPriceColumn(
+  session,
+  (value, row) => `${unitMoney("priceCurrency")(value, row)} ${percent(row.extendedChangePercent)}`,
+  {
+    empty: () => formatNumber(undefined),
+    withTimeInText: true,
     description: "Measured from the regular close in Last.",
-  };
-}
+  },
+);
 
 /** `columns` with an extended column after Chg for each session a row has a print for. */
 function withExtendedColumns(columns: HeadlessPaneColumn[], sessions: readonly ExtendedSession[]): HeadlessPaneColumn[] {
@@ -223,10 +217,7 @@ function exposure(marketValue: number | null): number {
   return marketValue == null ? -1 : Math.abs(marketValue);
 }
 
-function rowLimit(value: unknown): number {
-  const limit = Math.trunc(Number(value ?? DEFAULT_ROW_LIMIT));
-  return Number.isFinite(limit) ? Math.min(MAX_ROW_LIMIT, Math.max(1, limit)) : DEFAULT_ROW_LIMIT;
-}
+const rowLimit = (value: unknown) => clampLimit(value, DEFAULT_ROW_LIMIT, MAX_ROW_LIMIT);
 
 function bySymbol(left: TickerRecord, right: TickerRecord): number {
   return left.metadata.ticker.localeCompare(right.metadata.ticker);
@@ -341,12 +332,11 @@ function withPositionLines(
   };
 }
 
-async function portfolioHoldings(
+async function loadPortfolioQuoteInputs(
   target: Extract<CollectionMatch, { kind: "portfolio" }>,
-  limit: number,
   ctx: HeadlessPaneContext,
-  basis: PortfolioValuationBasis,
-): Promise<HeadlessRowsResult> {
+  options: { datesChangeBasis?: boolean; settlement: boolean; loadPurchaseDateFx?: boolean },
+) {
   const resolved = await ctx.resolvePortfolio?.(target.id);
   if (!resolved) throw new Error(`Holdings for ${target.id} are not available here.`);
   const tickers = [...resolved.tickers].sort(bySymbol);
@@ -354,14 +344,30 @@ async function portfolioHoldings(
   const futuresHeld = tickers.filter((ticker) => isFuturesTicker(ticker)
     && ticker.metadata.positions.some((position) => position.portfolio === target.id && position.shares !== 0));
   const [quotes, futures, purchaseDateFx] = await Promise.all([
-    loadCollectionQuotes(tickers, target, ctx.marketData, { datesChangeBasis: basis === "regular-close" }),
+    loadCollectionQuotes(tickers, target, ctx.marketData, options.datesChangeBasis ? { datesChangeBasis: true } : undefined),
     loadPortfolioFuturesTerms(futuresHeld, {
-      settlement: basis === "regular-close",
+      settlement: options.settlement,
       sources: { history: dailyFuturesHistory(ctx.marketData) },
     }),
-    loadPurchaseDateCostFx(tickers, { into: currency, history: ctx.apiClient, portfolioId: target.id }),
+    options.loadPurchaseDateFx
+      ? loadPurchaseDateCostFx(tickers, { into: currency, history: ctx.apiClient, portfolioId: target.id })
+      : Promise.resolve(undefined),
   ]);
   ctx.signal.throwIfAborted();
+  return { resolved, tickers, currency, quotes, futures, purchaseDateFx };
+}
+
+async function portfolioHoldings(
+  target: Extract<CollectionMatch, { kind: "portfolio" }>,
+  limit: number,
+  ctx: HeadlessPaneContext,
+  basis: PortfolioValuationBasis,
+): Promise<HeadlessRowsResult> {
+  const { resolved, tickers, currency, quotes, futures, purchaseDateFx } = await loadPortfolioQuoteInputs(target, ctx, {
+    datesChangeBasis: basis === "regular-close",
+    settlement: basis === "regular-close",
+    loadPurchaseDateFx: true,
+  });
   const toBase = createBaseConverter(ctx.marketData, currency);
   const valuation = await valuePortfolioPositions({
     tickers,
@@ -599,17 +605,7 @@ async function portfolioPeriodHoldings(
   ctx: HeadlessPaneContext,
   window: PriceWindow,
 ): Promise<HeadlessRowsResult> {
-  const resolved = await ctx.resolvePortfolio?.(target.id);
-  if (!resolved) throw new Error(`Holdings for ${target.id} are not available here.`);
-  const tickers = [...resolved.tickers].sort(bySymbol);
-  const currency = resolvePortfolioTotalsCurrency(target.portfolio, ctx.config.baseCurrency);
-  const futuresHeld = tickers.filter((ticker) => isFuturesTicker(ticker)
-    && ticker.metadata.positions.some((position) => position.portfolio === target.id && position.shares !== 0));
-  const [quotes, futures] = await Promise.all([
-    loadCollectionQuotes(tickers, target, ctx.marketData),
-    loadPortfolioFuturesTerms(futuresHeld, { settlement: true, sources: { history: dailyFuturesHistory(ctx.marketData) } }),
-  ]);
-  ctx.signal.throwIfAborted();
+  const { resolved, tickers, currency, quotes, futures } = await loadPortfolioQuoteInputs(target, ctx, { settlement: true });
   const result = await loadPeriodPnl({ tickers, portfolioId: target.id, currency, window, provider: ctx.marketData, fxHistory: ctx.apiClient, quotes, futures });
   ctx.signal.throwIfAborted();
   const bySymbolTicker = new Map(tickers.map((ticker) => [ticker.metadata.ticker, ticker]));
@@ -760,39 +756,13 @@ export const collectionHoldingsHeadless: HeadlessPaneDefinition<"rows"> = {
     description: "Portfolio or watchlist ID or name. Leave it out for the first portfolio.",
   },
   options: [
+    limitOption({ defaultValue: DEFAULT_ROW_LIMIT, maximum: MAX_ROW_LIMIT, description: "Largest positions, or first tickers, to list. Totals cover all of them." }),
+    { key: "close", type: "boolean", defaultValue: false, settingKey: "valueAtClose", description: "Value the portfolio at the regular close, not the latest print: Value is Last times the shares." },
     {
-      key: "limit",
-      shot: REPORT_ROWS,
-      type: "integer",
-      defaultValue: DEFAULT_ROW_LIMIT,
-      minimum: 1,
-      maximum: MAX_ROW_LIMIT,
-      description: "Largest positions, or first tickers, to list. Totals cover all of them.",
-    },
-    {
-      key: "close",
-      type: "boolean",
-      defaultValue: false,
-      settingKey: "valueAtClose",
-      description: "Value the portfolio at the regular close, not the latest print: Value is Last times the shares.",
-    },
-    {
-      key: "from",
-      type: "string",
-      defaultValue: "",
-      placeholder: "date",
-      settingKey: "pnlFrom",
-      example: "--from 2026-10-26 --to 2026-10-30",
+      key: "from", type: "string", defaultValue: "", placeholder: "date", settingKey: "pnlFrom", example: "--from 2026-10-26 --to 2026-10-30",
       description: "P&L and contribution by position from the close before this date, as portfolio show --from reads them, instead of P&L since cost.",
     },
-    {
-      key: "to",
-      type: "string",
-      defaultValue: "",
-      placeholder: "date",
-      settingKey: "pnlTo",
-      description: "The period's last day, with from; the latest close when left out.",
-    },
+    { key: "to", type: "string", defaultValue: "", placeholder: "date", settingKey: "pnlTo", description: "The period's last day, with from; the latest close when left out." },
   ],
   columns: POSITION_COLUMNS,
   describe: (args) => (args.rawArgument ? `Holdings | ${args.rawArgument}` : "Holdings"),

@@ -10,8 +10,8 @@ import type { Quote } from "../../../types/financials";
  * window that judges every tick (price alerts) still sees the ones the batch
  * left out. Other events on the same stream keep their order.
  */
-export const QUOTE_EVENT_BATCH_KIND = "quote-batch";
-export const QUOTE_EVENT_BATCH_INTERVAL_MS = 40;
+const QUOTE_EVENT_BATCH_KIND = "quote-batch";
+const QUOTE_EVENT_BATCH_INTERVAL_MS = 40;
 
 interface QuoteEventBatch {
   kind: typeof QUOTE_EVENT_BATCH_KIND;

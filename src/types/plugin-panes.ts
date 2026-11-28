@@ -36,6 +36,13 @@ export interface PanePortableShareDef {
     /** The moment the pane's layout tab has its crosshair pinned at, so a link opens there. */
     pinnedTime?: number;
   }): PaneInstanceConfig;
+  /**
+   * Rewrites the pane's state before it leaves the device, on every publish,
+   * for a field private by its value rather than its name: ERN's Names keeps
+   * a sector fund but never one of the person's lists. `private.state` and
+   * the sensitive-name filter still apply to what it returns.
+   */
+  prepareState?(state: Readonly<Record<string, unknown>>): Record<string, unknown>;
 }
 
 export interface PaneDef {

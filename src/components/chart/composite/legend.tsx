@@ -115,7 +115,7 @@ function sharedLegendContext(series: readonly ResolvedSeries[]): string | null {
 }
 
 /** The shortest a legend name reads on one line: its first word whole, with one `…` for the rest ("Bab…"). */
-export function shortestLegendName(label: string): string {
+function shortestLegendName(label: string): string {
   const words = nameWords(label);
   return words.length > 1 ? `${words[0]}…` : label;
 }
@@ -127,7 +127,7 @@ export function shortestLegendName(label: string): string {
  * (`US…corporate OAS` beside `US high yield OAS`). At the least its first
  * word, whatever `width` is. A name that fits is whole.
  */
-export function wholeWordsCut(label: string, width: number, others: readonly string[] = []): string {
+function wholeWordsCut(label: string, width: number, others: readonly string[] = []): string {
   if (displayWidth(label) <= width) return label;
   const { cuts, shown, tellsApart } = nameCuts(label, others);
   const fitting = cuts.filter((cut) => displayWidth(shown(cut)) <= width);
@@ -141,7 +141,7 @@ export function wholeWordsCut(label: string, width: number, others: readonly str
  * whole, and "IV 30d quote" reads "IV…quote". A name no other one shares its
  * first word with reads as `shortestLegendName` has it.
  */
-export function shortestLegendNameAmong(label: string, others: readonly string[]): string {
+function shortestLegendNameAmong(label: string, others: readonly string[]): string {
   const { cuts, shown, tellsApart } = nameCuts(label, others);
   const apart = cuts.filter(tellsApart).map(shown);
   return apart.length ? apart.reduce((shortest, text) => displayWidth(text) < displayWidth(shortest) ? text : shortest) : label;

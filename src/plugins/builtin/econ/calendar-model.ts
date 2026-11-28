@@ -1,5 +1,6 @@
 import { createPluginCache } from "../../../data/plugin-cache";
-import type { DataTableColumn } from "../../../components";
+import type { DataTableCell, DataTableColumn } from "../../../components";
+import { narrowColumnsForName } from "../../../components/ui/table-layout";
 import { colors } from "../../../theme/colors";
 import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { fetchEconCalendar } from "./calendar-source";
@@ -160,7 +161,7 @@ export function shortCalendarEnd(
  * central bank's next decision, or a country's next CPI release as its
  * statistics office schedules it.
  */
-export function pastReleaseListing(event: Pick<EconEvent, "pastListing">): boolean {
+function pastReleaseListing(event: Pick<EconEvent, "pastListing">): boolean {
   return event.pastListing === true;
 }
 
@@ -279,6 +280,33 @@ function euroAreaMember(event: Pick<EconEvent, "country" | "event">): string | n
 /** The country a row is for, as the calendar shows it: a national euro-area release's member, otherwise its own. */
 export function eventCountry(event: Pick<EconEvent, "country" | "event">): string {
   return euroAreaMember(event) ?? event.country;
+}
+
+/**
+ * The adjective that names a country, which a release's name may start with:
+ * the euro area's members, whose national releases both feeds write so, and
+ * the other countries the calendar lists.
+ */
+const COUNTRY_ADJECTIVES: Readonly<Record<string, string>> = {
+  ...EURO_AREA_MEMBERS,
+  Australian: "AU", Brazilian: "BR", British: "GB", Canadian: "CA", Chinese: "CN", Danish: "DK", Indian: "IN",
+  Indonesian: "ID", Japanese: "JP", Mexican: "MX", Norwegian: "NO", Polish: "PL", Russian: "RU", Swedish: "SE",
+  Swiss: "CH", Turkish: "TR",
+};
+
+/**
+ * A row's name as the list shows it. Beside the country column
+ * (`countryShown`) a name that starts with the adjective of the row's country
+ * leaves it out, the column saying it once: "French Inflation Rate YoY Prel"
+ * on an FR row reads "Inflation Rate YoY Prel". Without the column (a filter
+ * on one country) the name keeps it. The detail, the search and the exports
+ * read the whole name (econEventName).
+ */
+export function listedEventName(event: Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">, countryShown: boolean): string {
+  const name = econEventName(event);
+  if (!countryShown) return name;
+  const adjective = /^([A-Z][a-z]+) (?=\S)/.exec(name);
+  return adjective && COUNTRY_ADJECTIVES[adjective[1]!] === eventCountry(event) ? name.slice(adjective[0].length) : name;
 }
 
 /** What the feeds call the Fed's rate decision. */
@@ -541,13 +569,52 @@ export function figureGap(
  * A release past its time with a figure due is not: figureGap says it is
  * awaited for a day, and its blank after that is a figure the source lost.
  */
-export function actualMayBeBlank(
+function actualMayBeBlank(
   event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date" | "time" | "timeNote">,
   now: number,
 ): boolean {
   if (event.actual?.trim()) return false;
   if (!event.forecast?.trim() && !event.prior?.trim()) return true;
   return now < event.date.getTime() + (hasNoReleaseTime(event) ? AWAITING_FIGURE_MS : 0);
+}
+
+/**
+ * Whether a row prints a figure, by the two a row has beside `field`: a speech
+ * or a meeting has none of the three. A feed's row names no kind, so a release
+ * that lost all three reads as one that prints none, and is not named.
+ */
+function printsFigureBeside(event: Pick<EconEvent, "actual" | "forecast" | "prior">, field: "forecast" | "prior"): boolean {
+  const others = field === "forecast" ? [event.actual, event.prior] : [event.actual, event.forecast];
+  return others.some((figure) => !!figure?.trim());
+}
+
+/**
+ * Whether a row's FORECAST is blank with no consensus missing: the row prints
+ * no figure (a speech, a meeting: neither an actual nor a prior), or it is
+ * past the end of the listing, where no feed carries a consensus yet.
+ *
+ * A figure row inside the listing owes one. The calendar cannot tell a release
+ * nobody forecasts, or one whose consensus is not in yet, from a forecast it
+ * lost: all three arrive as a null `forecast`. So a capture whose every such
+ * row has none fails on the column, and the pane's own note on a row still to
+ * come (NO_CONSENSUS_NOTE) is the only word on which it is.
+ */
+function forecastMayBeBlank(event: Pick<EconEvent, "actual" | "forecast" | "prior" | "pastListing">): boolean {
+  if (event.forecast?.trim()) return false;
+  return pastReleaseListing(event) || !printsFigureBeside(event, "forecast");
+}
+
+/**
+ * Whether a row's PRIOR is blank with nothing missing: the row prints no
+ * figure (neither an actual nor a forecast).
+ *
+ * A figure row owes one. An indicator's first release has no prior either,
+ * which the calendar cannot tell from a prior it lost (both a null `prior`),
+ * so a capture whose every figure row has none fails on the column.
+ */
+function priorMayBeBlank(event: Pick<EconEvent, "actual" | "forecast" | "prior">): boolean {
+  if (event.prior?.trim()) return false;
+  return !printsFigureBeside(event, "prior");
 }
 
 /** What a release awaiting its figure says in place of it: "due 07:00 UTC, awaiting figure". */
@@ -564,10 +631,54 @@ export function figureGapText(event: Pick<EconEvent, "date">, gap: "awaiting" | 
 }
 
 /** The ACTUAL cell of a release awaiting its figure, where the whole text has no room; the row's time is beside it. */
-export const AWAITING_FIGURE_CELL = "awaiting";
+const AWAITING_FIGURE_CELL = "awaiting";
 
 /** The ACTUAL cell of a release whose source has no figure; the footer says it whole. */
-export const NO_FIGURE_CELL = "no figure";
+const NO_FIGURE_CELL = "no figure";
+
+/**
+ * The cells of the widest word a row of `events` says under ACTUAL in place of
+ * its figure (`awaiting`, `no figure`), at `now`; 0 where none does. The
+ * column keeps them whatever the names need: a word is not a long figure.
+ */
+export function actualNoteWidth(events: readonly EconEvent[], now: number, calendar: readonly EconEvent[] = []): number {
+  let widest = 0;
+  for (const event of events) {
+    const gap = figureGap(event, now, calendar);
+    if (gap) widest = Math.max(widest, displayWidth(gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL));
+  }
+  return widest;
+}
+
+/**
+ * A release's ACTUAL, FORECAST or PRIOR cell. An amount reads with its
+ * currency beside it (-556.5B JPY), where the server says it. A dash is
+ * marked as one that may be blank only where the row says no figure is owed
+ * (actualMayBeBlank, forecastMayBeBlank, priorMayBeBlank), never by the dash.
+ */
+export function econFigureCell(
+  field: "actual" | "forecast" | "prior",
+  event: EconEvent,
+  now: number,
+  calendar: readonly EconEvent[] = [],
+): DataTableCell {
+  if (field === "actual") {
+    // A release past its time whose figure is not in yet says so, or that the source has none; the footer says it whole.
+    const gap = figureGap(event, now, calendar);
+    if (gap) return { text: gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL, color: colors.warning, value: null };
+    return {
+      text: figureWithCurrency(event.actual, event.currency) ?? MISSING_VALUE,
+      color: actualColor(event.actual, event.forecast),
+      ...(actualMayBeBlank(event, now) ? { mayBeBlank: true } : {}),
+    };
+  }
+  const mayBeBlank = field === "forecast" ? forecastMayBeBlank(event) : priorMayBeBlank(event);
+  return {
+    text: figureWithCurrency(event[field], event.currency) ?? MISSING_VALUE,
+    color: colors.textDim,
+    ...(mayBeBlank ? { mayBeBlank: true } : {}),
+  };
+}
 
 /** What a dash under Forecast means on a row still to come. */
 export const NO_CONSENSUS_NOTE = `${MISSING_VALUE} forecast = no consensus yet`;
@@ -701,10 +812,6 @@ export function pendingHighImpactPrints(events: readonly EconEvent[], now: numbe
   });
 }
 
-export function hasPendingHighImpactPrint(events: readonly EconEvent[], now: number): boolean {
-  return pendingHighImpactPrints(events, now).length > 0;
-}
-
 /** High-impact rows that were blank in `previous` and have an actual in `next`. */
 export function landedHighImpactPrints(
   previous: ReadonlyMap<string, string | null>,
@@ -773,6 +880,99 @@ export function valueColumnWidth(events: readonly EconEvent[], key: "actual" | "
   let width = base;
   for (const event of events) width = Math.max(width, Math.min(MAX_VALUE_WIDTH, displayWidth(figureWithCurrency(event[key], event.currency) ?? "")));
   return width;
+}
+
+/** The cells a release's name needs to say which one it is (`GDP Growth Rate QoQ`, `Inflation Rate YoY`). */
+const READABLE_NAME_CELLS = 20;
+
+/**
+ * The figure columns a narrow calendar leaves out, least needed first, each
+ * with the cells the event names keep before it goes. PRIOR is context, so it
+ * leaves once the names would get under READABLE_NAME_CELLS: in the 9 the
+ * three columns left them in a pane 53 cells wide, two rows of one hour both
+ * read `GDP Growt…`. The forecast is what a print is read against, so the
+ * names give up more before it goes. The actual always stays, and an event's
+ * detail has all three.
+ */
+const ECON_FIGURE_DROP_ORDER: readonly { id: string; namesUnder: number }[] = [
+  { id: "prior", namesUnder: READABLE_NAME_CELLS },
+  { id: "forecast", namesUnder: 14 },
+];
+
+/**
+ * The cells a plain figure takes (`105.28B`, `-24 Bcf`, `36.00%`): a column
+ * keeps these, and its header, whatever the names need. A column whose
+ * figures are all shorter (`0.4%`) is already as narrow as its widest.
+ */
+const PLAIN_FIGURE_WIDTH = 7;
+
+/** The fewest cells `column` gives up to: a plain figure's, and under ACTUAL the word a row says in place of one (`actualNote`). */
+const plainFigureCells = (column: { id: string }, actualNote: number) =>
+  (column.id === "actual" ? Math.max(PLAIN_FIGURE_WIDTH, actualNote) : PLAIN_FIGURE_WIDTH);
+
+/**
+ * The cells the longest event name listed takes, as the list shows it beside
+ * its country (`countryShown`, listedEventName): a calendar of short names
+ * (`Retail Sales`) asks for no more.
+ */
+export function longestEventName(events: readonly Pick<EconEvent, "country" | "event" | "actual" | "forecast" | "prior">[], countryShown = false): number {
+  let longest = 0;
+  for (const event of events) longest = Math.max(longest, displayWidth(listedEventName(event, countryShown)));
+  return longest;
+}
+
+/**
+ * The figure columns a calendar keeps at its width, as every narrow table
+ * decides: the name that says what a row is stays readable, and the least
+ * needed columns leave first (ECON_FIGURE_DROP_ORDER). Once one has left, the
+ * columns kept give the names what a long figure took before another goes
+ * (narrowColumnsForName). `roomFor` is the cells the event column gets
+ * beside the columns given; `longestName` what the names listed take at most
+ * (longestEventName), `floor` the fewest cells the column is ever drawn at,
+ * and `actualNote` the word a row says under ACTUAL in place of a figure
+ * (actualNoteWidth), which ACTUAL keeps whole. The widths are the ones the
+ * choice is made at; `figuresBesideNames` then gives the names the rest of
+ * what a long figure took.
+ */
+export function keptFigureColumns<C extends { id: string; width: number; label?: string }>(
+  figures: readonly C[],
+  roomFor: (kept: readonly C[]) => number,
+  longestName: number,
+  floor: number,
+  actualNote = 0,
+): C[] {
+  const names = (cells: number) => Math.max(floor, Math.min(cells, longestName));
+  const fit = (kept: readonly C[]) => (kept.length < figures.length
+    ? narrowColumnsForName(kept, roomFor, names(READABLE_NAME_CELLS), (column) => plainFigureCells(column, actualNote))
+    : [...kept]);
+  let kept = [...figures];
+  for (const { id, namesUnder } of ECON_FIGURE_DROP_ORDER) {
+    const fitted = fit(kept);
+    if (roomFor(fitted) >= names(namesUnder)) return fitted;
+    kept = kept.filter((column) => column.id !== id);
+  }
+  return fit(kept);
+}
+
+/**
+ * The figure columns kept (keptFigureColumns) as wide as the names leave
+ * them: at any width, a column keeps more than a plain figure's cells (or its
+ * header's) only while the longest name listed is whole beside it. A column
+ * is as wide as the widest figure listed, so one long figure weeks out held
+ * every row's name to `French Inflation Rate …` beside a column of `2.9%`;
+ * now that figure is cut, and whole in its detail. `roomFor` is the cells the
+ * event column gets beside the columns given, under the headers drawn, and
+ * `actualNote` the word a row says under ACTUAL in place of a figure
+ * (actualNoteWidth), which ACTUAL keeps whole.
+ */
+export function figuresBesideNames<C extends { id: string; width: number; label?: string }>(
+  figures: readonly C[],
+  roomFor: (kept: readonly C[]) => number,
+  longestName: number,
+  floor: number,
+  actualNote = 0,
+): C[] {
+  return narrowColumnsForName(figures, roomFor, Math.max(floor, longestName), (column) => plainFigureCells(column, actualNote));
 }
 
 export function actualColor(actual: string | null, forecast: string | null): string {

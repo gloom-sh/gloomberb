@@ -133,7 +133,7 @@ function noticeCell(notice: NotificationLogEntry, column: DataTableColumn, now: 
  * Mark all read: the missed notices, and each unread channel the way opening
  * it in Chat reads it. Team cards stay pending; an invite is answered in TEAM.
  */
-export function markAllUnreadRead(controller: Pick<ChatController, "markAllChannelsRead">): void {
+function markAllUnreadRead(controller: Pick<ChatController, "markAllChannelsRead">): void {
   markNotificationLogRead();
   controller.markAllChannelsRead();
 }

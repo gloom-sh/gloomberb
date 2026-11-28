@@ -1,23 +1,17 @@
 import { memo } from "react";
-import { Box, Text } from "../../../../ui";
+import { Box } from "../../../../ui";
 import { accentRuleOverlayStyle } from "../../../../components/ui/quote";
 import { useThemeColors } from "../../../../theme/theme-context";
-import { t } from "../../../../i18n";
 import { useAppLanguage } from "../../../../i18n/react";
-import { normalizeInlinePreview } from "../layout";
-import { DesktopChatMessageImages } from "../attachments/desktop";
-import { chatReplyQuoteText } from "../attachments/model";
-import { chatAuthorName, heldMessage, isQuotedAuthorManagedBot } from "../ghost-user";
-import { ChatBotIcon } from "./person-icons";
-import { ChatMessageActions, ChatMessageHeader, chatHeaderFitsEveryIcon } from "./header";
-import { MESSAGE_ACTION_WIDTH } from "../layout";
+import { DesktopChatMessageImages, type ChatPreviewScope } from "../attachments/desktop";
+import { chatAuthorName } from "../ghost-user";
+import { ChatMessageActions, ChatMessageHeader, chatHeaderFitsEveryIcon, type ChatMessageActionIconProps } from "./header";
 import { canReactToMessage } from "../reactions";
 import { DesktopChatReactions, DesktopReactionAction } from "./reactions";
 import { DesktopChatMessageText } from "./inline-tokens";
 import { DesktopChatPaneChip } from "./pane-chip";
-import { chatMessagePaneLinks } from "../pane-links/model";
-import { useSlowPendingSend } from "./pending-send";
-import { chatAnnouncementBg, chatHighlightBg, getChatMessageRenderState } from "./render-state";
+import { chatAnnouncementBg, chatHighlightBg } from "./render-state";
+import { ChatMessageReplyQuote, useChatMessageModel } from "./shared";
 import type { ChatMessageBaseProps } from "./types";
 
 const DESKTOP_MESSAGE_RIGHT_PADDING = 2;
@@ -38,6 +32,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   selectedIdx,
   hoveredIdx,
   highlighted,
+  actionKeysShown = false,
   canSend,
   contentWidth,
   catalog,
@@ -53,6 +48,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   latestEditableMessageId,
   retryMessage,
   onImageLoadError,
+  previewScope,
   registerMessageElement,
   reactionsEnabled = false,
   currentUserId = null,
@@ -62,44 +58,35 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
   closeReactionPicker,
   openPaneLink,
 }: ChatMessageBaseProps & {
+  previewScope?: ChatPreviewScope;
   registerMessageElement: (messageId: string, node: unknown | null) => void;
   /** The list's width in cells, so a narrow pane keeps its actions in the row before its icons. */
   contentWidth?: number;
 }) {
   useAppLanguage();
   const themeColors = useThemeColors();
-  const slowSend = useSlowPendingSend(msg);
   const canReact = reactionsEnabled && canReactToMessage(msg) && !!toggleReaction;
-  const state = getChatMessageRenderState({
-    msg,
-    index,
-    messages,
-    selectedIdx,
-    hoveredIdx,
-    highlighted,
-    canSend,
-    canEdit: msg.id === latestEditableMessageId,
-    canReact,
-    slowSend,
-    host: "desktop",
-  });
+  const { state, paneLinks, content, quotedAuthorIsBot } = useChatMessageModel(
+    { msg, index, messages, selectedIdx, hoveredIdx, highlighted, canSend, latestEditableMessageId, userByUsername },
+    { host: "desktop", canReact },
+  );
   const reactionPickerOpen = canReact && reactionPickerMessageId === msg.id;
-  const reactAction = canReact && toggleReaction ? (
+  const reactAction = canReact && toggleReaction ? (icon: ChatMessageActionIconProps) => (
     <DesktopReactionAction
       msg={msg}
       currentUserId={currentUserId}
       open={reactionPickerOpen}
-      width={MESSAGE_ACTION_WIDTH}
-      variant={state.isSelected ? "primary" : "secondary"}
+      icon={icon}
       onOpenChange={(open) => {
         if (open) openReactionPicker?.(index);
         else closeReactionPicker?.();
       }}
       onToggle={toggleReaction}
     />
-  ) : null;
-  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen };
-  const { links: paneLinks, content } = chatMessagePaneLinks(msg);
+  ) : undefined;
+  const actionProps = { state, index, beginReplyTo, beginEditMessage, retryMessage, reactAction, reactionPickerOpen, actionKeysShown };
+  // A grouped message floats its actions over its first row, inside the row's right padding.
+  const floatingActions = state.grouped ? <ChatMessageActions floating floatRight={DESKTOP_MESSAGE_RIGHT_PADDING} {...actionProps} /> : null;
   // A share link sent with one picture, such as a pasted screenshot: the
   // picture is the chip's thumbnail rather than a second copy below it.
   const chipPreview = paneLinks.length === 1 && paneLinks[0]!.kind === "share"
@@ -139,47 +126,14 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
         ...(state.isAnnouncement ? { position: "relative", "--chat-highlight-rest": chatAnnouncementBg("desktop") } : {}),
       }}
     >
-      {msg.replyTo && (
-        <Box
-          {...rowProps}
-          flexDirection="row"
-          height={1}
-          paddingLeft={2}
-          onMouseDown={() => {
-            // The thread handles background clearing in capture, before this
-            // jump. Keep bubbling so the pane shell also receives the focus.
-            if (msg.replyToId) jumpToMessage(msg.replyToId);
-          }}
-          style={{ minWidth: 0, alignItems: "flex-start", cursor: "pointer", overflow: "hidden" }}
-        >
-          {/* One line: the quoted text ends in an ellipsis, the whole message is a click away. */}
-          <Text fg={state.replyMetaColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${t("reply")} `}</Text>
-          {isQuotedAuthorManagedBot(msg.replyTo, userByUsername, () => heldMessage(messages, msg.replyToId)) ? (
-            // The bot's icon stands where the colon would.
-            <>
-              <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{msg.replyTo.user.username}</Text>
-              <ChatBotIcon selectedColor={state.isSelected ? state.selectedTextColor : undefined} />
-              <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{" "}</Text>
-            </>
-          ) : (
-            <Text fg={state.replyAuthorColor} style={{ flexShrink: 0, whiteSpace: "pre" }}>{`${msg.replyTo.user.username}: `}</Text>
-          )}
-          <Text
-            fg={state.replyMetaColor}
-            data-gloom-role="chat-message-reply-quote"
-            style={{
-              flex: "1 1 0",
-              minWidth: 0,
-              display: "block",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              whiteSpace: "nowrap",
-            }}
-          >
-            {normalizeInlinePreview(chatReplyQuoteText(msg.replyTo))}
-          </Text>
-        </Box>
-      )}
+      <ChatMessageReplyQuote
+        msg={msg}
+        state={state}
+        quotedAuthorIsBot={quotedAuthorIsBot}
+        rowProps={rowProps}
+        jumpToMessage={jumpToMessage}
+        host="desktop"
+      />
       {!state.grouped && (
         <ChatMessageHeader
           msg={msg}
@@ -215,7 +169,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
               onUserContextMenu={onUserContextMenu}
             />
           </Box>
-          {state.grouped && <ChatMessageActions floating {...actionProps} />}
+          {floatingActions}
         </Box>
       )}
       {showChips && (
@@ -238,7 +192,7 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
               />
             ))}
           </Box>
-          {state.grouped && !showBody && <ChatMessageActions floating {...actionProps} />}
+          {!showBody && floatingActions}
         </Box>
       )}
       {showImages && (
@@ -256,8 +210,9 @@ export const DesktopChatMessage = memo(function DesktopChatMessage({
             review={msg.attachmentReview}
             dimmed={dimmed}
             onLoadError={onImageLoadError}
+            previewScope={previewScope}
           />
-          {state.grouped && !showBody && !showChips && <ChatMessageActions floating {...actionProps} />}
+          {!showBody && !showChips && floatingActions}
         </Box>
       )}
       {(msg.reactions?.length ?? 0) > 0 && (

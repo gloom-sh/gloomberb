@@ -1,13 +1,14 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import type { AwardFilter, AwardRow, AwardType } from "../../../api-client/awards";
 import { notATickerSymbol } from "../../../sources/provider-errors";
 import type { HeadlessBundleSection, HeadlessPaneColumn, HeadlessPaneContext, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/headless";
-import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { fetchAward, fetchAwards } from "./client";
 import { AWARD_TABS, amountWithheld, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsEmptyReason, awardsPreviewNote, awardTypeLabel,
-  futureAwardDatesNote, money, statementText, WITHHELD_AMOUNT } from "./model";
-import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+  awardAmountLabel, awardsQueryShared, futureAwardDatesNote, money, statementText, WITHHELD_AMOUNT, type AwardsQueryShared } from "./model";
+import { dateOption, enumOption, limitOption, REPORT_PAGE } from "../shared/headless-options";
 
 /**
  * "Not a ticker: ZZZZQ." when no listing has the symbol, so a preview that
@@ -58,20 +59,26 @@ const count: HeadlessPaneColumn = { key: "count", header: "Awards", align: "righ
 const scope: HeadlessPaneColumn = { key: "source", header: "Scope", format: (value) => typeof value === "string" ? awardScope(value) : MISSING_VALUE };
 const type: HeadlessPaneColumn = { key: "awardType", header: "Type", format: (value) => typeof value === "string" ? awardTypeLabel(value as AwardType) : MISSING_VALUE };
 const period = (_value: unknown, row: HeadlessPaneRow) => row.periodStart || row.periodEnd ? `${text(row.periodStart)} / ${text(row.periodEnd)}` : MISSING_VALUE;
+const periodText = (_value: unknown, row: HeadlessPaneRow) => row.periodStart || row.periodEnd ? `${formatDay(row.periodStart)} / ${formatDay(row.periodEnd)}` : MISSING_VALUE;
 const dateBasis = (value: unknown) => value === "period-start" ? "Period start" : value === "publication" ? "Publication" : "Award date";
 const comparison = (row: HeadlessPaneRow) => row.revenueComparison as { awardAmount?: string; annualRevenue?: string; basis?: string; periodEnd?: string } | null;
 const FEED_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" }, { key: "recipient", header: "Awardee" }, { key: "ticker", header: "Ticker" }, { key: "currency", header: "CCY" },
   { ...amount("value", "Value"), textFormat: (value, row) => value == null && row.valueWithheld ? WITHHELD_AMOUNT : money(value as string | null) }, amount("obligated", "Obligated"), amount("ceiling", "Ceiling"), { key: "agency", header: "Agency" }, { key: "jurisdiction", header: "Country" },
-  { key: "performancePeriod", header: "Performance period", format: period }, { key: "title", header: "Contract" }, { key: "dateBasis", header: "Date basis", format: dateBasis },
+  { key: "performancePeriod", header: "Performance period", format: period, textFormat: periodText }, { key: "title", header: "Contract" }, { key: "dateBasis", header: "Date basis", format: dateBasis },
 ];
+/** As the pane's feed: what every award of the query shares (awardsQueryShared) is said once, the currency in the amounts' headers; exports keep every field. */
+const feedTextColumns = (shared: AwardsQueryShared): HeadlessPaneColumn[] => FEED_COLUMNS.flatMap((column) => {
+  if (column.key === "ticker" && shared.ticker || column.key === "currency" && shared.currency || column.key === "jurisdiction" && shared.country) return [];
+  return [["value", "obligated", "ceiling"].includes(column.key) ? { ...column, header: awardAmountLabel(column.header, shared.currency) } : column];
+});
 const EVENT_COLUMNS: HeadlessPaneColumn[] = [
   { key: "date", header: "Date" }, { key: "recipient", header: "Awardee" }, { key: "ticker", header: "Ticker" },
   { key: "annualRevenuePercent", header: "% revenue", align: "right", format: (value) => typeof value === "number" ? `${value.toFixed(2)}%` : MISSING_VALUE },
   { key: "currency", header: "CCY" }, nested((row) => comparison(row)?.awardAmount, "comparedValue", "Compared value"),
   nested((row) => comparison(row)?.annualRevenue, "annualRevenue", "Annual revenue"),
   { key: "revenueComparison", header: "Value basis", format: (_value, row) => comparison(row)?.basis === "obligated" ? "Obligated" : "Award value" },
-  { key: "revenuePeriodEnd", header: "Revenue FY end", format: (_value, row) => text(comparison(row)?.periodEnd) },
+  { key: "revenuePeriodEnd", header: "Revenue FY end", format: (_value, row) => text(comparison(row)?.periodEnd), textFormat: (_value, row) => formatDay(comparison(row)?.periodEnd) },
   { key: "agency", header: "Agency" }, { key: "title", header: "Contract" },
 ];
 const COHORT_COLUMNS: HeadlessPaneColumn[] = [{ key: "month", header: "Month", format: (value) => text(value).slice(0, 7) }, scope, { key: "currency", header: "CCY" }, type, count,
@@ -97,15 +104,14 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
     limitations: ["Pro dataset; free accounts receive a limited preview.", "Published procurement records; source coverage varies by jurisdiction.",
       "Currencies and prime awards, subawards and notices are separate.", "Award obligations are not revenue or remaining backlog.", "Unresolved recipients retain their legal names."] },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "feed", values: [...AWARD_TABS, { value: "all" }], description: "Feed, company history, agencies, sectors, events, or all sections." },
-    { key: "view", type: "enum", settingKey: "leaderView", defaultValue: "companies", values: [{ value: "companies" }, { value: "sectors" }], description: "Sectors tab: company leaders or sector totals." },
+    enumOption("tab", [...AWARD_TABS, "all"], { settingKey: "tab", defaultValue: "feed", description: "Feed, company history, agencies, sectors, events, or all sections." }),
+    enumOption("view", ["companies", "sectors"], { settingKey: "leaderView", defaultValue: "companies", description: "Sectors tab: company leaders or sector totals." }),
     ...FILTER_KEYS.map((key) => key === "from" || key === "to"
-      ? { key, type: "string" as const, settingKey: key, placeholder: "date", description: `${key === "from" ? "Start" : "End"} of the date range, as ${DATE_OPTION_EXAMPLES}.`,
-        normalize: (value: string) => isoDateOption(value, key) }
+      ? dateOption(key, { settingKey: key, description: `${key === "from" ? "Start" : "End"} of the date range, as ${DATE_OPTION_EXAMPLES}.` })
       : { key, type: "string" as const, settingKey: key, description: `Filter by ${key}.` }),
-    { key: "type", type: "enum", settingKey: "awardType", defaultValue: "prime", values: [{ value: "prime" }, { value: "subaward" }, { value: "notice" }, { value: "modification" }], description: "Keep record types separate." },
+    enumOption("type", ["prime", "subaward", "notice", "modification"], { settingKey: "awardType", defaultValue: "prime", description: "Keep record types separate." }),
     { key: "cursor", shot: REPORT_PAGE, type: "string", description: "Continue after the previous response's nextCursor." },
-    { key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: 200, defaultValue: 100, description: "Maximum feed rows in this response." },
+    limitOption({ maximum: 200, defaultValue: 100, description: "Maximum feed rows in this response." }),
     { key: "award", type: "string", settingKey: "award", description: "Open one award's evidence, revisions, subawards and modifications by stable id." },
     { key: "revisionsCursor", shot: REPORT_PAGE, type: "string", description: "Continue a detail response's revisions using nextRevisionsCursor." },
   ],
@@ -143,7 +149,9 @@ export const awardsHeadless: HeadlessPaneDefinition<"bundle"> = {
       ...awardsAmountNotices(data, withheld)];
     const empty = awardsEmptyReason(data);
     const sections: HeadlessBundleSection[] = [];
-    if (tab === "feed" || tab === "company" || tab === "all") sections.push({ title: "Awards", columns: FEED_COLUMNS, rows: data.rows.map(record) });
+    if (tab === "feed" || tab === "company" || tab === "all") {
+      sections.push({ title: "Awards", columns: FEED_COLUMNS, textColumns: feedTextColumns(awardsQueryShared(data, filter)), rows: data.rows.map(record) });
+    }
     if (tab === "company" || tab === "all") sections.push({ title: "Award cohorts by month and currency", columns: COHORT_COLUMNS, rows: data.history.map((row) => ({ ...row })) });
     if (tab === "agencies" || tab === "all") sections.push({ title: "Agency concentration", columns: aggregateColumns("Agency"), rows: data.agencies.map((row) => ({ ...row })) });
     if (tab === "sectors" || tab === "all") sections.push({ title: "Sector company leaders", columns: LEADER_COLUMNS, rows: (data.leaders ?? []).map((row) => ({ ...row })) },

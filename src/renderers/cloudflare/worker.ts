@@ -1,6 +1,6 @@
 import { handleHttpProxy } from "./http-proxy";
 import { anonymousRateKey, createProxySessionGate } from "./proxy-session";
-import { HTTP_PROXY_PATH, WEB_DIRECT_HOSTS } from "../../utils/plugin-proxy-hosts";
+import { HTTP_PROXY_PATH, WEB_DIRECT_HOSTS, WEB_DIRECT_WS_HOSTS } from "../../utils/plugin-proxy-hosts";
 import { SESSION_BINDING_HEADER, SESSION_BINDING_META } from "../../api-client/session-cookie";
 import { sessionCookieBinding } from "./session-binding";
 
@@ -115,6 +115,7 @@ const CONNECT_SRC = [
   "https://gloom.sh",
   GOOGLE_IDENTITY,
   ...WEB_DIRECT_HOSTS.map((host) => `https://${host}`),
+  ...WEB_DIRECT_WS_HOSTS.map((host) => `wss://${host}`),
 ].join(" ");
 
 export const SECURITY_HEADERS = {

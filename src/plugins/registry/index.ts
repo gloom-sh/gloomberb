@@ -53,7 +53,7 @@ import { createPluginPersistence } from "../plugin-persistence";
 import { createPluginTeamState } from "../team-state";
 import { withPluginRender, type PluginRuntimeAccess } from "../runtime";
 import { resolveRegistryContextMenuItems } from "./context-menu";
-import { RegistryContributions, type PluginItems } from "./contributions";
+import { RegistryContributions, requireContributionId, type PluginItems } from "./contributions";
 import {
   createDefaultHostActions,
   HOST_ACTION_NAMES,
@@ -109,8 +109,7 @@ export interface DisabledPluginOwner {
 export {
   getSharedMarketData,
   getSharedRegistry,
-  setSharedMarketDataForTests,
-  setSharedRegistryForTests
+  setSharedRegistryForTests,
 } from "./shared";
 
 /**
@@ -381,6 +380,7 @@ export class PluginRegistry implements PluginRuntimeAccess {
   }
 
   private registerCapabilityForPlugin(pluginId: string, capability: PluginCapability, items: PluginItems): void {
+    requireContributionId(pluginId, "capability", capability);
     const ownedCapability: PluginCapability = {
       ...capability,
       isEnabled: () => {

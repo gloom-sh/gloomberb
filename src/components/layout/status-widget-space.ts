@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from "react";
+import { createListenerSet } from "../../utils/listeners";
 
 /**
  * Space in the status bar for the `status:widget` slot. The bar holds back a
@@ -20,18 +21,7 @@ export const NARROW_STATUS_BAR_COLUMNS = 80;
 
 const claims = new Map<string, number>();
 let room = Number.POSITIVE_INFINITY;
-const listeners = new Set<() => void>();
-
-function emit(): void {
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+const listeners = createListenerSet();
 
 function claimedColumns(): number {
   let total = 0;
@@ -41,7 +31,7 @@ function claimedColumns(): number {
 
 /** Extra columns the widgets claim, for the status bar's own layout. */
 export function useClaimedStatusWidgetColumns(): number {
-  return useSyncExternalStore(subscribe, claimedColumns, claimedColumns);
+  return useSyncExternalStore(listeners.subscribe, claimedColumns, claimedColumns);
 }
 
 /**
@@ -53,11 +43,11 @@ export function usePublishStatusWidgetRoom(columns: number): void {
   useEffect(() => {
     if (room === columns) return;
     room = columns;
-    emit();
+    listeners.notify();
   }, [columns]);
   useEffect(() => () => {
     room = Number.POSITIVE_INFINITY;
-    emit();
+    listeners.notify();
   }, []);
 }
 
@@ -67,12 +57,12 @@ export function usePublishStatusWidgetRoom(columns: number): void {
  */
 export function useOtherStatusWidgetClaims(id: string): number {
   const others = () => claimedColumns() - (claims.get(id) ?? 0);
-  return useSyncExternalStore(subscribe, others, others);
+  return useSyncExternalStore(listeners.subscribe, others, others);
 }
 
 /** The columns the widgets can use, as the status bar last published them. */
 export function useStatusWidgetRoom(): number {
-  return useSyncExternalStore(subscribe, () => room, () => room);
+  return useSyncExternalStore(listeners.subscribe, () => room, () => room);
 }
 
 /** Claims extra columns for a widget while it is mounted; zero claims nothing. */
@@ -80,10 +70,10 @@ export function useStatusWidgetClaim(id: string, columns: number): void {
   useEffect(() => {
     if (columns <= 0) return;
     claims.set(id, columns);
-    emit();
+    listeners.notify();
     return () => {
       claims.delete(id);
-      emit();
+      listeners.notify();
     };
   }, [columns, id]);
 }

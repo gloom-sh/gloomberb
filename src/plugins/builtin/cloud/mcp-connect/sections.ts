@@ -12,6 +12,7 @@
  * (`c`, `k`, Left/Right, Enter, Esc).
  */
 import { useSyncExternalStore, type ComponentType } from "react";
+import { createListenerSet } from "../../../../utils/listeners";
 
 export interface McpConnectSectionProps {
   /** Content width in cells. */
@@ -30,12 +31,12 @@ export interface McpConnectSection {
 }
 
 const sections = new Map<string, McpConnectSection>();
-const listeners = new Set<() => void>();
+const listeners = createListenerSet();
 let snapshot: readonly McpConnectSection[] = [];
 
 function publish(): void {
   snapshot = [...sections.values()].sort((left, right) => (left.order ?? 0) - (right.order ?? 0));
-  for (const listener of listeners) listener();
+  listeners.notify();
 }
 
 /** Adds a section to the dialog; the returned function removes it. A second registration with the same id replaces the first. */
@@ -49,14 +50,7 @@ export function registerMcpConnectSection(section: McpConnectSection): () => voi
   };
 }
 
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
-
 /** The registered sections, in order; follows registrations made while the dialog is open. */
 export function useMcpConnectSections(): readonly McpConnectSection[] {
-  return useSyncExternalStore(subscribe, () => snapshot, () => snapshot);
+  return useSyncExternalStore(listeners.subscribe, () => snapshot, () => snapshot);
 }

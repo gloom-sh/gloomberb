@@ -107,7 +107,7 @@ const RISK_QUOTE_LIMIT = 500;
  */
 const HISTORY_CONCURRENCY = 64;
 const MAX_FX_CURRENCIES = 24;
-export const BEYOND_SIZE_REASON = `Beyond the supported size: only the ${RISK_HISTORY_LIMIT} largest holdings by value are modelled`;
+const BEYOND_SIZE_REASON = `Beyond the supported size: only the ${RISK_HISTORY_LIMIT} largest holdings by value are modelled`;
 // Listing venues as the quotes report them; MTUM and QUAL list on Cboe BZX, not Arca.
 export const RISK_FACTOR_INSTRUMENTS: RiskInstrument[] = [
   ["SPY", "ARCA"],
@@ -182,7 +182,7 @@ function finalCloseToday(exchange: string, today: string, now: Date): boolean {
   return close != null && close <= now.getTime();
 }
 
-export function validateRiskHistory(
+function validateRiskHistory(
   response: CloudMarketResponse<CloudPricePointPayload[]>,
   instrument: RiskInstrument,
   quote: CloudQuotePayload | null,

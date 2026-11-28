@@ -9,6 +9,7 @@ import type {
 import { ApiRequestError } from "../../../api-client/errors";
 import { listingAbroad, type IssuerListingParams } from "../../../api-client/paths";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { isCalendarDay, isCurrencyCode, isHttpsUrl, isNonNegative, isNullableCalendarDay, isNullableString, isStringArray } from "../../../utils/guards";
 import { secListingKey } from "../../../utils/sec";
 import {
   cachedCloudResource,
@@ -24,7 +25,7 @@ export const debtMaturitiesCache = createPluginCache<DebtMaturitiesPayload>({
   schemaVersion: 2,
   policy: { staleMs: 6 * 60 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
 });
-export const BUCKET_IDS = [
+const BUCKET_IDS = [
   "InNextTwelveMonths",
   "InYearTwo",
   "InYearThree",
@@ -41,36 +42,20 @@ const ROLLING_BUCKET_TAGS = [
   "InRollingYearFive",
   "InRollingAfterYearFive",
 ] as const;
-const number = (value: unknown): value is number =>
-  typeof value === "number" && Number.isFinite(value) && value >= 0;
-const nullableNumber = (value: unknown) => value === null || number(value);
-const day = (value: unknown): value is string =>
-  typeof value === "string" &&
-  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-  Number.isFinite(Date.parse(value)) &&
-  new Date(value).toISOString().slice(0, 10) === value;
-const nullableDay = (value: unknown) => value === null || day(value);
+const nullableNumber = (value: unknown) => value === null || isNonNegative(value);
 const annualPeriod = (start: string, end: string) => {
   const days = (Date.parse(end) - Date.parse(start)) / 86_400_000 + 1;
   return days >= 350 && days <= 380;
 };
 const accession = (value: unknown) =>
   typeof value === "string" && /^\d{10}-\d{2}-\d{6}$/.test(value);
-const textOrNull = (value: unknown) =>
-  value === null || typeof value === "string";
-const currency = (value: unknown) =>
-  typeof value === "string" && /^[A-Z]{3}$/.test(value);
 const sourceUrl = (value: unknown) =>
   typeof value === "string" &&
   /^https:\/\/(?:www\.|data\.)?sec\.gov\//.test(value);
-/** A report's own page or document, wherever it is published. */
-const httpsUrl = (value: unknown) =>
-  typeof value === "string" && URL.canParse(value) && new URL(value).protocol === "https:";
 /** SEC's annual forms a schedule by year is read from. */
 const ANNUAL_FORM = /^(10-K|20-F|40-F)(\/A)?$/;
 /** Absent on older servers; else text alone. */
-const optionalTexts = (value: unknown) =>
-  value === undefined || (Array.isArray(value) && value.every((entry) => typeof entry === "string"));
+const optionalTexts = (value: unknown) => value === undefined || isStringArray(value);
 const near = (a: number | null, b: number | null) =>
   a === b ||
   (a !== null &&
@@ -80,13 +65,13 @@ const near = (a: number | null, b: number | null) =>
 function validFact(fact: DebtFact): boolean {
   return (
     !!fact &&
-    number(fact.value) &&
+    isNonNegative(fact.value) &&
     typeof fact.tag === "string" &&
     !!fact.tag &&
-    currency(fact.unit) &&
-    nullableDay(fact.start) &&
-    day(fact.end) &&
-    day(fact.filed) &&
+    isCurrencyCode(fact.unit) &&
+    isNullableCalendarDay(fact.start) &&
+    isCalendarDay(fact.end) &&
+    isCalendarDay(fact.filed) &&
     fact.end <= fact.filed &&
     (fact.start === null || fact.start <= fact.end) &&
     accession(fact.accession) &&
@@ -118,11 +103,11 @@ function validMetric(
     (p.value === null ||
       (metric.value !== null && p.sampleCount >= p.minimumSamples)) &&
     [p.min, p.max, p.mean].every(nullableNumber) &&
-    day(p.windowStart) &&
+    isCalendarDay(p.windowStart) &&
     p.windowEnd === latest.asOf &&
     p.windowStart <= p.windowEnd &&
-    nullableDay(p.historyStart) &&
-    nullableDay(p.historyEnd) &&
+    isNullableCalendarDay(p.historyStart) &&
+    isNullableCalendarDay(p.historyEnd) &&
     (p.historyStart === null || p.historyStart >= p.windowStart) &&
     (p.historyEnd === null || p.historyEnd <= p.windowEnd)
   );
@@ -140,7 +125,7 @@ function validQuarter(
   const fact = (value: DebtFact | null) =>
     value === null ||
     (!!value &&
-      number(value.value) &&
+      isNonNegative(value.value) &&
       typeof value.tag === "string" &&
       !!value.tag &&
       value.unit === quarter.currency &&
@@ -151,8 +136,8 @@ function validQuarter(
       value.form === quarter.form);
   return (
     !!quarter &&
-    day(quarter.asOf) &&
-    day(quarter.filed) &&
+    isCalendarDay(quarter.asOf) &&
+    isCalendarDay(quarter.filed) &&
     quarter.asOf <= quarter.filed &&
     quarter.asOf > latest.asOf &&
     accession(quarter.accession) &&
@@ -171,7 +156,7 @@ function validQuarter(
  * comes with no annual schedule, is dropped and the schedule stands. The
  * payload keeps the field only when it carries a 10-Q.
  */
-export function validateDebtMaturities(
+function validateDebtMaturities(
   data: DebtMaturitiesPayload,
   symbol: string,
 ): DebtMaturitiesPayload {
@@ -199,7 +184,7 @@ function validateSchedule(
     (data.version !== 1 && !v2) ||
     data.symbol !== symbol ||
     !["available", "partial", "unavailable"].includes(data.status) ||
-    !textOrNull(data.entityName) ||
+    !isNullableString(data.entityName) ||
     !(v2 && data.latest === null ? ["us-gaap", "ifrs-full", "cn-cas", null] : ["us-gaap", null]).includes(data.taxonomy) ||
     !(
       data.cik === null ||
@@ -207,13 +192,12 @@ function validateSchedule(
     ) ||
     typeof data.fetchedAt !== "string" ||
     !Number.isFinite(Date.parse(data.fetchedAt)) ||
-    !nullableDay(data.asOf) ||
+    !isNullableCalendarDay(data.asOf) ||
     !data.source ||
     typeof data.source.name !== "string" ||
-    !(sourceUrl(data.source.url) || (v2 && data.latest === null && (data.source.url === "" || httpsUrl(data.source.url)))) ||
+    !(sourceUrl(data.source.url) || (v2 && data.latest === null && (data.source.url === "" || isHttpsUrl(data.source.url)))) ||
     typeof data.source.cadence !== "string" ||
-    !Array.isArray(data.warnings) ||
-    data.warnings.some((value) => typeof value !== "string") ||
+    !isStringArray(data.warnings) ||
     !optionalTexts(data.notes) ||
     !Array.isArray(data.history)
   )
@@ -233,13 +217,13 @@ function validateSchedule(
     data.status === "unavailable" ||
     data.taxonomy !== "us-gaap" ||
     !data.cik ||
-    !day(latest.asOf) ||
+    !isCalendarDay(latest.asOf) ||
     latest.asOf !== data.asOf ||
-    !day(latest.filed) ||
+    !isCalendarDay(latest.filed) ||
     latest.asOf > latest.filed ||
     !accession(latest.accession) ||
     !ANNUAL_FORM.test(latest.form) ||
-    !currency(latest.currency) ||
+    !isCurrencyCode(latest.currency) ||
     !sourceUrl(latest.filingUrl) ||
     typeof latest.complete !== "boolean" ||
     !Array.isArray(latest.buckets) ||
@@ -327,7 +311,7 @@ function validateSchedule(
   } else {
     if (
       !cost ||
-      !day(cost.periodStart) ||
+      !isCalendarDay(cost.periodStart) ||
       cost.periodEnd !== latest.asOf ||
       !sameFiling(cost.interest) ||
       cost.interest.tag !== "InterestExpenseDebt" ||
@@ -372,8 +356,8 @@ function validateSchedule(
   for (const [index, point] of data.history.entries()) {
     if (
       !point ||
-      !day(point.asOf) ||
-      !day(point.filed) ||
+      !isCalendarDay(point.asOf) ||
+      !isCalendarDay(point.filed) ||
       point.asOf > point.filed ||
       !accession(point.accession) ||
       point.currency !== latest.currency ||
@@ -381,8 +365,8 @@ function validateSchedule(
       [...amountKeys, ...percentKeys].some(
         (key) => !nullableNumber(point[key]),
       ) ||
-      !textOrNull(point.interestExpenseTag) ||
-      !textOrNull(point.borrowingCostDebtTags) ||
+      !isNullableString(point.interestExpenseTag) ||
+      !isNullableString(point.borrowingCostDebtTags) ||
       point.complete !== (point.totalPrincipal !== null) ||
       point.asOf > latest.asOf ||
       (index > 0 && point.asOf <= data.history[index - 1]!.asOf)
@@ -420,10 +404,9 @@ function validBands(bands: readonly DebtBand[]): boolean {
       !band ||
       typeof band.label !== "string" ||
       !band.label.trim() ||
-      !number(band.value) ||
+      !isNonNegative(band.value) ||
       band.fromMonths !== from ||
-      !Array.isArray(band.members) ||
-      band.members.some((member) => typeof member !== "string") ||
+      !isStringArray(band.members) ||
       (band.toMonths === null
         ? index !== bands.length - 1
         : !Number.isInteger(band.toMonths) || band.toMonths <= band.fromMonths)
@@ -448,7 +431,7 @@ function validateBands(data: DebtMaturitiesPayload, symbol: string): DebtMaturit
   if (
     data.symbol !== symbol ||
     !["available", "partial"].includes(data.status) ||
-    !textOrNull(data.entityName) ||
+    !isNullableString(data.entityName) ||
     !BAND_TAXONOMIES.includes(data.taxonomy) ||
     latest.taxonomy !== data.taxonomy ||
     !(data.cik === null || (typeof data.cik === "string" && /^\d{10}$/.test(data.cik))) ||
@@ -456,33 +439,32 @@ function validateBands(data: DebtMaturitiesPayload, symbol: string): DebtMaturit
     !Number.isFinite(Date.parse(data.fetchedAt)) ||
     !data.source ||
     typeof data.source.name !== "string" ||
-    !httpsUrl(data.source.url) ||
+    !isHttpsUrl(data.source.url) ||
     typeof data.source.cadence !== "string" ||
-    !Array.isArray(data.warnings) ||
-    data.warnings.some((value) => typeof value !== "string") ||
+    !isStringArray(data.warnings) ||
     !optionalTexts(data.notes) ||
     !Array.isArray(data.history) ||
-    !day(latest.asOf) ||
+    !isCalendarDay(latest.asOf) ||
     latest.asOf !== data.asOf ||
-    !day(latest.filed) ||
+    !isCalendarDay(latest.filed) ||
     latest.asOf > latest.filed ||
     !reportAccession(latest.accession) ||
     !reportForm(latest.form) ||
-    !currency(latest.currency) ||
-    !httpsUrl(latest.filingUrl) ||
+    !isCurrencyCode(latest.currency) ||
+    !isHttpsUrl(latest.filingUrl) ||
     !AMOUNT_BASES.includes(latest.amountBasis) ||
     !Array.isArray(bands) ||
     !validBands(bands) ||
     !near(latest.sourceTotal ?? null, bands.reduce((sum, band) => sum + band.value, 0)) ||
     (interest !== null &&
-      !(interest && number(interest.value) && typeof interest.tag === "string" && interest.unit === latest.currency &&
-        nullableDay(interest.start) && day(interest.end))) ||
+      !(interest && isNonNegative(interest.value) && typeof interest.tag === "string" && interest.unit === latest.currency &&
+        isNullableCalendarDay(interest.start) && isCalendarDay(interest.end))) ||
     (source != null &&
-      !(httpsUrl(source.url) && typeof source.concept === "string" && number(source.scale) && source.scale > 0 &&
+      !(isHttpsUrl(source.url) && typeof source.concept === "string" && isNonNegative(source.scale) && source.scale > 0 &&
         typeof source.scaleStated === "boolean" &&
         (source.reconciledTo == null ||
-          (typeof source.reconciledTo.concept === "string" && number(source.reconciledTo.value) &&
-            number(source.reconciledTo.ratio)))))
+          (typeof source.reconciledTo.concept === "string" && isNonNegative(source.reconciledTo.value) &&
+            isNonNegative(source.reconciledTo.ratio)))))
   )
     throw new Error("The server returned an invalid debt maturity schedule");
   const { latestQuarter: _quarter, ...schedule } = data;

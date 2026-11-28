@@ -18,7 +18,7 @@ function indicatorFrequency(indicator: IndicatorDef): "monthly" | "quarterly" {
  * what makes it chartable: overlaying the Buffett indicator on CPI needs no
  * valuation pane on screen.
  */
-export async function loadValuationIndicator(
+async function loadValuationIndicator(
   indicator: IndicatorDef,
   loader: ValuationSeriesLoader = defaultValuationSeriesLoader,
 ): Promise<SeriesLoadResult> {

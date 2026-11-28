@@ -271,11 +271,11 @@ describe("proxy session check", () => {
   test("a signed-out caller reaches only the endpoints the signed-out plugins read", () => {
     const allows = (url: string, method = "GET") => signedOutRouteAllows(new URL(url), method);
     expect(allows("https://api.elections.kalshi.com/trade-api/v2/markets?limit=50")).toBe(true);
+    expect(allows("https://api.elections.kalshi.com/v1/search/series?query=fed&page_size=10")).toBe(true);
     expect(allows("https://api.elections.kalshi.com/trade-api/v2/portfolio/orders", "POST")).toBe(false);
     expect(allows("https://api.gemini.com/v1/prediction-markets/events")).toBe(true);
     expect(allows("https://api.gemini.com/v1/mytrades")).toBe(false);
-    expect(allows("https://data.pascal.trade/api/v1/markets/text-search", "POST")).toBe(true);
-    expect(allows("https://data.pascal.trade/api/v1/orders", "POST")).toBe(false);
+    expect(allows("https://services-dynarep.ddwa.finra.org/public/reporting/v2/data/group/FixedIncomeMarket/name/corporateAndAgencySecurities", "GET")).toBe(true);
     expect(allows("https://services-dynarep.ddwa.finra.org/public/reporting/v2/data/group/FixedIncomeMarket/name/corporateAndAgencySecurities", "POST")).toBe(true);
     expect(allows("https://services-dynarep.ddwa.finra.org/public/reporting/v2/data/group/FixedIncomeMarket/name/x")).toBe(false);
     expect(allows("https://www.nasdaqtrader.com/rss.aspx?feed=tradehalts")).toBe(true);

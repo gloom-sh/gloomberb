@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatDay } from "../../../components/ui/day-cell";
 import { Box, TextAttributes, useUiCapabilities } from "../../../ui";
 import { withCompanyLogo } from "../../../components/company-logo";
 import {
@@ -323,7 +324,7 @@ export function CryptoBoardPane({ width, height, focused }: PaneProps) {
       supplyChangeFigure("change-7d", "7D change", total.change7d, total.change7dPercent),
       supplyChangeFigure("change-30d", "30D change", total.change30d, total.change30dPercent),
       // Its publisher and where the count starts, as the DeFi tab's source says them: ALL draws from that day's few coins.
-      { id: "source", label: "Source", value: STABLECOIN_SUPPLY_PUBLISHER, ...(since ? { detail: `daily since ${since}` } : {}) },
+      { id: "source", label: "Source", value: STABLECOIN_SUPPLY_PUBLISHER, ...(since ? { detail: `daily since ${formatDay(since)}` } : {}) },
     ];
   }, [stablecoins, supply]);
   const supplyError = !supply && supplyResource.error ? supplyResource.error : null;

@@ -1,7 +1,8 @@
 import type { CryptoAssetKind, DefiTvlPayload, StablecoinSupplyPayload } from "../../../api-client/crypto-markets";
 import type { HeadlessExportTable, HeadlessPaneColumn } from "../../../types/headless";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
-import { formatCompact, formatCompactAmount } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
+import { formatCompactAmount } from "../../../utils/format";
 import { errorMessage } from "../../../utils/errors";
 import { fetchCryptoMarkets, fetchDefiTvl, fetchStablecoinSupply } from "./client";
 import { buildDefiRows, defiHasIncome, defiHistoryRows, defiHistoryStart, defiSummaryLine, type DefiList, type DefiRow } from "./defi";
@@ -17,18 +18,19 @@ import {
   withCryptoSupply,
 } from "./model";
 import { stackedSupply, supplyByCode, supplyFailure, supplyHistoryRows, supplySummaryLine } from "./supply";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { argumentText, enumOption, limitOption } from "../shared/headless-options";
+import { compactCell, fixedCell, numCell } from "../shared/headless-columns";
 
 const NO_QUOTES = new Map();
 const number = (value: unknown) => (typeof value === "number" ? value : null);
 const percent = (value: unknown) => formatCryptoPercent(number(value));
-const compact = (value: unknown) => (number(value) == null ? "—" : formatCompact(number(value)!, { fixedDecimals: true }));
+const compact = compactCell({ fixedDecimals: true });
 const text = (key: string) => (_value: unknown, row: Record<string, unknown>) => String(row[key] ?? "—");
 /** Exports keep the date; the text table reads `Sat 11:30`, the weekday enough inside 24 hours. */
 const isoMinute = (value: unknown) => typeof value === "string" ? `${value.slice(0, 16).replace("T", " ")} UTC` : "";
 const dayTime = (value: unknown) => formatDayRangeTime(typeof value === "string" ? Date.parse(value) : null);
-const signedCompact = (value: unknown) => (number(value) == null ? "—" : formatCompactAmount(number(value)!, { signed: true }));
-const share = (value: unknown) => (number(value) == null ? "—" : `${number(value)!.toFixed(2)}%`);
+const signedCompact = numCell((value) => formatCompactAmount(value, { signed: true }));
+const share = fixedCell(2, { suffix: "%" });
 
 const COIN_COLUMNS: HeadlessPaneColumn[] = [
   { key: "rank", header: "#", align: "right" },
@@ -225,6 +227,8 @@ async function loadDefi(list: DefiList, limit: number | null, ctx: Parameters<He
   const summary = defiSummaryLine(payload);
   const exportTables = defiExportTables(payload, list, limit);
   return {
+    // The text writes the summary's days first, as the pane does; JSON keeps them in ISO.
+    ...(summary ? { textNotices: [defiSummaryLine(payload, formatDay)!] } : {}),
     rows,
     columns: defiColumns(list, income),
     rowUnitKey: "unit",
@@ -260,14 +264,14 @@ async function loadDefi(list: DefiList, limit: number | null, ctx: Parameters<He
 
 /**
  * The supply columns, the supply headed with its day when that is older than
- * the prices beside it (`Supply 11-04` on a board priced on the 5th): a daily
+ * the prices beside it (`Supply 04 Nov` on a board priced on the 5th): a daily
  * supply figure says its date, as the prices say theirs.
  */
 function datedSupplyColumns(supplyAsOf: string | null | undefined, pricesAsOf: string | null | undefined): HeadlessPaneColumn[] {
   const supplyDay = supplyAsOf?.slice(0, 10);
   const pricesDay = pricesAsOf?.slice(0, 10);
   if (!supplyDay || !pricesDay || supplyDay >= pricesDay) return STABLECOIN_SUPPLY_COLUMNS;
-  return STABLECOIN_SUPPLY_COLUMNS.map((column) => column.key === "supply" ? { ...column, textHeader: `Supply ${supplyDay.slice(5)}` } : column);
+  return STABLECOIN_SUPPLY_COLUMNS.map((column) => column.key === "supply" ? { ...column, textHeader: `Supply ${formatDay(supplyDay, "no-year")}` } : column);
 }
 
 /** The first `limit` rows, in the list's order; every row without one. */
@@ -302,51 +306,32 @@ export function cryptoListOf(typed: string | null | undefined): CryptoList | nul
 
 /** The list a run asked for: the word after CRYP, else --list. */
 function requestedList(args: { argument: string | string[] | null; options: Record<string, unknown> }): CryptoList {
-  const typed = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
-  return cryptoListOf(typed) ?? (args.options.list === "defi" || args.options.list === "stablecoin" ? args.options.list : "coin");
+  return cryptoListOf(argumentText(args.argument)) ?? (args.options.list === "defi" || args.options.list === "stablecoin" ? args.options.list : "coin");
 }
 
 export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
   shape: "rows",
   argument: { kind: "free-text", optional: true, placeholder: "list", description: "The list to open, as --list names it: coin, stablecoin, or defi (tvl).", examples: ["stablecoin", "tvl"] },
-  options: [{
-    key: "list",
-    description: "Coins, stablecoins, or DeFi TVL.",
-    type: "enum",
-    values: CRYPTO_LISTS.map((entry) => ({ value: entry.value, aliases: [...entry.aliases] })),
-    defaultValue: "coin",
-    example: "--list stablecoin",
-    pluginState: { pluginId: "market-overview", key: "activeTab" },
-  }, {
-    key: "by",
-    // No default: the coin and stablecoin reports carry no `by`, and a missing one is by protocol.
-    description: "DeFi TVL by protocol (the default) or by chain, with --list defi.",
-    type: "enum",
-    values: [
-      { value: "protocol", aliases: ["protocols"] },
-      { value: "chain", aliases: ["chains"] },
-    ],
-    example: "--list defi --by chain",
-    pluginState: { pluginId: "market-overview", key: "defiList" },
-  }, {
-    key: "sort",
-    // No default: a missing one is the board's market-cap order, which every list keeps.
-    description: "Row order: market cap (the default), or offpeg for the stablecoins furthest off their peg first, either way, with --list stablecoin.",
-    type: "enum",
-    values: [
-      { value: "mcap", aliases: ["cap", "marketcap", "rank"] },
-      { value: "offpeg", aliases: ["off-peg", "peg", "depeg"] },
-    ],
-    example: "--list stablecoin --sort offpeg",
-  }, {
-    key: "limit",
-    shot: REPORT_ROWS,
-    description: "Rows to list, in the list's order, and of each table --csv adds (a history's newest days): every row unless given.",
-    type: "integer",
-    minimum: 1,
-    maximum: 1000,
-    example: "--limit 10",
-  }],
+  options: [
+    enumOption("list", CRYPTO_LISTS.map((entry) => ({ value: entry.value, aliases: [...entry.aliases] })), {
+      description: "Coins, stablecoins, or DeFi TVL.", defaultValue: "coin", example: "--list stablecoin",
+      pluginState: { pluginId: "market-overview", key: "activeTab" },
+    }),
+    enumOption("by", [{ value: "protocol", aliases: ["protocols"] }, { value: "chain", aliases: ["chains"] }], {
+      // No default: the coin and stablecoin reports carry no `by`, and a missing one is by protocol.
+      description: "DeFi TVL by protocol (the default) or by chain, with --list defi.", example: "--list defi --by chain",
+      pluginState: { pluginId: "market-overview", key: "defiList" },
+    }),
+    enumOption("sort", [{ value: "mcap", aliases: ["cap", "marketcap", "rank"] }, { value: "offpeg", aliases: ["off-peg", "peg", "depeg"] }], {
+      // No default: a missing one is the board's market-cap order, which every list keeps.
+      description: "Row order: market cap (the default), or offpeg for the stablecoins furthest off their peg first, either way, with --list stablecoin.",
+      example: "--list stablecoin --sort offpeg",
+    }),
+    limitOption({
+      description: "Rows to list, in the list's order, and of each table --csv adds (a history's newest days): every row unless given.",
+      maximum: 1000, example: "--limit 10",
+    }),
+  ],
   columns: COIN_COLUMNS,
   describe: (args) => {
     const list = requestedList(args);
@@ -364,7 +349,7 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
   // The pane opens on the order asked for, as its header sorts it.
   shotState: (args, _load, given) => {
     const sort = given.has("sort") ? CRYPTO_SORT_OPTIONS[String(args.options.sort)] : undefined;
-    const typed = cryptoListOf(Array.isArray(args.argument) ? args.argument.join(" ") : args.argument);
+    const typed = cryptoListOf(argumentText(args.argument));
     const state = { ...(sort ? { sort } : {}), ...(typed ? { activeTab: typed } : {}) };
     return Object.keys(state).length ? { pluginState: { "market-overview": state } } : {};
   },
@@ -452,6 +437,8 @@ export const cryptoBoardHeadless: HeadlessPaneDefinition<"rows"> = {
       ...(history ? { exportTables: [history] } : {}),
       errors: data.warnings,
       ...(notes.length ? { notes } : {}),
+      // The text writes the summary's days first, as the pane does; JSON keeps them in ISO.
+      ...(summary && supply ? { textNotices: [supplySummaryLine(supply, formatDay)!] } : {}),
       metadata: { ...metadata, ...(summary ? { notices: [summary] } : {}), ...(supply ? { supply: supplyMetadata(supply) } : {}) },
     };
   },

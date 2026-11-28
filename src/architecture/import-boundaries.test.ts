@@ -20,6 +20,7 @@ function isRuntimeSource(path: string): boolean {
 async function collectSourceFiles(dir: string, result: string[] = []): Promise<string[]> {
   const entries = await readdir(dir, { withFileTypes: true });
   for (const entry of entries) {
+    if (entry.name.startsWith(".")) continue;
     const path = join(dir, entry.name);
     if (entry.isDirectory()) {
       await collectSourceFiles(path, result);
@@ -32,19 +33,38 @@ async function collectSourceFiles(dir: string, result: string[] = []): Promise<s
   return result;
 }
 
-async function collectImports(): Promise<Array<{ file: string; specifier: string }>> {
-  const files = await collectSourceFiles(SOURCE_ROOT);
-  const imports: Array<{ file: string; specifier: string }> = [];
-  for (const file of files) {
-    const source = await Bun.file(file).text();
-    for (const match of source.matchAll(IMPORT_PATTERN)) {
-      imports.push({
-        file: relative(process.cwd(), file),
-        specifier: match[1] ?? match[2] ?? "",
-      });
+let cachedSourceEntries: Promise<Array<{ file: string; relativeFile: string; source: string }>> | null = null;
+
+function getSourceEntries(): Promise<Array<{ file: string; relativeFile: string; source: string }>> {
+  cachedSourceEntries ??= (async () => {
+    const files = await collectSourceFiles(SOURCE_ROOT);
+    const cwd = process.cwd();
+    return Promise.all(files.map(async (file) => ({
+      file,
+      relativeFile: relative(cwd, file),
+      source: await Bun.file(file).text(),
+    })));
+  })();
+  return cachedSourceEntries;
+}
+
+let cachedImports: Promise<Array<{ file: string; specifier: string }>> | null = null;
+
+function collectImports(): Promise<Array<{ file: string; specifier: string }>> {
+  cachedImports ??= (async () => {
+    const entries = await getSourceEntries();
+    const imports: Array<{ file: string; specifier: string }> = [];
+    for (const { relativeFile, source } of entries) {
+      for (const match of source.matchAll(IMPORT_PATTERN)) {
+        imports.push({
+          file: relativeFile,
+          specifier: match[1] ?? match[2] ?? "",
+        });
+      }
     }
-  }
-  return imports;
+    return imports;
+  })();
+  return cachedImports;
 }
 
 describe("import boundaries", () => {
@@ -85,11 +105,12 @@ describe("import boundaries", () => {
       tsx: new Bun.Transpiler({ loader: "tsx" }),
     };
     const violations: Array<{ file: string; specifier: string }> = [];
-    for (const file of await collectSourceFiles(SOURCE_ROOT)) {
+    for (const { file, relativeFile, source } of await getSourceEntries()) {
+      if (!source.includes("gloomberb")) continue;
       const transpiler = file.endsWith(".tsx") ? transpilers.tsx : transpilers.ts;
-      for (const { path: specifier } of transpiler.scanImports(await Bun.file(file).text())) {
+      for (const { path: specifier } of transpiler.scanImports(source)) {
         if (specifier === "gloomberb" || specifier.startsWith("gloomberb/")) {
-          violations.push({ file: relative(process.cwd(), file), specifier });
+          violations.push({ file: relativeFile, specifier });
         }
       }
     }
@@ -128,14 +149,11 @@ describe("import boundaries", () => {
   });
 
   test("shared runtime code uses Gloom UI components instead of OpenTUI intrinsic tags", async () => {
-    const files = await collectSourceFiles(SOURCE_ROOT);
     const violations: Array<{ file: string; tag: string }> = [];
 
-    for (const file of files) {
-      const relativeFile = relative(process.cwd(), file);
+    for (const { relativeFile, source } of await getSourceEntries()) {
       if (relativeFile.startsWith("src/renderers/")) continue;
 
-      const source = await Bun.file(file).text();
       for (const match of source.matchAll(OPENTUI_JSX_PATTERN)) {
         violations.push({ file: relativeFile, tag: match[1] ?? "" });
       }
@@ -145,14 +163,13 @@ describe("import boundaries", () => {
   });
 
   test("plugin fields use shared controls instead of raw host inputs", async () => {
-    const files = await collectSourceFiles(join(SOURCE_ROOT, "plugins"));
     const violations: string[] = [];
-    for (const file of files) {
-      const source = await Bun.file(file).text();
+    for (const { relativeFile, source } of await getSourceEntries()) {
+      if (!relativeFile.startsWith("src/plugins/")) continue;
       // Layout/text remain valid for domain rendering; single-line fields have
       // one owner for focus, keyboard events, masking and renderer differences.
       if (/import\s*\{[^}]*\bInput\b[^}]*\}\s*from\s*["'][^"']*\/ui(?:\/index)?["']/.test(source)) {
-        violations.push(relative(process.cwd(), file));
+        violations.push(relativeFile);
       }
     }
     expect(violations).toEqual([]);

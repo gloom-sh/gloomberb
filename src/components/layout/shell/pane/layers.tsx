@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, type RefObject } from "react";
+import { memo, useCallback, useEffect, useMemo, useRef, type ReactNode, type RefObject } from "react";
 import { Box, type BoxRenderable, type LiveBoxFrame } from "../../../../ui";
 import { resolveOccludedPaneIds, visibleFocusTarget, type OcclusionPane } from "../pane-occlusion";
 import {
@@ -211,28 +211,127 @@ function useLivePaneFrame(
  * charts and heat maps follow the frame in between (`useLiveStretch`), and
  * the release lays the split out once.
  */
-const DockedPaneLayer = memo(function DockedPaneLayer({
+function PaneLayerBody({
   pane,
-  rect: layoutRect,
+  rect,
   title,
   ticker,
   tickerSearchKey,
   focused,
   windowModeSelected,
   showActions,
-  hidden,
   inView,
   fullscreen,
   movable,
-  dockEdges,
-  stackTabs,
   nativePaneChrome,
   nativeContextMenu,
   canAsk,
-  getPaneQuickSettings,
+  quickSettings,
+  captureStamp,
+  stack,
   actions,
-  live,
-}: PaneLayerProps & { live: LiveDragStore }) {
+  onHeaderMouseDown,
+  wrap,
+}: Pick<PaneLayerProps, "pane" | "title" | "ticker" | "tickerSearchKey" | "focused" | "windowModeSelected" | "showActions" | "inView" | "fullscreen" | "movable" | "nativePaneChrome" | "nativeContextMenu" | "canAsk" | "actions"> & {
+  rect: LayoutBounds;
+  quickSettings: ReturnType<typeof usePaneQuickSettings>;
+  captureStamp: ReturnType<typeof usePaneCaptureStamp>;
+  stack: PaneHeaderStack | null;
+  onHeaderMouseDown?: (event: any) => void;
+  wrap: (
+    shared: {
+      paneId: string;
+      title: string;
+      titleTicker: string | null;
+      onTitleTickerPress: () => void;
+      focused: boolean;
+      width: number;
+      height: number;
+      locked: boolean;
+      showActions: boolean;
+      quickSettings: ReturnType<typeof usePaneQuickSettings>;
+      stack: PaneHeaderStack | null;
+      windowModeSelected: boolean;
+      footer: ReturnType<typeof captureStampFooter>;
+      onMouseDownCapture?: (event: any) => void;
+      onHeaderMouseMove: () => void;
+      onHeaderMouseDown?: (event: any) => void;
+      onHeaderMouseDrag?: (event: any) => void;
+      onHeaderMouseDragEnd?: (event: any) => void;
+      onHeaderContextMenu?: (event: any) => void;
+      onActionMouseDown: (event: any) => void;
+      onHelpMouseDown: () => void;
+      onAskMouseDown?: () => void;
+      fullscreen: boolean;
+      onRestoreMouseDown?: ShellMouseHandler;
+    },
+    children: ReactNode,
+  ) => ReactNode;
+}) {
+  const paneId = pane.instance.instanceId;
+  const nativeMove = nativePaneChrome && movable;
+  return (
+    <PaneFooterProvider>
+      {(registeredFooter) => {
+        const footer = captureStampFooter(withChangeTickerHint(registeredFooter, nativePaneChrome ? null : ticker, tickerSearchKey, () => actions.ticker(paneId)), captureStamp);
+        const showFooter = hasPaneFooterContent(footer);
+        const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
+        const bodyFrame = resolvePaneBodyFrame({
+          width: rect.width,
+          height: rect.height,
+          nativePaneChrome,
+          footerVisible: reserveFooter || showFooter,
+          reserveFooter,
+        });
+        return wrap(
+          {
+            paneId,
+            title,
+            titleTicker: nativePaneChrome ? ticker : null,
+            onTitleTickerPress: () => actions.ticker(paneId),
+            focused,
+            width: rect.width,
+            height: rect.height,
+            locked: pane.instance.locked === true,
+            showActions,
+            quickSettings,
+            stack,
+            windowModeSelected,
+            footer,
+            onMouseDownCapture: nativePaneChrome ? (event) => actions.paneMouseDown(paneId, event) : undefined,
+            onHeaderMouseMove: () => actions.hover(paneId),
+            onHeaderMouseDown,
+            onHeaderMouseDrag: nativeMove ? actions.drag : undefined,
+            onHeaderMouseDragEnd: nativeMove ? actions.drag : undefined,
+            onHeaderContextMenu: nativePaneChrome && nativeContextMenu ? (event) => actions.contextMenu(paneId, rect, event) : undefined,
+            onActionMouseDown: (event) => actions.menu(paneId, rect, event),
+            onHelpMouseDown: () => actions.help(paneId),
+            onAskMouseDown: canAsk ? () => actions.ask(paneId) : undefined,
+            fullscreen,
+            onRestoreMouseDown: fullscreen ? actions.restoreFullscreen : undefined,
+          },
+          <>
+            <PaneFooterKeys paneId={paneId} footer={registeredFooter} focused={focused} />
+            <PaneContent
+              component={pane.def.component}
+              paneId={paneId}
+              paneType={pane.instance.paneId}
+              title={title}
+              focused={focused}
+              width={bodyFrame.width ?? 1}
+              height={bodyFrame.height ?? 1}
+              inView={inView}
+              closePane={actions.close}
+            />
+          </>,
+        );
+      }}
+    </PaneFooterProvider>
+  );
+}
+
+const DockedPaneLayer = memo(function DockedPaneLayer(props: PaneLayerProps & { live: LiveDragStore }) {
+  const { pane, rect: layoutRect, hidden, dockEdges, stackTabs, nativePaneChrome, movable, getPaneQuickSettings, actions, live } = props;
   const paneId = pane.instance.instanceId;
   const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
   const nativeMove = nativePaneChrome && movable;
@@ -260,106 +359,31 @@ const DockedPaneLayer = memo(function DockedPaneLayer({
     onTabMouseDown: nativeMove ? (tabId, event) => actions.dockedDragStart(tabId, rect, event, { focus: tabId === paneId }) : undefined,
   } : null), [actions, nativeMove, paneId, rect, stackTabs]);
   return (
-    <Box
-      ref={boxRef}
-      position="absolute"
-      left={rect.x}
-      top={rect.y}
-      width={rect.width}
-      height={rect.height}
-      visible={!hidden}
-    >
-      <PaneFooterProvider>
-        {(registeredFooter) => {
-          const footer = captureStampFooter(withChangeTickerHint(registeredFooter, nativePaneChrome ? null : ticker, tickerSearchKey, () => actions.ticker(paneId)), captureStamp);
-          const showFooter = hasPaneFooterContent(footer);
-          const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
-          const bodyFrame = resolvePaneBodyFrame({
-            width: rect.width,
-            height: rect.height,
-            nativePaneChrome,
-            footerVisible: reserveFooter || showFooter,
-            reserveFooter,
-          });
-          return (
-            <PaneWrapper
-              paneId={paneId}
-              title={title}
-              titleTicker={nativePaneChrome ? ticker : null}
-              onTitleTickerPress={() => actions.ticker(paneId)}
-              focused={focused}
-              width={rect.width}
-              height={rect.height}
-              stretch={nativePaneChrome}
-              locked={pane.instance.locked === true}
-              showActions={showActions}
-              quickSettings={quickSettings}
-              topRule={rect.y > 0.01}
-              dockEdges={dockEdges}
-              stack={stack}
-              windowModeSelected={windowModeSelected}
-              footer={footer}
-              onMouseDownCapture={nativePaneChrome ? (event) => actions.paneMouseDown(paneId, event) : undefined}
-              onHeaderMouseMove={() => actions.hover(paneId)}
-              onHeaderMouseDown={nativeMove ? (event) => actions.dockedDragStart(paneId, rect, event) : undefined}
-              onHeaderMouseDrag={nativeMove ? actions.drag : undefined}
-              onHeaderMouseDragEnd={nativeMove ? actions.drag : undefined}
-              onHeaderContextMenu={nativePaneChrome && nativeContextMenu ? (event) => actions.contextMenu(paneId, rect, event) : undefined}
-              onActionMouseDown={(event) => actions.menu(paneId, rect, event)}
-              onHelpMouseDown={() => actions.help(paneId)}
-              onAskMouseDown={canAsk ? () => actions.ask(paneId) : undefined}
-              fullscreen={fullscreen}
-              onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
-            >
-              <PaneFooterKeys paneId={paneId} footer={registeredFooter} focused={focused} />
-              <LivePaneFrameContext.Provider value={liveFrame}>
-                <PaneContent
-                  component={pane.def.component}
-                  paneId={paneId}
-                  paneType={pane.instance.paneId}
-                  title={title}
-                  focused={focused}
-                  width={bodyFrame.width ?? 1}
-                  height={bodyFrame.height ?? 1}
-                  inView={inView}
-                  closePane={actions.close}
-                />
-              </LivePaneFrameContext.Provider>
-            </PaneWrapper>
-          );
-        }}
-      </PaneFooterProvider>
+    <Box ref={boxRef} position="absolute" left={rect.x} top={rect.y} width={rect.width} height={rect.height} visible={!hidden}>
+      <PaneLayerBody
+        {...props}
+        rect={rect}
+        quickSettings={quickSettings}
+        captureStamp={captureStamp}
+        stack={stack}
+        onHeaderMouseDown={nativeMove ? (event) => actions.dockedDragStart(paneId, rect, event) : undefined}
+        wrap={(shared, children) => (
+          <PaneWrapper {...shared} stretch={nativePaneChrome} topRule={rect.y > 0.01} dockEdges={dockEdges}>
+            <LivePaneFrameContext.Provider value={liveFrame}>{children}</LivePaneFrameContext.Provider>
+          </PaneWrapper>
+        )}
+      />
     </Box>
   );
 });
 
-const FloatingPaneFrame = memo(function FloatingPaneFrame({
-  pane,
-  rect,
-  title,
-  ticker,
-  tickerSearchKey,
-  focused,
-  windowModeSelected,
-  showActions,
-  hidden,
-  inView,
-  fullscreen,
-  movable,
-  nativePaneChrome,
-  nativeContextMenu,
-  canAsk,
-  getPaneQuickSettings,
-  actions,
-  stackTabs,
-  zIndex,
-  frameRef,
-}: PaneLayerProps & {
+const FloatingPaneFrame = memo(function FloatingPaneFrame(props: PaneLayerProps & {
   rect: FloatingRect;
   zIndex: number;
   /** Desktop: the frame a resize sizes outside React. */
   frameRef?: RefObject<BoxRenderable | null>;
 }) {
+  const { pane, rect, hidden, fullscreen, movable, nativePaneChrome, getPaneQuickSettings, actions, stackTabs, zIndex, frameRef } = props;
   const paneId = pane.instance.instanceId;
   const quickSettings = usePaneQuickSettings(getPaneQuickSettings, paneId);
   const nativeMove = nativePaneChrome && movable;
@@ -373,71 +397,30 @@ const FloatingPaneFrame = memo(function FloatingPaneFrame({
     onTabMouseDown: nativeMove ? (tabId, event) => actions.tabDragStart(tabId, rect, event) : undefined,
   } : null), [actions, nativeMove, paneId, rect, stackTabs]);
   return (
-    <PaneFooterProvider>
-      {(registeredFooter) => {
-        const footer = captureStampFooter(withChangeTickerHint(registeredFooter, nativePaneChrome ? null : ticker, tickerSearchKey, () => actions.ticker(paneId)), captureStamp);
-        const showFooter = hasPaneFooterContent(footer);
-        const reserveFooter = shouldReservePaneFooter(nativePaneChrome, showFooter);
-        const bodyFrame = resolvePaneBodyFrame({
-          width: rect.width,
-          height: rect.height,
-          nativePaneChrome,
-          footerVisible: reserveFooter || showFooter,
-          reserveFooter,
-        });
-        return (
-          <FloatingPaneWrapper
-            paneId={paneId}
-            title={title}
-            titleTicker={nativePaneChrome ? ticker : null}
-            onTitleTickerPress={() => actions.ticker(paneId)}
-            x={rect.x}
-            y={rect.y}
-            width={rect.width}
-            height={rect.height}
-            zIndex={zIndex}
-            hidden={hidden}
-            focused={focused}
-            windowModeSelected={windowModeSelected}
-            locked={pane.instance.locked === true}
-            showActions={showActions}
-            quickSettings={quickSettings}
-            footer={footer}
-            onMouseDownCapture={nativePaneChrome ? (event) => actions.paneMouseDown(paneId, event) : undefined}
-            onHeaderMouseMove={() => actions.hover(paneId)}
-            onHeaderMouseDown={nativeMove ? (event) => actions.floatingDragStart(paneId, rect, event) : undefined}
-            onHeaderMouseDrag={nativeMove ? actions.drag : undefined}
-            onHeaderMouseDragEnd={nativeMove ? actions.drag : undefined}
-            onHeaderContextMenu={nativePaneChrome && nativeContextMenu ? (event) => actions.contextMenu(paneId, rect, event) : undefined}
-            onActionMouseDown={(event) => actions.menu(paneId, rect, event)}
-            onHelpMouseDown={() => actions.help(paneId)}
-            onAskMouseDown={canAsk ? () => actions.ask(paneId) : undefined}
-            onCloseMouseDown={fullscreen ? undefined : (event) => actions.closeMouseDown(paneId, event)}
-            onRestoreMouseDown={fullscreen ? actions.restoreFullscreen : undefined}
-            fullscreen={fullscreen}
-            onResizeMouseDown={nativeMove ? (event) => actions.floatResizeStart(paneId, rect, event) : undefined}
-            onResizeMouseDrag={nativeMove ? actions.drag : undefined}
-            onResizeMouseDragEnd={nativeMove ? actions.drag : undefined}
-            frameRef={frameRef}
-            stack={stack}
-          >
-            <PaneFooterKeys paneId={paneId} footer={registeredFooter} focused={focused} />
-            <PaneContent
-              component={pane.def.component}
-              paneId={paneId}
-              paneType={pane.instance.paneId}
-              title={title}
-              focused={focused}
-              width={bodyFrame.width ?? 1}
-              height={bodyFrame.height ?? 1}
-              inView={inView}
-              onClose={actions.close}
-              closePane={actions.close}
-            />
-          </FloatingPaneWrapper>
-        );
-      }}
-    </PaneFooterProvider>
+    <PaneLayerBody
+      {...props}
+      rect={rect}
+      quickSettings={quickSettings}
+      captureStamp={captureStamp}
+      stack={stack}
+      onHeaderMouseDown={nativeMove ? (event) => actions.floatingDragStart(paneId, rect, event) : undefined}
+      wrap={(shared, children) => (
+        <FloatingPaneWrapper
+          {...shared}
+          x={rect.x}
+          y={rect.y}
+          zIndex={zIndex}
+          hidden={hidden}
+          onCloseMouseDown={fullscreen ? undefined : (event) => actions.closeMouseDown(paneId, event)}
+          onResizeMouseDown={nativeMove ? (event) => actions.floatResizeStart(paneId, rect, event) : undefined}
+          onResizeMouseDrag={nativeMove ? actions.drag : undefined}
+          onResizeMouseDragEnd={nativeMove ? actions.drag : undefined}
+          frameRef={frameRef}
+        >
+          {children}
+        </FloatingPaneWrapper>
+      )}
+    />
   );
 });
 
@@ -553,49 +536,34 @@ const FloatingPaneLayer = memo(function FloatingPaneLayer({
     return geometry.floating.rect;
   }, [paneId, slide]);
   const dragRect = useLiveDrag(live, selectRedraw);
+  const resolveResizeRect = useCallback((geometry: LiveDragGeometry): FloatingRect | null => {
+    const raw = geometry.partners?.get(paneId)
+      ?? (geometry.paneResize?.paneId === paneId && geometry.floating?.paneId === paneId ? geometry.floating.rect : null);
+    return raw ? constrainFloatingRectToBounds(raw, width, contentHeight) : null;
+  }, [contentHeight, paneId, width]);
   const layerRef = useRef<BoxRenderable | null>(null);
   const frameOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): LiveBoxFrame | null => {
-    const partner = geometry.partners?.get(paneId);
-    if (partner) {
-      const resized = constrainFloatingRectToBounds(partner, width, contentHeight);
-      return { dx: resized.x - rect.x, dy: resized.y - rect.y };
-    }
-    // A resize keeps the pane on its own layer too: the panes it uncovers or
-    // covers never repaint, only the pane does. A left or top edge moves it.
-    if (geometry.paneResize?.paneId === paneId) {
-      const resized = geometry.floating?.paneId === paneId ? constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight) : null;
-      return resized ? { dx: resized.x - rect.x, dy: resized.y - rect.y } : { dx: 0, dy: 0 };
-    }
+    const resized = resolveResizeRect(geometry);
+    if (resized) return { dx: resized.x - rect.x, dy: resized.y - rect.y };
+    if (geometry.paneResize?.paneId === paneId) return { dx: 0, dy: 0 };
     if (geometry.paneDrag?.paneId !== paneId || geometry.paneDrag.mode === "tab") return null;
     const moving = geometry.floating?.paneId === paneId ? geometry.floating.rect : null;
     // Promoted from the press, so the first move already only slides it.
     if (!moving) return { dx: 0, dy: 0 };
     const at = constrainFloatingRectToBounds(moving, width, contentHeight);
     return { dx: at.x - rect.x, dy: at.y - rect.y };
-  } : null), [contentHeight, paneId, rect.x, rect.y, slide, width]);
+  } : null), [contentHeight, paneId, rect.x, rect.y, resolveResizeRect, slide, width]);
   useLiveBoxFrame(live, layerRef, frameOf);
   const frameRef = useRef<BoxRenderable | null>(null);
   const sizeOf = useMemo(() => (slide ? (geometry: LiveDragGeometry): CellSize | null => {
-    const partner = geometry.partners?.get(paneId);
-    if (partner) {
-      const at = constrainFloatingRectToBounds(partner, width, contentHeight);
-      return { width: at.width, height: at.height };
-    }
-    if (geometry.paneResize?.paneId !== paneId || geometry.floating?.paneId !== paneId) return null;
-    const at = constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight);
-    return { width: at.width, height: at.height };
-  } : null), [contentHeight, paneId, slide, width]);
+    const at = resolveResizeRect(geometry);
+    return at ? { width: at.width, height: at.height } : null;
+  } : null), [resolveResizeRect, slide]);
   useLiveBoxFrame(live, frameRef, sizeOf);
   const selectCatchUp = useMemo(() => (slide ? (geometry: LiveDragGeometry) => {
-    const partner = geometry.partners?.get(paneId);
-    if (partner) {
-      const resized = constrainFloatingRectToBounds(partner, width, contentHeight);
-      return sameRect(resized, rect) ? null : resized;
-    }
-    if (geometry.paneResize?.paneId !== paneId || geometry.floating?.paneId !== paneId) return null;
-    const resized = constrainFloatingRectToBounds(geometry.floating.rect, width, contentHeight);
-    return sameRect(resized, rect) ? null : resized;
-  } : null), [contentHeight, paneId, rect, slide, width]);
+    const resized = resolveResizeRect(geometry);
+    return resized && !sameRect(resized, rect) ? resized : null;
+  } : null), [rect, resolveResizeRect, slide]);
   const resizeRect = useLiveCatchUp(live, selectCatchUp);
   // Over somewhere to land, the desktop pane rises over its landing preview
   // and turns see-through, so the preview shows under it.
@@ -777,19 +745,7 @@ export function ShellPaneLayers({
   const stackTabsById = useMemo(() => {
     const byId = new Map<string, ReadonlyArray<{ id: string; title: string }>>();
     const cache = new Map<string, ReadonlyArray<{ id: string; title: string }>>();
-    for (const leaf of dockLeafLayouts) {
-      if (!leaf.stack) continue;
-      const tabs = leaf.stack.map((id) => {
-        const member = paneMap.get(id);
-        return { id, title: member ? getPaneTitle(member) : id };
-      });
-      const key = tabs.map((tab) => `${tab.id}\u0000${tab.title}`).join("\u0001");
-      const kept = stackTabsCache.current.get(key) ?? tabs;
-      cache.set(key, kept);
-      byId.set(leaf.instanceId, kept);
-    }
-    // A floating stack's tabs, by the pane in front.
-    for (const [shown, members] of floatingStacks(visibleFloatingPanes.map(({ pane }) => pane.floating!), floatingOrder)) {
+    const recordStack = (shown: string, members: readonly string[]) => {
       const tabs = members.map((id) => {
         const member = paneMap.get(id);
         return { id, title: member ? getPaneTitle(member) : id };
@@ -798,6 +754,13 @@ export function ShellPaneLayers({
       const kept = stackTabsCache.current.get(key) ?? tabs;
       cache.set(key, kept);
       byId.set(shown, kept);
+    };
+    for (const leaf of dockLeafLayouts) {
+      if (leaf.stack) recordStack(leaf.instanceId, leaf.stack);
+    }
+    // A floating stack's tabs, by the pane in front.
+    for (const [shown, members] of floatingStacks(visibleFloatingPanes.map(({ pane }) => pane.floating!), floatingOrder)) {
+      recordStack(shown, members);
     }
     stackTabsCache.current = cache;
     return byId;
@@ -811,26 +774,7 @@ export function ShellPaneLayers({
     return hidden;
   }, [visibleFloatingPanes]);
 
-  const handlersRef = useRef({
-    handleFloatingClose,
-    handleFloatingCloseMouseDown,
-    handleRestoreFullscreen,
-    handleNativeDrag,
-    handleNativePaneContextMenu,
-    handleNativePaneMouseDown,
-    handlePaneAction,
-    handlePaneHelp,
-    handlePaneAsk,
-    handlePaneTicker,
-    setHoveredPaneIfChanged,
-    startNativeDividerDrag,
-    startNativeDockedDrag,
-    startNativeFloatingDrag,
-    startNativeFloatResize,
-    startNativeTabDrag,
-    focusPane,
-  });
-  handlersRef.current = {
+  const handlers = {
     handleFloatingClose,
     handleFloatingCloseMouseDown,
     handleRestoreFullscreen,
@@ -849,6 +793,8 @@ export function ShellPaneLayers({
     startNativeTabDrag,
     focusPane,
   };
+  const handlersRef = useRef(handlers);
+  handlersRef.current = handlers;
   // Only called from events, never while rendering, so reading the latest handlers is safe.
   const actions = useMemo<PaneLayerActions>(() => ({
     paneMouseDown: (paneId, event) => handlersRef.current.handleNativePaneMouseDown(paneId, event),

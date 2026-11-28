@@ -1,6 +1,7 @@
-import { MISSING_VALUE } from "../../../utils/format";
 import type { DoeSeriesRow, DoeTab } from "../../../api-client/doe";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import { textCell } from "../shared/headless-columns";
+import { argumentText, enumOption } from "../shared/headless-options";
 import { loadDoeBoard } from "./client";
 import {
   DOE_TABS,
@@ -19,7 +20,7 @@ import {
 } from "./model";
 import { newestReportTime, oldestReportTime } from "../../../utils/utc-time";
 
-const text = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
+const text = textCell();
 
 /** One row per series, in the pane's words and units; numbers keep their published precision. */
 function reportRow(row: DoeSeriesRow) {
@@ -63,8 +64,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
   return {
     shape: "bundle",
     argument: { kind: "free-text", optional: true, placeholder: "series", description: "A series such as cushing, gasoline or east; omit for the tables." },
-    options: [{ key: "tab", type: "enum", values: [{ value: "all" }, ...DOE_TABS], defaultValue: defaultTab,
-      description: "Crude, products, gas storage, or all three." }],
+    options: [enumOption("tab", ["all", ...DOE_TABS], { defaultValue: defaultTab, description: "Crude, products, gas storage, or all three." })],
     discovery: { aliases: ["DOE", "NGS"], dataRequirements: ["Gloom Cloud EIA weekly history"],
       limitations: ["Weekly data, published Wednesday (petroleum) and Thursday (gas) at 10:30 ET, moved by holidays.",
         "Five-year ranges read earlier years on the same calendar day.", "A range holds fewer than five years where a series is younger."] },
@@ -85,7 +85,7 @@ export function doeHeadless(defaultTab: DoeTab | "all"): HeadlessPaneDefinition<
           ...(week && releasedAt ? { asOf: week, releasedOn: releasedAt } : { asOf: releasedAt }),
           nextExpectedAt: oldestReportTime(reports.map((report) => report.nextReleaseAt)) };
       };
-      const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
+      const argument = argumentText(args.argument);
       // `DOE NGS` or `DOE natural gas` is the gas storage tables `NGS` opens on, and says so; `NGS gas` is them already.
       const gasWord = argument ? doeGasWord(argument) : false;
       const ngs = defaultTab === "gas";

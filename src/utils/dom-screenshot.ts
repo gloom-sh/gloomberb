@@ -344,7 +344,7 @@ function textBaselineOffset(style: CSSStyleDeclaration, rect: Pick<DOMRect, "hei
 type TextRect = Pick<DOMRect, "left" | "top" | "width" | "height">;
 
 /** Recover the browser's actual line breaks, including font and inline layout. */
-export function renderedTextFragments(
+function renderedTextFragments(
   value: string,
   measure: (start: number, end: number) => readonly TextRect[],
 ): { value: string; rect: TextRect }[] {
@@ -443,7 +443,7 @@ function ellipsisEdge(element: Element, style: CSSStyleDeclaration): number | nu
 }
 
 /** The longest start of `text` that fits `width` with an ellipsis after it, as the screen cuts it. */
-export function ellipsized(measure: (text: string) => number, text: string, width: number): string {
+function ellipsized(measure: (text: string) => number, text: string, width: number): string {
   const characters = Array.from(text);
   let low = 0;
   let high = characters.length;

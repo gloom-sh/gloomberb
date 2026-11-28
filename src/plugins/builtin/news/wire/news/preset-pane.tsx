@@ -144,7 +144,7 @@ export interface NewsPresetPaneConfig {
   emptyStateHint: string;
 }
 
-export function NewsPresetPane({
+function NewsPresetPane({
   focused,
   width,
   height,

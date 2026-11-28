@@ -57,6 +57,8 @@ export interface ResultItem {
   prefetchInstrument?: InstrumentRef;
   shortcutQuery?: string;
   searchText?: string;
+  /** The query names this pane's view exactly, rather than matching its search text. */
+  exactViewMatch?: boolean;
   /**
    * The words that name one of the bar's own actions outright, as other apps
    * call it (Fullscreen Pane: maximize, zoom, full screen). A word typed in

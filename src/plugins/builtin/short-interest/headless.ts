@@ -7,8 +7,8 @@ import type {
   HeadlessPaneDefinition,
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
-import { DATE_OPTION_EXAMPLES, isoDateOption } from "../../../utils/calendar-date";
-import { MISSING_VALUE, formatCompact, formatNumber } from "../../../utils/format";
+import { DATE_OPTION_EXAMPLES } from "../../../utils/calendar-date";
+import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import type { ShortInterestResult } from "./client";
 import {
   buildRows,
@@ -18,41 +18,22 @@ import {
 import { shortInterestFreshness, shortInterestPublished } from "./schedule";
 import type { ShortInterestRecord } from "./types";
 import { loadShortInterestWithFloat } from "./watch-client";
-import { REPORT_ROWS, REPORT_SORT } from "../shared/headless-options";
+import { dateOption, enumOption, limitOption, REPORT_SORT } from "../shared/headless-options";
+import { compactCell, numberCell, numCol } from "../shared/headless-columns";
 
 const SHORT_INTEREST_COLUMNS: HeadlessPaneColumn[] = [
   { key: "settlementDate", header: "Date" },
   // When FINRA published the settlement: what a trader could see that day.
   { key: "publishedDate", header: "Published" },
-  {
-    key: "sharesShort",
-    header: "Shares Short",
-    align: "right",
-    format: (value) => formatCompact(Number(value)),
-  },
-  {
-    key: "daysToCover",
-    header: "Days to cover",
-    align: "right",
-    format: (value) => value == null ? MISSING_VALUE : formatNumber(Number(value), 2),
-  },
-  {
-    key: "averageDailyVolume",
-    header: "Avg Daily Vol",
-    align: "right",
-    format: (value) => value == null ? MISSING_VALUE : formatCompact(Number(value)),
-  },
-  {
-    key: "shortPercentFloat",
-    header: "% Float",
-    align: "right",
-    format: (value) => value == null ? MISSING_VALUE : `${formatNumber(Number(value), 2)}%`,
-  },
+  numCol("sharesShort", "Shares Short", (value) => formatCompact(Number(value))),
+  numCol("daysToCover", "Days to cover", numberCell(2)),
+  numCol("averageDailyVolume", "Avg Daily Vol", compactCell()),
+  numCol("shortPercentFloat", "% Float", numberCell(2, { suffix: "%" })),
   // The day of the share count the float is held within.
-  { key: "floatAsOf", header: "Float As Of", align: "right" },
+  numCol("floatAsOf", "Float As Of"),
 ];
 
-export interface ShortInterestHeadlessDependencies {
+interface ShortInterestHeadlessDependencies {
   loadRecords(
     symbol: string,
     args: HeadlessPaneLoadArgs,
@@ -68,7 +49,7 @@ const defaultDependencies: ShortInterestHeadlessDependencies = {
   }),
 };
 
-export function createShortInterestHeadless(
+function createShortInterestHeadless(
   dependencies: ShortInterestHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {
@@ -91,31 +72,9 @@ export function createShortInterestHeadless(
     // FINRA's settlements count OTC securities' shares short too: 0700.HK is offered TCEHY.
     usListingsOtc: true,
     options: [
-      {
-        key: "order",
-        shot: REPORT_SORT,
-        description: "Settlement date order.",
-        type: "enum",
-        values: [{ value: "newest" }, { value: "oldest" }],
-        defaultValue: "newest",
-      },
-      {
-        key: "asOf",
-        type: "string",
-        placeholder: "date",
-        description: `Only FINRA settlements published or exchange reports observed by this date, as ${DATE_OPTION_EXAMPLES}.`,
-        normalize: (value) => isoDateOption(value, "as-of"),
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        aliases: ["count", "rows"],
-        description: "Maximum settlement rows.",
-        type: "integer",
-        defaultValue: 24,
-        minimum: 1,
-        maximum: 100,
-      },
+      enumOption("order", ["newest", "oldest"], { shot: REPORT_SORT, description: "Settlement date order.", defaultValue: "newest" }),
+      dateOption("asOf", { flagName: "as-of", description: `Only FINRA settlements published or exchange reports observed by this date, as ${DATE_OPTION_EXAMPLES}.` }),
+      limitOption({ aliases: ["count", "rows"], description: "Maximum settlement rows.", defaultValue: 24, maximum: 100 }),
     ],
     columns: SHORT_INTEREST_COLUMNS,
     describe: (args) => `Short Interest | ${args.symbols[0]}`,

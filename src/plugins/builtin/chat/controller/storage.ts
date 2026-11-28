@@ -10,15 +10,19 @@ import {
   hydratePersistedChannelState,
   persistChatSession,
   persistChatTranscript,
+  readChatComposerState,
   readChatSessionState,
   writeChatChannelState,
+  writeChatComposerState,
   type ChatSessionUser,
 } from "./persistence";
 import {
   createEmptyChannelState,
+  hydrateComposerState,
   normalizeChannelId,
   type ChannelRuntimeState,
 } from "./state";
+import { clearComposerState } from "./lifecycle";
 
 interface ChatControllerStorageOptions {
   emit: (channelId?: string) => void;
@@ -28,6 +32,7 @@ interface ChatControllerStorageOptions {
 export class ChatControllerStorage {
   private persistence: PluginPersistence | null = null;
   private resume: PluginResumeState | null = null;
+  private composerAccount: { id: string } | null = null;
   readonly channelStates = new Map<string, ChannelRuntimeState>();
 
   constructor(private readonly options: ChatControllerStorageOptions) {}
@@ -35,6 +40,21 @@ export class ChatControllerStorage {
   attachPersistence(persistence: PluginPersistence, resume?: PluginResumeState): void {
     this.persistence = persistence;
     this.resume = resume ?? this.resume;
+  }
+
+  getComposerAccount(): { id: string } | null {
+    return this.composerAccount;
+  }
+
+  setComposerAccount(accountId: string | null): void {
+    if ((this.composerAccount?.id ?? null) === accountId) return;
+    for (const [channelId, channel] of this.channelStates) {
+      this.flushDraftSync(channelId);
+      clearComposerState(channel);
+      channel.pendingMessages = [];
+    }
+    this.composerAccount = accountId ? { id: accountId } : null;
+    for (const [channelId, channel] of this.channelStates) this.hydrateComposer(channelId, channel);
   }
 
   hasPersistence(): boolean {
@@ -53,6 +73,7 @@ export class ChatControllerStorage {
     const channel = createEmptyChannelState();
     this.channelStates.set(normalizedChannelId, channel);
     this.hydrateChannelState(normalizedChannelId, channel);
+    this.hydrateComposer(normalizedChannelId, channel);
     return channel;
   }
 
@@ -66,7 +87,7 @@ export class ChatControllerStorage {
   }
 
   deleteSession(): void {
-    deleteChatSession(this.persistence);
+    deleteChatSession(this.persistence, this.resume);
   }
 
   deleteTranscript(channelId: string): void {
@@ -74,17 +95,27 @@ export class ChatControllerStorage {
   }
 
   persistChannelState(channelId: string): void {
-    const channel = this.ensureChannelState(channelId);
-    this.clearDraftSyncTimer(channel);
     this.writeChannelState(channelId);
   }
 
+  persistComposer(channelId: string): void {
+    const account = this.composerAccount;
+    if (!account) return;
+    const channel = this.ensureChannelState(channelId);
+    this.clearDraftSyncTimer(channel);
+    writeChatComposerState(this.persistence, this.resume, account.id, channelId, channel);
+  }
+
   scheduleDraftSync(channelId: string): void {
+    const account = this.composerAccount;
+    if (!account) return;
     const channel = this.ensureChannelState(channelId);
     scheduleDraftSync({
       channelId,
       channel,
-      writeChannelState: (nextChannelId) => this.writeChannelState(nextChannelId),
+      writeChannelState: (nextChannelId) => {
+        if (this.composerAccount === account) this.persistComposer(nextChannelId);
+      },
       emit: (nextChannelId) => this.options.emit(nextChannelId),
     });
   }
@@ -98,7 +129,7 @@ export class ChatControllerStorage {
     flushDraftSync({
       channelId,
       channel,
-      writeChannelState: (nextChannelId) => this.writeChannelState(nextChannelId),
+      writeChannelState: (nextChannelId) => this.persistComposer(nextChannelId),
     });
   }
 
@@ -120,6 +151,12 @@ export class ChatControllerStorage {
       resume: this.resume,
       userId: this.options.getUser()?.id ?? null,
     });
+  }
+
+  private hydrateComposer(channelId: string, channel: ChannelRuntimeState): void {
+    const account = this.composerAccount;
+    if (!account) return;
+    hydrateComposerState(channel, readChatComposerState(this.persistence, this.resume, account.id, channelId));
   }
 
   private writeChannelState(channelId: string): void {

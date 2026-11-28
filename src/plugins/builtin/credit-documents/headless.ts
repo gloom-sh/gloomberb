@@ -51,7 +51,7 @@ const CREDIT_EXAMPLE_SYMBOL = "FICO";
  * filings yet; with the command for an issuer that has documents. Null when
  * any section has a row.
  */
-export function creditEmptyReason(
+function creditEmptyReason(
   data: Pick<CreditDocumentsPayload, "symbol" | "issuer" | "instruments" | "covenants" | "maturities" | "changeOfControl" | "lockedRows">,
   requested: string,
 ): string | null {

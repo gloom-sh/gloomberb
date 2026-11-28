@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef } from "react";
-import { ChoiceDialog, confirmDialog, TextPromptDialog, usePaneFooter, usePaneMenuItems } from "../../../../components";
+import { confirmDialog, usePaneFooter, usePaneMenuItems } from "../../../../components";
+import { choiceDialog, textPromptDialog } from "../../../../components/ui";
 import type { TickerTableGroup } from "../../../../components/ticker/list-table-view";
 import { t, tf } from "../../../../i18n";
 import {
@@ -16,7 +17,7 @@ import { scheduleConfigSave } from "../../../../state/config-save-scheduler";
 import type { AppConfig } from "../../../../types/config";
 import type { ContextMenuItem } from "../../../../types/context-menu";
 import type { TickerRecord, Watchlist } from "../../../../types/ticker";
-import { useDialog, type PromptContext } from "../../../../ui/dialog";
+import { useDialog } from "../../../../ui/dialog";
 import { logFailure } from "../../../../utils/log-failure";
 import { usePluginAppActions } from "../../../runtime";
 
@@ -122,11 +123,16 @@ export function useWatchlistGroupActions({
 
   /** The name a new group is given, typed in a prompt; null when none was. */
   const askName = useCallback(async (title: string, body: string | null, confirmLabel: string, initialValue = "") => {
-    const typed = await dialog.prompt<string>({
-      content: (context) => (
-        <TextPromptDialog {...context} title={title} body={body ? [body] : undefined} label={t("Name")} initialValue={initialValue}
-          placeholder={t("Energy")} confirmLabel={confirmLabel} width={52} />
-      ),
+    const typed = await textPromptDialog(dialog, {
+      title,
+      body: body ? [body] : undefined,
+      label: t("Name"),
+      initialValue,
+      placeholder: t("Energy"),
+      confirmLabel,
+      width: 52,
+      logSource: "portfolio-list.groups",
+      logMessage: "Open group name prompt failed",
     });
     return typed?.trim() ? typed : null;
   }, [dialog]);
@@ -140,13 +146,15 @@ export function useWatchlistGroupActions({
       const others = watchlistGroups(list).filter((group) => group.name !== current);
       let choice: string | undefined = NEW_GROUP_CHOICE;
       if (others.length > 0) {
-        choice = await dialog.prompt<string>({
-          content: (context: PromptContext<string>) => (
-            <ChoiceDialog {...context} title={tf("Move {symbol} to Group", { symbol })} choices={[
-              ...others.map((group) => ({ id: group.name, label: group.name })),
-              { id: NEW_GROUP_CHOICE, label: t("New Group…") },
-            ]} />
-          ),
+        choice = await choiceDialog(dialog, {
+          closeOnClickOutside: false,
+          title: tf("Move {symbol} to Group", { symbol }),
+          choices: [
+            ...others.map((group) => ({ id: group.name, label: group.name })),
+            { id: NEW_GROUP_CHOICE, label: t("New Group…") },
+          ],
+          logSource: "portfolio-list.groups",
+          logMessage: "Open move to group choice failed",
         });
       }
       if (choice == null) return;

@@ -72,7 +72,7 @@ export function chartStudyPeriodTitle(selection: BuiltinStudySelection): string 
 }
 
 /** `Simple moving average (SMA 50)`: the name, the acronym and the period it runs with. */
-export function chartStudyLabel(selection: BuiltinStudySelection, period: number | null): string {
+function chartStudyLabel(selection: BuiltinStudySelection, period: number | null): string {
   const { name, short } = CHART_STUDY_NAMES[selection];
   if (!short) return name;
   return isPeriodStudy(selection) && period != null ? `${name} (${short} ${period})` : `${name} (${short})`;
@@ -117,7 +117,7 @@ export const CHART_FORMULA_OPTIONS: Array<PaneSettingOption & { value: PairStudy
   { value: "correlation", label: "Correlation 20", description: "20-observation rolling return correlation on shared observation times." },
 ];
 
-export const CHART_SETTING_KEYS = {
+const CHART_SETTING_KEYS = {
   series: "chartSeries",
   indicators: "chartIndicators",
   formulas: "chartFormulas",
@@ -156,7 +156,7 @@ function sourceKey(series: ChartSeriesSpec): string {
  * authored series. Multi-series styling belongs in the Series editor where the
  * target is explicit, even when all but one series are currently hidden.
  */
-export function getChartInlineStyleTarget(spec: ChartSpec): ChartSeriesSpec | null {
+function getChartInlineStyleTarget(spec: ChartSpec): ChartSeriesSpec | null {
   return spec.series.length === 1 ? spec.series[0] ?? null : null;
 }
 
@@ -302,7 +302,7 @@ function cleanDerivedSettings(
   return next;
 }
 
-export function applyChartComposerPaneSetting(
+function applyChartComposerPaneSetting(
   settings: Record<string, unknown>,
   field: PaneSettingField,
   value: unknown,

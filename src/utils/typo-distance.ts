@@ -1,3 +1,17 @@
+/** Levenshtein edit distance (insert, delete, substitute) between two strings. */
+export function editDistance(left: string, right: string): number {
+  let previous = Array.from({ length: right.length + 1 }, (_, index) => index);
+  for (let row = 1; row <= left.length; row += 1) {
+    const current = [row];
+    for (let column = 1; column <= right.length; column += 1) {
+      const cost = left[row - 1] === right[column - 1] ? 0 : 1;
+      current[column] = Math.min(previous[column]! + 1, current[column - 1]! + 1, previous[column - 1]! + cost);
+    }
+    previous = current;
+  }
+  return previous[right.length]!;
+}
+
 /**
  * The edits (insert, delete, replace, swap two neighbours) between two
  * strings, up to two; anything further apart is 2. One slip of the keys is

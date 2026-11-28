@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { DataProvider } from "../../../types/data-provider";
 import type { HeadlessPaneFreshness } from "../../../types/plugin";
@@ -123,7 +124,7 @@ const bidYield = (row: CspScreenRow) => row.csp?.quote?.bidAnnualizedYield ?? nu
  * rest and flagged, never left out. A put with no yield to rank (it expires
  * today) follows, then the names with no put, by symbol.
  */
-export function rankCspScreen(rows: readonly Omit<CspScreenRow, "rank">[]): CspScreenRow[] {
+function rankCspScreen(rows: readonly Omit<CspScreenRow, "rank">[]): CspScreenRow[] {
   const tier = (row: Omit<CspScreenRow, "rank">) => bidYield(row as CspScreenRow) != null ? 0 : row.csp ? 1 : 2;
   const sorted = [...rows].sort((left, right) => tier(left) - tier(right)
     || (bidYield(right as CspScreenRow) ?? 0) - (bidYield(left as CspScreenRow) ?? 0)
@@ -317,10 +318,17 @@ export async function loadCspScreen(
     freshness: screened.freshness };
 }
 
-/** `nearest 0.30 delta · expiry nearest 2026-11-21 (30 days)`: what each name's put is. */
+/** `nearest 0.30 delta · expiry nearest 2026-11-21 (30 days)`: what each name's put is, as the strategy screen's says its trade. */
 export function cspScreenCriteriaText(criteria: CspScreenCriteria, now: number): string {
   return `nearest ${criteria.delta.toFixed(2)} delta · expiry nearest ${cspTargetDate(criteria, now)}`
     + (criteria.expiration == null ? ` (${criteria.days} days)` : "");
+}
+
+/** `before 28 Oct`: a screen's Earnings cell, the flag and the day without its year, which the next report never needs. */
+export function cspEarningsCell(row: { earningsDate?: unknown; earningsBeforeExpiry?: unknown; earnings?: unknown }): string {
+  const date = typeof row.earningsDate === "string" ? row.earningsDate : null;
+  if (!date || typeof row.earningsBeforeExpiry !== "boolean") return String(row.earnings ?? MISSING_VALUE);
+  return `${row.earningsBeforeExpiry ? "before" : "after"} ${formatDay(date, "no-year")}`;
 }
 
 /**

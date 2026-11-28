@@ -1,11 +1,12 @@
 import { apiClient } from "../../../api-client";
 import { sourceDidNotAnswer } from "../../../api-client/errors";
 import type { JodiBoardPayload } from "../../../api-client/commodity-balances";
+import { isCalendarMonth, isNullableFinite, isStringArray } from "../../../utils/guards";
 import { unavailableOnServer } from "../shared/cloud-resource";
 import type { BalanceCommodity, Board } from "./model";
 
 /** What the pane says while the server has no balances to serve: before its first read of JODI's files. */
-export const JODI_NOT_AVAILABLE = "Oil and gas balances are not available yet.";
+const JODI_NOT_AVAILABLE = "Oil and gas balances are not available yet.";
 
 export interface Balances {
   oil: Board;
@@ -16,20 +17,17 @@ export interface Balances {
   gaps: string[];
 }
 
-const MONTH = /^\d{4}-(0[1-9]|1[0-2])$/;
 const FIGURES = ["production", "demand", "imports", "exports", "stocks"] as const;
-const figure = (value: unknown) => value === null || (typeof value === "number" && Number.isFinite(value));
 
 function validBoard(board: Board | null | undefined, commodity: BalanceCommodity): board is Board {
-  return !!board && board.commodity === commodity && MONTH.test(board.month) && Array.isArray(board.rows)
+  return !!board && board.commodity === commodity && isCalendarMonth(board.month) && Array.isArray(board.rows)
     && board.rows.every((row) => typeof row.country === "string" && typeof row.unit === "string"
-      && (row.month === null || MONTH.test(row.month)) && FIGURES.every((field) => figure(row[field])));
+      && (row.month === null || isCalendarMonth(row.month)) && FIGURES.every((field) => isNullableFinite(row[field])));
 }
 
 /** A board that breaks the contract is refused whole rather than drawn with holes in it. */
 function readBoard(payload: JodiBoardPayload): Balances {
-  if (!payload || payload.source !== "JODI" || !Array.isArray(payload.gaps)
-    || !payload.gaps.every((gap) => typeof gap === "string")
+  if (!payload || payload.source !== "JODI" || !isStringArray(payload.gaps)
     || (payload.gas != null && !validBoard(payload.gas, "gas"))) {
     throw new Error("The server returned an invalid oil and gas balance board");
   }

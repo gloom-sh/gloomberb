@@ -175,6 +175,15 @@ function aggregateQuarterlyStatements(
   onFile: { quarterly: readonly FinancialStatement[]; annual: readonly FinancialStatement[] } = { quarterly: [], annual: [] },
 ): FinancialTableStatement | null {
   if (statements.length !== 4) return null;
+  // A reported figure can be valid on its own even when the historical
+  // statements provider used a different definition for that line.
+  const mixed = statements.some(({ filledFrom }) =>
+    filledFrom?.source === "results"
+    && filledFrom.definitions?.some(({ field }) => filledFrom.fields.includes(field) && statements.some((statement) =>
+      statement.filledFrom?.source !== "results" || !statement.filledFrom.fields.includes(field),
+    )),
+  );
+  if (mixed) return null;
   // A provider may return semiannual reports or skip a quarter. Four rows do
   // not necessarily cover twelve months; never label those sums as TTM.
   for (let index = 1; index < statements.length; index += 1) {

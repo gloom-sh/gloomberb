@@ -1,3 +1,4 @@
+import { errorMessage } from "../utils/errors";
 import { logFailure } from "../utils/log-failure";
 import { readdir } from "fs/promises";
 import { basename, dirname, join } from "path";
@@ -292,10 +293,6 @@ function recordLaunchedVersion(): void {
   } catch (error) {
     logFailure("plugin-loader", "Recording the loaded version failed")(error);
   }
-}
-
-function errorMessage(err: unknown): string {
-  return err instanceof Error ? err.message : String(err);
 }
 
 /** The sibling plugin a failed import named, when the plugin declares it as a peer. */

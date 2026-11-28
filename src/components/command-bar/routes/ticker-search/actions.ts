@@ -88,37 +88,13 @@ export function useCommandBarTickerSearchActions({
     const ended = delisting ? delistingLabel(delisting) : withdrawal ? withdrawalLabel(withdrawal) : null;
     const lines = ended ? [{ segments: [{ text: ended, emphasis: "muted" as const }] }] : undefined;
 
-    if (candidate.kind === "ticker" && candidate.ticker) {
-      const pick = (how: TickerPick) => pickTicker(candidate.ticker!.metadata.ticker, tickerSelectionFromSearchResult(candidate.result), how);
-      return {
-        id: candidate.id,
-        contractKey: candidate.contractKey,
-        ...tickerSelectionFromSearchResult(candidate.result),
-        label: candidate.label,
-        instrumentType: candidate.instrumentType,
-        // The names search found the saved listing by ("micro" for MSFT): it is an exact match as its search row is.
-        searchAliases: candidate.searchAliases,
-        detail,
-        badge,
-        name,
-        right,
-        ...(lines ? { lines, stoppedTrading: true } : {}),
-        category: candidate.category,
-        kind: "ticker",
-        resolveTicker: async () => candidate.ticker!,
-        prefetchInstrument: rowPrefetchInstrument(candidate, tickersRef.current),
-        pickTicker: pick,
-        secondaryAction: () => pick("new"),
-        action: () => pick("des"),
-      };
-    }
-
-    return {
+    const base = {
       id: candidate.id,
       contractKey: candidate.contractKey,
       ...tickerSelectionFromSearchResult(candidate.result),
       label: candidate.label,
       instrumentType: candidate.instrumentType,
+      // The names search found the saved listing by ("micro" for MSFT): it is an exact match as its search row is.
       searchAliases: candidate.searchAliases,
       detail,
       badge,
@@ -126,16 +102,26 @@ export function useCommandBarTickerSearchActions({
       right,
       ...(lines ? { lines, stoppedTrading: true } : {}),
       category: candidate.category,
-      kind: "search",
-      resolveTicker: () => resolveSearchTicker(candidate.result!, publicTickerKey(
-        candidate.symbol,
-        candidate.result!.exchange === "SMART" ? candidate.result!.primaryExchange
-          : candidate.result!.exchange || candidate.result!.primaryExchange,
-      )),
       prefetchInstrument: rowPrefetchInstrument(candidate, tickersRef.current),
-      pickTicker: (how) => openTickerResearch(candidate.result!, how),
-      secondaryAction: () => openTickerResearch(candidate.result!, "new"),
-      action: () => openTickerResearch(candidate.result!, "des"),
+    };
+
+    const pick: (how: TickerPick) => void = candidate.kind === "ticker" && candidate.ticker
+      ? (how) => pickTicker(candidate.ticker!.metadata.ticker, tickerSelectionFromSearchResult(candidate.result), how)
+      : (how) => openTickerResearch(candidate.result!, how);
+
+    return {
+      ...base,
+      kind: candidate.kind === "ticker" && candidate.ticker ? "ticker" : "search",
+      resolveTicker: candidate.kind === "ticker" && candidate.ticker
+        ? async () => candidate.ticker!
+        : () => resolveSearchTicker(candidate.result!, publicTickerKey(
+          candidate.symbol,
+          candidate.result!.exchange === "SMART" ? candidate.result!.primaryExchange
+            : candidate.result!.exchange || candidate.result!.primaryExchange,
+        )),
+      pickTicker: pick,
+      secondaryAction: () => pick("new"),
+      action: () => pick("des"),
     };
   }, [openTickerResearch, pickTicker, resolveSearchTicker]);
 
@@ -242,15 +228,13 @@ function formatTickerSearchDetail(candidate: TickerSearchCandidate): string {
     : candidate.detail;
 }
 
+const INSTRUMENT_CLASS_LABELS: Record<TickerSearchInstrumentClass, string> = {
+  equity: "Equity",
+  fund: "Fund",
+  derivative: "Derivative",
+  other: "Other",
+};
+
 function formatInstrumentClass(instrumentClass: TickerSearchInstrumentClass): string {
-  switch (instrumentClass) {
-    case "equity":
-      return "Equity";
-    case "fund":
-      return "Fund";
-    case "derivative":
-      return "Derivative";
-    case "other":
-      return "Other";
-  }
+  return INSTRUMENT_CLASS_LABELS[instrumentClass];
 }

@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
@@ -16,8 +17,6 @@ import {
   useTableLoadMore,
   type DataTableCell,
   type DataTableColumn,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PaneFooterSegment,
   type PaneHint,
 } from "../../../components";
@@ -35,8 +34,7 @@ import { extractFilingContent, PDF_FALLBACK_MESSAGE } from "../../../sources/sec
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, type ScrollBoxRenderable } from "../../../ui";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { SEC_FILING_FETCH_LIMIT } from "../sec/forms";
 import { useOpenDescription } from "../shared/open-description";
 import { toneColor, type StateTone } from "../shared/research-cells";
@@ -65,7 +63,7 @@ const AUTHOR_TONE: Record<CommentLetter["author"], StateTone> = { staff: "warnin
 
 function letterColumns(width: number, issuerView: boolean): LetterColumn[] {
   return [
-    { id: "filed", label: "Filed", width: 10, align: "left" },
+    { id: "filed", label: "Filed", width: 11, align: "left" },
     { id: "from", label: "From", width: 9, align: "left" },
     ...(width >= 64 || issuerView
       ? [{ id: "form" as const, label: "Form", width: 7, align: "left" as const, ...(issuerView ? { flexGrow: 1 } : {}) }]
@@ -78,7 +76,7 @@ function letterColumns(width: number, issuerView: boolean): LetterColumn[] {
 }
 
 const formatDate = (date: Date): string =>
-  Number.isNaN(date.getTime()) ? MISSING_VALUE : date.toISOString().slice(0, 10);
+  Number.isNaN(date.getTime()) ? MISSING_VALUE : formatDay(date);
 
 const companyLabel = (letter: CommentLetter): string =>
   letter.companyName || `CIK ${Number(letter.cik)}`;
@@ -190,19 +188,12 @@ export function CommentLettersPane({ width, height, focused }: PaneProps) {
     title: "Comment letters",
   });
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
   const renderCell = useCallback((letter: CommentLetter, column: LetterColumn): DataTableCell => {
     switch (column.id) {
       case "filed":
+        // The instant stays the value, so an export and a rendered-view report keep it as before.
         return { text: formatDate(letter.filingDate), value: letter.filingDate, color: colors.textMuted };
       case "from":
         return { text: AUTHOR_LABEL[letter.author], color: toneColor(AUTHOR_TONE[letter.author], colors) };

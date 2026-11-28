@@ -59,16 +59,5 @@ export const cryptoBoardModule: PluginModule = {
       },
     },
   ],
-  setup(ctx) {
-    cryptoMarketsCache.attach(ctx.persistence);
-    for (const cache of STABLECOIN_SUPPLY_CACHES) cache.attach(ctx.persistence);
-    for (const cache of DEFI_TVL_CACHES) cache.attach(ctx.persistence);
-    for (const cache of BITCOIN_NETWORK_CACHES) cache.attach(ctx.persistence);
-  },
-  dispose() {
-    cryptoMarketsCache.reset();
-    for (const cache of STABLECOIN_SUPPLY_CACHES) cache.reset();
-    for (const cache of DEFI_TVL_CACHES) cache.reset();
-    for (const cache of BITCOIN_NETWORK_CACHES) cache.reset();
-  },
+  caches: [cryptoMarketsCache, ...STABLECOIN_SUPPLY_CACHES, ...DEFI_TVL_CACHES, ...BITCOIN_NETWORK_CACHES],
 };

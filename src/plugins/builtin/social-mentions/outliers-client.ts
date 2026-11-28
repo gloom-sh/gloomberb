@@ -8,6 +8,7 @@ import type {
 } from "../../../api-client/social-mentions";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
+import { isFiniteNumber, isIsoInstant, isNonNegative, isNonNegativeInt, isNullableFinite, isNullableString } from "../../../utils/guards";
 import { cachedCloudResource, cloudDisplayCacheKey, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
 import { withListingNames, type OutlierNameSource } from "./outliers-names";
@@ -37,21 +38,19 @@ export const socialOutliersCache = createPluginCache<SocialOutliersPayload>({
 });
 
 const day = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const time = (value: unknown) => typeof value === "string" && Number.isFinite(Date.parse(value));
 
 /** A ranking the pane can draw; anything else is an error, never a table with holes. */
 function validateSocialOutliers(payload: SocialOutliersPayload): SocialOutliersPayload {
-  const valid = !!payload && (payload.window === "day" || payload.window === "today") && time(payload.asOf) && day(payload.freshFrom)
-    && !!payload.coverage && finite(payload.coverage.tracked) && finite(payload.coverage.counted)
+  const valid = !!payload && (payload.window === "day" || payload.window === "today") && isIsoInstant(payload.asOf) && day(payload.freshFrom)
+    && !!payload.coverage && isFiniteNumber(payload.coverage.tracked) && isFiniteNumber(payload.coverage.counted)
     && Array.isArray(payload.rows) && payload.rows.every((row) => !!row
       && typeof row.symbol === "string" && /^[A-Z][A-Z0-9]{0,5}$/.test(row.symbol)
-      && (row.name === null || typeof row.name === "string") && day(row.day)
-      && Number.isInteger(row.mentions) && row.mentions >= 0 && typeof row.closed === "boolean" && time(row.countedAt)
-      && finite(row.baseline) && row.baseline >= 0 && finite(row.ratio) && row.ratio >= 0
-      && (row.stance === null || finite(row.stance) && row.stance >= -1 && row.stance <= 1) && Number.isInteger(row.stancePosts)
-      && (row.marketCap === null || finite(row.marketCap))
-      && (row.price === null || !!row.price && finite(row.price.changePct) && typeof row.price.asOf === "string"));
+      && isNullableString(row.name) && day(row.day)
+      && isNonNegativeInt(row.mentions) && typeof row.closed === "boolean" && isIsoInstant(row.countedAt)
+      && isNonNegative(row.baseline) && isNonNegative(row.ratio)
+      && (row.stance === null || isFiniteNumber(row.stance) && row.stance >= -1 && row.stance <= 1) && Number.isInteger(row.stancePosts)
+      && isNullableFinite(row.marketCap)
+      && (row.price === null || !!row.price && isFiniteNumber(row.price.changePct) && typeof row.price.asOf === "string"));
   if (!valid) throw new Error("Social outliers could not be read.");
   return payload;
 }

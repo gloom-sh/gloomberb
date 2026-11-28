@@ -6,6 +6,7 @@ import {
   solveImpliedVolatility, valueOption, volatilityTermSlope,
   type ExpectedMove, type ImpliedForward, type OptionSide, type SkewMetrics, type SmileFit,
 } from "../shared/volatility";
+import { quotedInSession } from "../shared/volatility/quote-session";
 import type { YieldPoint } from "../yield-curve/treasury-data";
 
 export interface SurfaceSettings {
@@ -255,8 +256,9 @@ export function cleanSurfaceQuotes(chain: OptionsChain, expiration: number, sett
       let reason: SurfaceFilterReason | null = null;
       if (!positive(contract.strike) || !positive(contract.expiration)) reason = "invalid-contract";
       else if (contract.expiration !== expiration) reason = "expiry-mismatch";
+      // A crossed quote the server cleared arrives with bid and ask 0: crossed, not zero-bid.
+      else if (contract.quoteCrossed === true || (positive(contract.bid) && positive(contract.ask) && contract.ask < contract.bid)) reason = "crossed";
       else if (!positive(contract.bid) || !positive(contract.ask)) reason = "zero-bid";
-      else if (contract.ask < contract.bid) reason = "crossed";
       else if ((contract.ask - contract.bid) / optionMid(contract)! > settings.maxRelativeSpread + 1e-12) reason = "wide-spread";
       else if (reportsInterest && contract.openInterest === 0) reason = "no-interest";
       else if ((freshest.get(contract.strike) ?? 0) > (contract.lastTradeDate || 0)
@@ -328,17 +330,29 @@ export function surfaceRowValuationTime(row: { expiration: number | null; years:
  */
 const MAX_UNQUOTED_FORWARD_STRIKES = 8;
 
-function unquotedStrikesAroundForward(chain: OptionsChain, expiration: number, points: readonly SurfacePoint[], forward: number): number {
+/** The listed strikes between the cleaned points around the forward, and those of them with a crossed quote. */
+function unquotedStrikesAroundForward(chain: OptionsChain, expiration: number, points: readonly SurfacePoint[], forward: number): { strikes: number; crossed: number } {
   let below = -Infinity, above = Infinity;
   for (const point of points) {
     if (point.strike < forward) below = Math.max(below, point.strike);
     else above = Math.min(above, point.strike);
   }
-  if (!Number.isFinite(below) || !Number.isFinite(above)) return 0;
-  const listed = new Set([...chain.calls, ...chain.puts]
-    .filter((contract) => contract.expiration === expiration && contract.strike > below && contract.strike < above)
-    .map((contract) => contract.strike));
-  return listed.size;
+  if (!Number.isFinite(below) || !Number.isFinite(above)) return { strikes: 0, crossed: 0 };
+  const listed = [...chain.calls, ...chain.puts]
+    .filter((contract) => contract.expiration === expiration && contract.strike > below && contract.strike < above);
+  return { strikes: new Set(listed.map((contract) => contract.strike)).size,
+    crossed: new Set(listed.filter((contract) => contract.quoteCrossed === true).map((contract) => contract.strike)).size };
+}
+
+/**
+ * Why an expiry has no quotes to fit near its forward. Crossed quotes are
+ * named: after the close they are the exchanges still quoting against the
+ * others' closing quotes, so the gap is the hour's, not the market's. One
+ * text for every expiry it hits, so the pane lists them on one line.
+ */
+function noQuotesNearForwardWarning(chain: Pick<OptionsChain, "asOf">, crossed: number): string {
+  if (crossed === 0) return "No usable quotes near the forward";
+  return quotedInSession(chain.asOf) ? "Quotes near the forward are crossed" : "Quotes near the forward crossed after the close";
 }
 
 /**
@@ -409,8 +423,9 @@ export function buildSurfaceExpiry(input: BuildSurfaceExpiryInput): SurfaceExpir
     }
   }
   result.points.sort((a, b) => a.strike - b.strike);
-  if (unquotedStrikesAroundForward(chain, expiration, result.points, forward) > MAX_UNQUOTED_FORWARD_STRIKES) {
-    result.warnings.push("No usable quotes near the forward");
+  const gap = unquotedStrikesAroundForward(chain, expiration, result.points, forward);
+  if (gap.strikes > MAX_UNQUOTED_FORWARD_STRIKES) {
+    result.warnings.push(noQuotesNearForwardWarning(chain, gap.crossed));
     return result;
   }
   result.fit = fitVolatilitySmile(result.points, result.years);

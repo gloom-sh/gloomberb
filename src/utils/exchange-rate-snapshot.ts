@@ -4,7 +4,7 @@ import type { ExchangeRateSnapshot } from "../types/exchange-rate";
 import { fixedUsdRate } from "./currency-units";
 import { fxFreshUntil, fxPreCloseRefetchAt } from "./fx-market-hours";
 
-export const MAX_FX_OBSERVATION_AGE_MS = 7 * 24 * 60 * 60_000;
+const MAX_FX_OBSERVATION_AGE_MS = 7 * 24 * 60 * 60_000;
 const FX_FRESH_MS = 60 * 60_000;
 /** The longest a source's FX runs behind the market, and what a rate that states no delay is taken to: Gloom Cloud's 15 minutes. */
 const MAX_FX_DELAY_MINUTES = 15;

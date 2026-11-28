@@ -31,7 +31,7 @@ export const FIRST_RUN_WATCHLIST: ReadonlyArray<Pick<TickerMetadata, "ticker" | 
 ];
 const FIRST_RUN_WATCHLIST_SIZE = 7;
 
-export const FIRST_RUN_PANE_IDS = {
+const FIRST_RUN_PANE_IDS = {
   heatmap: "portfolio-list:home-heatmap",
   watchlist: "portfolio-list:home-watchlist",
   chart: "chart-composer:home",

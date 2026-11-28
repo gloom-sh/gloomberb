@@ -1,14 +1,27 @@
-import type { HeadlessPaneColumn } from "../../../types/headless";
-import { loadResolvedHeadlessPaneModel, serializeHeadlessPaneResult } from "../../../cli/pane-functions/headless";
+import type {
+  HeadlessBundleResult,
+  HeadlessPaneColumn,
+  HeadlessPaneDefinition,
+  HeadlessPaneResult,
+  HeadlessPaneRow,
+  HeadlessRowsResult,
+  HeadlessSeries,
+  HeadlessSeriesResult,
+  HeadlessSnapshotResult,
+} from "../../../types/headless";
+import { loadResolvedHeadlessPaneModel } from "../../../cli/pane-functions/headless";
 import { resolvePaneFunction, UnknownPaneFunctionError } from "../../../cli/pane-functions/resolver";
 import type { AppConfig } from "../../../types/config";
+import { formatCompact } from "../../../utils/format";
 import { getSharedRegistry, type PluginRegistry } from "../../registry";
 import { marketContextFromRegistry } from "../cloud/askg/host";
 import { notViewSourceMessage, unknownViewSourceMessage } from "./sources";
+import { withViewRowSource } from "./table";
 import { applyViewProjection, unknownViewKeys, type UnknownViewKey, type ViewKeyPlace, type ViewRow, type ViewSource, type ViewSpec } from "./view-spec";
 
 export interface LoadedView {
   rows: ViewRow[];
+  /** The source's columns as it defines them, formats included, so the view draws a value as the source does. */
   columns: HeadlessPaneColumn[];
   errors: string[];
   sourceLabel: string;
@@ -23,40 +36,89 @@ export function setViewRefResolver(resolver: ViewRefResolver | null): void {
   refResolver = resolver;
 }
 
-function rowsFromResult(result: Record<string, unknown>): { rows: ViewRow[]; columns: HeadlessPaneColumn[] } {
-  if (Array.isArray(result.rows)) {
-    return { rows: result.rows as ViewRow[], columns: (result.columns as HeadlessPaneColumn[] | undefined) ?? [] };
-  }
-  if (Array.isArray(result.items)) {
-    return { rows: result.items as ViewRow[], columns: (result.columns as HeadlessPaneColumn[] | undefined) ?? [] };
-  }
-  if (Array.isArray(result.sections)) {
-    // A bundle flattens into one table with a section column.
-    const rows: ViewRow[] = [];
-    const columns = new Map<string, HeadlessPaneColumn>([["section", { key: "section", header: "Section" }]]);
-    for (const section of result.sections as Array<{ title: string; rows?: ViewRow[]; entries?: Array<{ label: string; value: unknown }>; columns?: HeadlessPaneColumn[] }>) {
-      for (const column of section.columns ?? []) columns.set(column.key, column);
-      for (const row of section.rows ?? []) rows.push({ section: section.title, ...row });
-      for (const entry of section.entries ?? []) rows.push({ section: section.title, label: entry.label, value: entry.value });
+/** Every key the rows carry, headed by the key, for a source that lists no columns. */
+function rowKeyColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
+  const keys = new Set<string>();
+  for (const row of rows) for (const key of Object.keys(row)) keys.add(key);
+  return [...keys].map((key) => ({ key, header: key }));
+}
+
+/** A section of entries flattens into rows of its label and value. */
+const ENTRY_COLUMNS: HeadlessPaneColumn[] = [{ key: "label", header: "Label" }, { key: "value", header: "Value" }];
+const ENTRY_COLUMN_MAP: ReadonlyMap<string, HeadlessPaneColumn> = new Map(ENTRY_COLUMNS.map((column) => [column.key, column]));
+
+/** A series value at the decimals or in the short form the text report prints it with. */
+function seriesFormat(series: HeadlessSeries): Pick<HeadlessPaneColumn, "format"> {
+  const { textDecimals, textCompact } = series;
+  if (textCompact) return { format: (value) => (typeof value === "number" ? formatCompact(value) : "") };
+  if (textDecimals !== undefined) return { format: (value) => (typeof value === "number" ? value.toFixed(textDecimals) : "") };
+  return {};
+}
+
+/** A point's date as the text it sorts and filters by: an ISO instant for a time, the string the source gave otherwise. */
+function seriesDate(date: HeadlessSeries["points"][number]["date"]): string {
+  if (date instanceof Date) return Number.isFinite(date.getTime()) ? date.toISOString() : "";
+  if (typeof date === "number") return Number.isFinite(date) ? new Date(date).toISOString() : "";
+  return String(date);
+}
+
+/**
+ * The source's result as one table, with the columns that draw it as the
+ * source defines them (their formats too). A bundle flattens into one table
+ * with a section column, each row tagged with its own section's columns,
+ * since two sections can format one key apart; a series into rows of date
+ * plus one column per series.
+ */
+function viewTableFrom(definition: HeadlessPaneDefinition, result: HeadlessPaneResult): { rows: ViewRow[]; columns: HeadlessPaneColumn[] } {
+  switch (definition.shape) {
+    case "rows": {
+      const { rows, columns } = result as HeadlessRowsResult;
+      return { rows, columns: columns ?? definition.columns ?? rowKeyColumns(rows) };
     }
-    return { rows, columns: [...columns.values()] };
-  }
-  if (Array.isArray(result.series)) {
-    // A series flattens into rows of date plus one column per series.
-    const byDate = new Map<string, ViewRow>();
-    const columns: HeadlessPaneColumn[] = [{ key: "date", header: "Date" }];
-    for (const series of result.series as Array<{ id: string; label: string; points: Array<Record<string, unknown>> }>) {
-      columns.push({ key: series.id, header: series.label, align: "right" });
-      for (const point of series.points) {
-        const date = String(point.date);
-        const row = byDate.get(date) ?? { date };
-        row[series.id] = point.value ?? point.close ?? null;
-        byDate.set(date, row);
+    case "snapshot": {
+      const { items } = result as HeadlessSnapshotResult;
+      return { rows: items, columns: definition.columns ?? rowKeyColumns(items) };
+    }
+    case "bundle": {
+      const rows: ViewRow[] = [];
+      const columns = new Map<string, HeadlessPaneColumn>([["section", { key: "section", header: "Section" }]]);
+      for (const section of (result as HeadlessBundleResult).sections) {
+        if (section.entries) {
+          for (const column of ENTRY_COLUMNS) if (!columns.has(column.key)) columns.set(column.key, column);
+          for (const entry of section.entries) {
+            rows.push(withViewRowSource({ section: section.title, label: entry.label, value: entry.value }, {
+              columns: ENTRY_COLUMN_MAP,
+              ...(entry.formatted !== undefined ? { text: { value: entry.formatted } } : {}),
+            }));
+          }
+          continue;
+        }
+        const own = section.columns ?? definition.columns ?? rowKeyColumns(section.rows);
+        for (const column of own) columns.set(column.key, column);
+        const byKey = new Map(own.map((column) => [column.key, column]));
+        for (const row of section.rows) rows.push(withViewRowSource({ section: section.title, ...row }, { columns: byKey }));
       }
+      return { rows, columns: [...columns.values()] };
     }
-    return { rows: [...byDate.values()], columns };
+    case "series": {
+      const byDate = new Map<string, ViewRow>();
+      const columns: HeadlessPaneColumn[] = [{ key: "date", header: "Date" }];
+      for (const series of (result as HeadlessSeriesResult).series) {
+        columns.push({ key: series.id, header: series.label, align: "right", ...seriesFormat(series) });
+        for (const point of series.points) {
+          const date = seriesDate(point.date);
+          const row = byDate.get(date) ?? { date };
+          row[series.id] = point.value ?? point.close ?? null;
+          byDate.set(date, row);
+        }
+      }
+      return { rows: [...byDate.values()], columns };
+    }
+    default: {
+      const _exhaustive: never = definition.shape;
+      return _exhaustive;
+    }
   }
-  return { rows: [], columns: [] };
 }
 
 /**
@@ -101,8 +163,7 @@ export async function loadViewSource(
   });
   if (!resolved.headless) throw new Error(notViewSourceMessage(registry, resolved.label));
   const loaded = await loadResolvedHeadlessPaneModel(resolved, context, spec.source.argument ?? "", signal);
-  const serialized = serializeHeadlessPaneResult(loaded.definition, loaded.result);
-  const { rows, columns } = rowsFromResult(serialized);
+  const { rows, columns } = viewTableFrom(loaded.definition, loaded.result);
   return {
     rows,
     columns,

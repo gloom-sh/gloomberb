@@ -156,12 +156,7 @@
           {
             "code": "PL",
             "name": "Plugins",
-            "description": "Browse and install Gloom plugins, and enable or disable the ones you have.",
-            "targets": [
-              "cli",
-              "tui",
-              "desktop"
-            ]
+            "description": "Browse and install Gloom plugins, and enable or disable the ones you have."
           },
           {
             "code": "CHG",
@@ -463,7 +458,8 @@
       "targets": [
         "cli",
         "tui",
-        "desktop"
+        "desktop",
+        "web"
       ],
       "contributes": {
         "panes": [
@@ -1195,12 +1191,17 @@
           {
             "code": "OPX",
             "name": "Options Positioning",
-            "description": "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD from Deribit."
+            "description": "Open interest by strike and expiry, max pain, walls and dealer gamma (GEX); BTC-USD and ETH-USD options as listed on Deribit."
           },
           {
             "code": "GEX",
             "name": "Dealer Gamma",
             "description": "Net dealer gamma by strike, its total, flip level, call and put walls and the range for the dealer assumption."
+          },
+          {
+            "code": "CBBC",
+            "name": "Hong Kong CBBC Map",
+            "description": "HKEX Callable Bull/Bear Contract (CBBC) knock-out call-level street map, bull/bear ratios, equivalent HSI futures delta and heavy kill zones."
           },
           {
             "code": "OVME",
@@ -1258,7 +1259,7 @@
     {
       "id": "ownership",
       "name": "Ownership & Insiders",
-      "description": "Holders, 13F funds, insider trades, short interest and volume, and congressional trades.",
+      "description": "Holders, 13F funds, insider trades, Hong Kong buybacks, short interest and volume, and congressional trades.",
       "tagline": "Holders, 13F funds, insiders, short interest.",
       "categories": [
         "research"
@@ -1272,6 +1273,8 @@
       ],
       "contributes": {
         "panes": [
+          "ccass-market",
+          "equity-dilution",
           "holders",
           "insider",
           "short-interest",
@@ -1284,7 +1287,17 @@
           {
             "code": "HDS",
             "name": "Holders",
-            "description": "Institutional holders from 13F filings, and 13D/13G beneficial owners: activist and passive stakes over 5% of the class."
+            "description": "Institutional holders from 13F filings, 13D/13G beneficial owners, exchange disclosures and Hong Kong CCASS custody."
+          },
+          {
+            "code": "CCASS",
+            "name": "Hong Kong CCASS Custody",
+            "description": "Daily HKEX CCASS broker custody holdings, bucketed flows and pre-placement deposits for Hong Kong stocks and dual-listed China ADRs."
+          },
+          {
+            "code": "CCASSM",
+            "name": "HK CCASS Scanner",
+            "description": "Market-wide Hong Kong CCASS big changes, pre-placement deposits, Top-10 concentration rankings, Southbound Connect flows and broker portfolio lookup."
           },
           {
             "code": "13F",
@@ -1295,6 +1308,11 @@
             "code": "INS",
             "name": "Insider",
             "description": "Insider transactions for a ticker; for several, their insiders; alone, the companies whose insiders are buying or selling."
+          },
+          {
+            "code": "DILU",
+            "name": "Equity Dilution & Form 144",
+            "description": "Active SEC shelves (S-3/S-3ASR/F-3), Rule 415 expiry, I.B.6 baby-shelf 1/3 cap, 424B5/424B7 ATM offerings, Form 144 insider sales, IPO lock-ups and HK CCASS physical deposits."
           },
           {
             "code": "SI",
@@ -1767,7 +1785,7 @@
           {
             "code": "EVT",
             "name": "Corporate Actions",
-            "description": "What is next, reported earnings against estimates by quarter, and dividends and splits by year."
+            "description": "What is next, reported earnings against estimates by quarter, and dividends, splits and spin-off adjustments by year."
           },
           {
             "code": "EE",

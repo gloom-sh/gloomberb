@@ -34,10 +34,20 @@ export const PROXY_ALLOWED_HOSTS: readonly string[] = allowed.hosts;
 export const WEB_DIRECT_HOSTS: readonly string[] = [
   "api.fiscaldata.treasury.gov",
   "api.thebuildout.ai",
-  // Polymarket's read APIs. An events page can pass the proxy's 5 MB cap.
+  // Polymarket's read APIs and Pascal's market feed send CORS headers and can pass the proxy's 5 MB cap.
   "clob.polymarket.com",
   "data-api.polymarket.com",
+  "data.pascal.trade",
   "gamma-api.polymarket.com",
+];
+
+/**
+ * Third-party WebSocket hosts bundled plugins open directly from the browser.
+ * WebSockets cannot go through `/http-proxy`, so the worker lists them in
+ * `connect-src` and the bundle audit checks every `wss://` host against it.
+ */
+export const WEB_DIRECT_WS_HOSTS: readonly string[] = [
+  "ws-subscriptions-clob.polymarket.com",
 ];
 
 /** The worker route the browser posts proxied requests to. */

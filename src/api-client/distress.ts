@@ -152,13 +152,3 @@ export interface InsolvencyNoticesPayload {
   offset: number;
   attributions: DistressAttribution[];
 }
-
-/** `?a=1&b=2` from the defined, non-empty values; empty when there are none. */
-export function distressQuery(params: object): string {
-  const query = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== "") query.set(key, String(value));
-  }
-  const text = query.toString();
-  return text ? `?${text}` : "";
-}

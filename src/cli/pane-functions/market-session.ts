@@ -10,6 +10,8 @@ import {
   nextRegularSessionOpen,
 } from "../../market-data/market/freshness";
 import { futuresWeekendClosure } from "../../market-data/market/futures-week";
+import { publishedGlobexPrintTradeDate } from "../../market-data/market/globex-day";
+import { futuresListingVenue } from "../../utils/futures-generic";
 import { shownSessionDay } from "../../market-data/market/venue-session";
 import { currentFxClosureStart, isFxWeekClosePrint, nextFxWeekOpen } from "../../utils/fx-market-hours";
 import { zonedDateKey } from "../../utils/zoned-date-time";
@@ -43,6 +45,7 @@ export interface SessionObservation {
   calendar?: QuoteIndexSession;
   /** The row is at its venue's nominal price: that session's price, however old its last trade. */
   nominal?: true;
+  settlement?: true;
 }
 
 interface VenueSession {
@@ -86,7 +89,7 @@ function venueSession(exchange: string, marketState: string | undefined, now: nu
     if (isRegularSessionTime(exchange, now)) return { state: "open", timeZone };
     if (isUsListingExchange(exchange)) {
       const today = zonedDateKey(now, timeZone);
-      const session = activeUsMarketSession(now);
+      const session = activeUsMarketSession(now, exchange);
       if (session === "PRE" && next.date === today) return { state: "pre-market", next, last, timeZone };
       if (session === "POST" && last?.date === today) return { state: "after-hours", next, last, timeZone };
     }
@@ -186,6 +189,7 @@ function isPreClosePrint(observation: SessionObservation, session: VenueSession)
 function closeDateOf(observation: SessionObservation, session: VenueSession, now: number): string | null {
   const time = observation.time;
   if (!time || time.dateOnly) return null;
+  if (futuresListingVenue("", observation.exchange)) return null;
   // FX closes once a week, Friday 17:00 New York time: a print in its last
   // minute is that Friday's close. An earlier print of the day (20:39Z) is no
   // close, and a tick after it, over the weekend, is no price of the week:
@@ -321,7 +325,7 @@ export function reportVenueMarkets(observations: readonly SessionObservation[], 
 export function reportMarketSession(
   observations: readonly SessionObservation[],
   now: number,
-): { market: ReportMarket | null; closeDate: string | null; closeMarket: string | null; lastPrint?: true } {
+): { market: ReportMarket | null; closeDate: string | null; closeMarket: string | null; lastPrint?: true; tradeDate?: { date: string; time: number } } {
   const sessions = new Map<string, VenueSession>();
   let newest: { observation: SessionObservation; session: VenueSession; exchange: string } | null = null;
   for (const observation of observations) {
@@ -345,9 +349,15 @@ export function reportMarketSession(
     : null;
   const reopen = reopening?.next ?? null;
   const closeDate = (state === "closed" || state === "pre-market") && newest ? closeDateOf(newest.observation, newest.session, now) : null;
-  const lastPrint = !closeDate && (state === "closed" || state === "pre-market") && newest && isPreClosePrint(newest.observation, newest.session);
+  const futuresTime = newest && !newest.observation.settlement && !newest.observation.time?.dateOnly
+    && futuresListingVenue("", newest.exchange) ? newest.observation.time : null;
+  const tradeDate = futuresTime && newest ? publishedGlobexPrintTradeDate(newest.exchange, futuresTime.time) : null;
+  const lastPrint = !closeDate && (state === "closed" || state === "pre-market") && newest
+    && (futuresTime || isPreClosePrint(newest.observation, newest.session));
   return {
     ...(lastPrint ? { lastPrint: true as const } : {}),
+    ...(tradeDate && futuresTime && tradeDate !== new Date(futuresTime.time).toISOString().slice(0, 10)
+      ? { tradeDate: { date: tradeDate, time: futuresTime.time } } : {}),
     market: {
       state,
       ...(reopen ? {

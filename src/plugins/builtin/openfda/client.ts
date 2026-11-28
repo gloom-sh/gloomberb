@@ -1,3 +1,4 @@
+import { asRecord, textOrNull } from "../../../utils/guards";
 import { httpFetch } from "../../../utils/http-transport";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
 import {
@@ -42,17 +43,10 @@ function authorizationHeaders(): Record<string, string> {
   return key ? { Authorization: `Basic ${btoa(`${key}:`)}` } : {};
 }
 
-const asString = (value: unknown): string | undefined => {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
-};
+const asString = (value: unknown): string | undefined => textOrNull(value) ?? undefined;
 
 const asStringArray = (value: unknown): string[] =>
   Array.isArray(value) ? value.map(asString).filter((entry): entry is string => !!entry) : [];
-
-const asRecord = (value: unknown): Record<string, unknown> =>
-  value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {};
 
 const usable = (value: string | undefined): string | undefined =>
   value && !/^(n\/?a|unknown|ni|une)$/i.test(value) ? value : undefined;
@@ -163,7 +157,7 @@ function filterClauses(dataset: OpenFdaDataset, filters: OpenFdaFilters): string
  * as `%2BOR%2B` and matches nothing. The parentheses matter too: without
  * them three recall clauses matched 4 records where the firm alone matched 156.
  */
-export function buildOpenFdaUrl(dataset: OpenFdaDataset, query: string, offset = 0, filters: OpenFdaFilters = {}): string {
+function buildOpenFdaUrl(dataset: OpenFdaDataset, query: string, offset = 0, filters: OpenFdaFilters = {}): string {
   const params = new URLSearchParams();
   const text = query.trim();
   const clauses = [
@@ -204,7 +198,7 @@ const SERIOUSNESS: Array<[string, string]> = [
  * asked for, the row names a drug in that role, and a report whose matched
  * drugs all play another part is not a row.
  */
-export function parseDrugReport(raw: unknown, query = "", role: DrugRole | null = null): DrugReport | null {
+function parseDrugReport(raw: unknown, query = "", role: DrugRole | null = null): DrugReport | null {
   const report = asRecord(raw);
   const id = asString(report.safetyreportid);
   if (!id) return null;
@@ -255,7 +249,7 @@ export function parseDrugReport(raw: unknown, query = "", role: DrugRole | null 
 }
 
 /** A MAUDE report, naming the device the search matched when it lists several. */
-export function parseDeviceReport(raw: unknown, query = ""): DeviceReport | null {
+function parseDeviceReport(raw: unknown, query = ""): DeviceReport | null {
   const report = asRecord(raw);
   const key = asString(report.mdr_report_key) ?? asString(report.report_number);
   if (!key) return null;
@@ -293,7 +287,7 @@ function fingerprint(text: string): string {
  * One enforcement record. Records without a recall number ("N/A") are told
  * apart by their recall event and product, not lumped under one id.
  */
-export function parseDrugRecall(raw: unknown): DrugRecall | null {
+function parseDrugRecall(raw: unknown): DrugRecall | null {
   const report = asRecord(raw);
   const recallNumber = usable(asString(report.recall_number)) ?? null;
   const product = asString(report.product_description) ?? "";
@@ -336,7 +330,7 @@ const filtersRows = (dataset: OpenFdaDataset, query: string, filters: OpenFdaFil
   dataset === "drug" && !!query.trim() && !!roleFilter(filters);
 
 /** One page of a dataset's answer, with what it says matched and how far paging reaches. */
-export function parseOpenFdaPage(
+function parseOpenFdaPage(
   dataset: OpenFdaDataset,
   payload: unknown,
   query: string,

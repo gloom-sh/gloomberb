@@ -1,4 +1,6 @@
 import type { HeadlessPaneColumn, HeadlessPaneDefinition } from "../../../types/headless";
+import { numCell, numCol } from "../shared/headless-columns";
+import { argumentText, enumOption } from "../shared/headless-options";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import {
   TRUNCATED_TEXT,
@@ -22,9 +24,7 @@ import {
 import { logFailure } from "../../../utils/log-failure";
 import { bondIssuerListing, type StoredBondPayload } from "../../../api-client/bond-trades";
 
-const decimal = (digits: number) => (value: unknown) => (
-  typeof value === "number" ? formatBondDecimal(value, digits) : "—"
-);
+const decimal = (digits: number) => numCell((value) => formatBondDecimal(value, digits));
 
 /** A narrow terminal moves columns under their row in the order the pane drops them. */
 const column = (id: BondColumnId, spec: HeadlessPaneColumn): HeadlessPaneColumn => {
@@ -36,11 +36,11 @@ const COLUMNS: HeadlessPaneColumn[] = [
   // Cut no shorter than a name reads (`WHIRLPOOL CORP`); a narrow terminal moves other columns under the row first.
   column("issuer", { key: "issuerName", header: "Issuer", minWidth: 14 }),
   column("cusip", { key: "cusip", header: "CUSIP", shrink: false }),
-  column("coupon", { key: "couponRate", header: "Coupon", align: "right", format: decimal(3) }),
+  column("coupon", numCol("couponRate", "Coupon", decimal(3))),
   column("maturity", { key: "maturityDate", header: "Maturity" }),
-  column("price", { key: "lastSalePrice", header: "Price", align: "right", format: decimal(3) }),
-  column("yield", { key: "lastSaleYield", header: "Yield", align: "right", format: decimal(3) }),
-  column("change", { key: "priceChangeNumber", header: "Chg", align: "right", format: (value: unknown) => formatBondChange(typeof value === "number" ? value : null) }),
+  column("price", numCol("lastSalePrice", "Price", decimal(3))),
+  column("yield", numCol("lastSaleYield", "Yield", decimal(3))),
+  column("change", numCol("priceChangeNumber", "Chg", (value) => formatBondChange(typeof value === "number" ? value : null))),
   column("traded", { key: "lastTradeDate", header: "Traded" }),
   column("grade", { key: "traceGradeCode", header: "Grade" }),
 ];
@@ -102,14 +102,9 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
     description: "Issuer name (matched from its start), symbol root, stock ticker or CUSIP. Leave it out for the market's latest sales.",
   },
   options: [
-    {
-      key: "range",
-      type: "enum",
-      description: "How far back a CUSIP's kept daily closes reach (Gloom Pro).",
-      values: HISTORY_RANGES.map((entry) => ({ value: entry.value })),
-      defaultValue: "3M",
-      example: "--range 1Y",
-    },
+    enumOption("range", HISTORY_RANGES.map((entry) => entry.value), {
+      description: "How far back a CUSIP's kept daily closes reach (Gloom Pro).", defaultValue: "3M", example: "--range 1Y",
+    }),
   ],
   discovery: {
     aliases: ["TRACE"],
@@ -124,7 +119,7 @@ export const traceBondsHeadless: HeadlessPaneDefinition<"bundle"> = {
   describe: "Latest corporate and agency bond sales",
   freshness: { source: "FINRA", status: "not-a-feed", basis: "last sales", observedKey: "lastTradeDate" },
   async load(args, ctx) {
-    const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? "";
+    const argument = argumentText(args.argument);
     // A CUSIP's kept history, and a ticker's bonds kept from now on, read beside the tape: Gloom Pro, and never what fails it.
     const stored = readStoredHistory(parseBondQuery(argument), ctx.apiClient, { signal: ctx.signal })
       .then((history) => ({ history, note: null }))

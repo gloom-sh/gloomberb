@@ -1,17 +1,6 @@
 import type { PersistedResourceValue } from "../types/persistence";
 import type { PluginPersistence } from "../types/plugin";
 
-/**
- * A mid-morning UTC moment for a test to hold the clock at (`setSystemTime`),
- * when it reads the time of day off a copy `seedResource` saved: that copy is
- * dated a minute before the clock, so in the first minute of a day it is from
- * the day before and reads with its date ("saved copy from 13 Nov 23:59")
- * instead of "saved copy from 23:59". Its minutes and seconds are ones no time
- * zone's midnight falls on, so the minute before it is never another day's
- * wherever the test runs.
- */
-export const SAVED_COPY_TEST_NOW = Date.parse("2026-11-13T10:17:42Z");
-
 export class MemoryPluginPersistence implements PluginPersistence {
   private readonly state = new Map<string, { schemaVersion: number; value: unknown }>();
   private readonly resources = new Map<string, PersistedResourceValue<unknown>>();

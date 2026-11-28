@@ -106,7 +106,7 @@ function getAccountFreshnessTime(account: BrokerAccount): number {
   return asOfDate?.getTime() ?? account.updatedAt ?? 0;
 }
 
-export function fitSummarySegments(candidates: PortfolioSummarySegment[], widthBudget: number): PortfolioSummarySegment[] {
+function fitSummarySegments(candidates: PortfolioSummarySegment[], widthBudget: number): PortfolioSummarySegment[] {
   const fitted: PortfolioSummarySegment[] = [];
   let used = 0;
   for (const segment of candidates) {

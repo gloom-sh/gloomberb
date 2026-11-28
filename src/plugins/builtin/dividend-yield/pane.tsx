@@ -1,3 +1,5 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import {
@@ -5,12 +7,14 @@ import {
   ChartTableHeader,
   chartTableLayout,
   DataTableView,
+  ExternalLinkText,
   scalarPoint,
   spanAxisFormatter,
   statGridColumns,
   staticSeries,
   useChartTableSelection,
   usePaneFooter,
+  usePaneMenuItems,
   usePaneNoticeFooter,
   usePaneTicker,
   type DataTableCell,
@@ -19,12 +23,13 @@ import {
 } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { colors, priceColor } from "../../../theme/colors";
-import { TextAttributes, useUiCapabilities } from "../../../ui";
+import { Box, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import { MISSING_VALUE, displayWidth, formatCurrency, formatDistributionAmount, formatPercentRaw } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { forwardDividendNote, lapseValue, lastPaidNote, UNEVEN_REGULAR_PAYMENTS } from "../../../utils/forward-dividend";
+import { logFailure } from "../../../utils/log-failure";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { handleRefreshKey, loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { SignInWall } from "../cloud/auth-actions";
@@ -32,11 +37,13 @@ import { isCloudSessionRequired, useResearchCloudSession } from "../shared/resea
 import { fetchDividendData, repriceDividendMetrics, statedForwardRate, type DividendData } from "./client";
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import { useTickerQuoteStream } from "../../../state/hooks/live-ticker-financials";
-import { buildTrailingCashChartPoints, convertedFromText, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendRow } from "./view";
+import { buildTrailingCashChartPoints, convertedFromText, dividendAmountDigits, dividendRowStatus, formatConvertedAmount, formatDividendRowAmount, formatDividendYield, forwardEstimateText, growthPaymentsDetail, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendAmountDigits, type DividendRow } from "./view";
 import {
   DEFAULT_SORT_PREFERENCE,
+  SCHEDULE_LINK_LABEL,
   buildDividendColumns,
   sortRows,
+  sourceLinksWidth,
   type DividendColumn,
   type DividendColumnId,
   type DividendSortPreference,
@@ -72,8 +79,7 @@ function growthItem(id: string, label: string, growth: number | null, payments: 
 }
 
 function formatDate(date: Date | null): string {
-  if (!date) return MISSING_VALUE;
-  return date.toISOString().slice(0, 10);
+  return date ? formatDay(date) : MISSING_VALUE;
 }
 
 function formatFrequency(freq: DividendMetrics["paymentFrequency"]): string {
@@ -102,9 +108,11 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
     ? [{ id: "next-ex", label: "Next ex", value: formatDate(metrics.nextExDividendDate), essential: true,
       ...metrics.nextExDividendDateListing ? { detail: `from ${metrics.nextExDividendDateListing}` } : {} }]
     : hasHistory ? [] : [{ id: "last-ex", label: "Last ex", value: formatDate(metrics.lastExDividendDate) }];
-  const dated = metrics.lapse ? lastPaidNote(metrics.lapse)
+  const basis = metrics.lapse ? lastPaidNote(metrics.lapse)
     : metrics.forwardYield == null ? null
     : forwardEstimateText(metrics) ?? (metrics.forwardBasis === "uneven" ? UNEVEN_REGULAR_PAYMENTS : forwardDividendNote(metrics.forwardRateAsOf, { declared, currency }));
+  // Its day reads first, as the figures' dates do.
+  const dated = basis ? formatDaysInText(basis) : null;
   // "not SEC" in the grid: the SEC yield is the next cell, and the long form costs the header a column.
   const notSec = (note: string | null) => bond ? [note, "not SEC"].filter(Boolean).join(", ") : note;
   const forwardNote = metrics.forwardEstimate ? null : notSec(dated);
@@ -125,9 +133,9 @@ function buildMetricItems(metrics: DividendMetrics, currency: string, hasHistory
       : { id: "forward-yield", essential: true, label: fwdLabel, value: `${formatDividendYield(metrics.forwardYield)}${metrics.forwardEstimate ? " estimated" : ""}`, color: priceColor(metrics.forwardYield ?? 0),
         ...(forwardNote ? { detail: forwardNote } : {}) },
     ...(metrics.forwardEstimate ? [{ id: "forward-fx", essential: true, label: metrics.forwardEstimate.fixingDate ? "FX fixing" : "FX basis",
-      value: metrics.forwardEstimate.fixingDate ?? `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
+      value: metrics.forwardEstimate.fixingDate ? formatDay(metrics.forwardEstimate.fixingDate) : `${metrics.forwardEstimate.declaredCurrency}, ${metrics.forwardEstimate.declaredAmount != null ? "not fixed" : "FX unknown"}` }] : []),
     // The 30-day SEC yield as the fund's sponsor publishes it, dated.
-    ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${sec.date}` } : {}) }] : []),
+    ...(sec ? [{ id: "sec-yield", label: short ? "SEC yld" : "SEC yield", value: sec.text, ...(sec.date ? { detail: `as of ${formatDay(sec.date)}` } : {}) }] : []),
     { id: "ttm-rate", essential: false, label: short ? "TTM/sh" : "TTM/share", value: formatRate(metrics.trailingRate, currency, !!convertedFrom, convertedSubUnit),
       ...metrics.trailingRate != null ? converted : {} },
     // The trailing year's total says so here too, as beside the forward yield.
@@ -162,25 +170,52 @@ const rowKey = (row: DividendRow) => row.key;
 function renderCell(
   row: DividendRow,
   column: DividendColumn,
+  digits: { amount: DividendAmountDigits; declared: DividendAmountDigits },
   converted = false,
   subUnit?: string,
 ): DataTableCell {
   switch (column.id) {
     case "exDate":
-      return { text: row.exDate, color: colors.textDim };
+      return { ...dayCell(row.exDate), color: colors.textDim };
     case "amount":
       return {
-        text: formatDividendRowAmount(row, converted, subUnit),
+        text: formatDividendRowAmount(row, converted, subUnit, digits.amount),
         color: colors.textBright,
         attributes: TextAttributes.BOLD,
       };
     case "declared":
-      return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency) : "", color: colors.textDim };
+      return { text: row.declared ? formatDistributionAmount(row.declared.amount, row.declared.currency, digits.declared.get(row.declared.currency)) : "", color: colors.textDim };
     case "currency":
       return { text: row.currency, color: colors.textDim };
+    case "status":
+      return { text: dividendRowStatus(row), color: colors.textDim };
     case "source":
-      return { text: row.source ?? "", color: colors.textDim };
+      return sourceCell(row, column.width);
   }
+}
+
+/**
+ * A sourced row's links: its publisher opens the notice, and the schedule
+ * follows it only in a column with the room for both whole. In less (the
+ * column the pane fits to its width, or the cells of it the pane's edge
+ * leaves), the publisher's link stands alone, cut where its room ends, and
+ * the schedule opens from the selected row's menu.
+ */
+function sourceCell(row: DividendRow, width: number): DataTableCell {
+  const text = row.source ?? "";
+  if (!row.sourceUrl) return { text, color: colors.textDim };
+  const schedule = sourceLinksWidth(row) <= width ? row.sourceScheduleUrl : undefined;
+  return {
+    text,
+    color: colors.textDim,
+    contentWidth: sourceLinksWidth(row, !!schedule),
+    content: (
+      <Box flexDirection="row" gap={1}>
+        <ExternalLinkText url={row.sourceUrl} label={text} width={schedule ? displayWidth(text) : width} />
+        {schedule ? <ExternalLinkText url={schedule} label={SCHEDULE_LINK_LABEL} width={displayWidth(SCHEDULE_LINK_LABEL)} /> : null}
+      </Box>
+    ),
+  };
 }
 
 type DividendPaneProps = { focused: boolean; width: number; height: number; loadData?: typeof fetchDividendData };
@@ -193,6 +228,10 @@ export function DividendYieldPane(props: DividendPaneProps) {
 
 function DividendTickerPane({ focused, width, height, loadData = fetchDividendData }: DividendPaneProps) {
   const { symbol, ticker, financials } = usePaneTicker();
+  const rendererHost = useRendererHost();
+  const openNotice = useCallback((url: string) => {
+    void rendererHost.openExternal(url).catch(logFailure("dividend-yield.pane", "Open dividend notice failed"));
+  }, [rendererHost]);
   const { nativePaneChrome } = useUiCapabilities();
   // Yields are repriced from the quote on every render, so streaming it is all
   // it takes for them to move with the stock. A yield to two decimals needs
@@ -276,11 +315,31 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     enabled: !authWall,
   });
   const metrics = data?.metrics ? repriceDividendMetrics(data.metrics, currentPrice) : undefined;
-  const rows = useMemo(() => toDividendRows(payments), [payments]);
+  const nextPayDate = metrics?.nextPayDate?.toISOString().slice(0, 10);
+  const rows = useMemo(() => {
+    // The pay date a history record carries dates its status here; a report states it as the row's `paymentDate`.
+    const listed = toDividendRows(payments).map((row, index): DividendRow => {
+      const paidOn = payments[index]?.paymentDate;
+      return paidOn ? { ...row, payDate: paidOn.toISOString().slice(0, 10) } : row;
+    });
+    const listedDates = new Set(listed.map((row) => row.exDate));
+    const notices = new Map<string, Partial<DividendRow>>();
+    const ahead: DividendRow[] = [];
+    for (const dividend of data?.declared ?? []) {
+      if (!dividend.source || !currency) continue;
+      const notice = { pending: true as const, ...(dividend.payDate ? { payDate: dividend.payDate } : {}), ...(dividend.special ? { special: true as const } : {}),
+        source: dividend.source.publisher, sourceUrl: dividend.source.url, sourceScheduleUrl: dividend.source.scheduleUrl };
+      // A declaration the history already holds (ex-dated, its cash not fixed yet) is that row: the row keeps the
+      // cash the listing and the issuer state and takes the notice. One still ahead of the history is a row of its own.
+      if (listedDates.has(dividend.exDate)) notices.set(dividend.exDate, notice);
+      else ahead.push({ key: `declared:${dividend.exDate}`, exDate: dividend.exDate, amount: dividend.amount, currency, cashEstimate: dividend.cashEstimate, ...notice });
+    }
+    return [...ahead, ...listed.map((row): DividendRow => ({ ...row, ...notices.get(row.exDate) }))];
+  }, [currency, data?.declared, payments]);
   const sortedRows = useMemo(() => sortRows(rows, sortPreference), [rows, sortPreference]);
   const convertedFrom = historyData?.convertedFrom;
   const convertedSubUnit = historyData?.convertedSubUnit;
-  const columns = useMemo(() => buildDividendColumns(rows, !!convertedFrom, convertedSubUnit), [rows, convertedFrom, convertedSubUnit]);
+  const columns = useMemo(() => buildDividendColumns(rows, !!convertedFrom, convertedSubUnit, width), [rows, convertedFrom, convertedSubUnit, width]);
   const chartPoints = useMemo(
     () => data?.historyAvailable === false ? [] : buildTrailingCashChartPoints(payments),
     [data?.historyAvailable, payments],
@@ -303,20 +362,30 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     return chartSpan && time >= chartSpan.first && time <= chartSpan.last ? new Date(time) : null;
   }, [chartSpan?.first, chartSpan?.last]);
   const selectedId = sortedRows.some((row) => row.key === selectedKey) ? selectedKey : sortedRows[0]?.key ?? null;
+  const selectedSchedule = sortedRows.find((row) => row.key === selectedId)?.sourceScheduleUrl;
+  usePaneMenuItems("dividend-notice-schedule", () => selectedSchedule ? [{
+    id: "dividend-notice-schedule", label: "Open dividend schedule",
+    onSelect: () => openNotice(selectedSchedule),
+  }] : [], [openNotice, selectedSchedule]);
   const link = useChartTableSelection({
     rows: sortedRows, getId: rowKey, getDate: rowDate, selectedId, onSelect: setSelectedKey, focused,
   });
   // The header row, plus the scrollbar row once the columns overflow the pane.
   const tableChromeRows = chartTableChromeRows(columns, width);
-  const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, !!convertedFrom, convertedSubUnit),
-    [convertedFrom, convertedSubUnit]);
-  const fullFigures = metrics ? buildMetricItems(metrics, currency, sortedRows.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];
+  // One precision down each amount column, in each unit it writes.
+  const digits = useMemo(() => ({
+    amount: dividendAmountDigits(rows, !!convertedFrom, convertedSubUnit),
+    declared: dividendAmountDigits(rows.flatMap((row) => row.declared ? [row.declared] : [])),
+  }), [rows, convertedFrom, convertedSubUnit]);
+  const renderRowCell = useCallback((row: DividendRow, column: DividendColumn) => renderCell(row, column, digits, !!convertedFrom, convertedSubUnit),
+    [convertedFrom, convertedSubUnit, digits]);
+  const fullFigures = metrics ? buildMetricItems(metrics, currency, payments.length > 0, false, data?.declared, bond, convertedFrom, convertedSubUnit) : [];
   const keptFigures = chartTableLayout({
     width, height, figures: fullFigures, tableRows: sortedRows.length, tableChromeRows, chart: chartPoints.length >= 2 ? {} : null,
   }).figures;
   // The desktop grid never clips a label; the terminal shortens them rather than clip.
   const figures = metrics && !nativePaneChrome && labelsClip(keptFigures, width)
-    ? buildMetricItems(metrics, currency, sortedRows.length > 0, true, data?.declared, bond, convertedFrom, convertedSubUnit) : fullFigures;
+    ? buildMetricItems(metrics, currency, payments.length > 0, true, data?.declared, bond, convertedFrom, convertedSubUnit) : fullFigures;
 
   const handleHeaderClick = useCallback((columnId: string) => {
     setSortPreference((current) => nextHeaderSort(current, columnId as DividendColumnId, {
@@ -342,6 +411,9 @@ function DividendTickerPane({ focused, width, height, loadData = fetchDividendDa
     <DataTableView<DividendRow, DividendColumn>
       focused={focused}
       selection={{ kind: "id", selectedId, getId: rowKey, onChange: (id) => setSelectedKey(id) }}
+      onActivate={(row) => { if (row.sourceUrl) openNotice(row.sourceUrl); }}
+      rowNote={(row) => row.pending && row.payDate && row.payDate !== nextPayDate
+        ? { text: `Payable ${formatDay(row.payDate)}`, tone: "muted" } : null}
       onRootKeyDown={handleKeyDown}
       resetScrollKey={symbol}
       rootWidth={width}

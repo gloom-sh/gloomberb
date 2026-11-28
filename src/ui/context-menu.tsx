@@ -1,4 +1,5 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, type ReactNode } from "react";
+import { openFormModal } from "../components/form-modal/request";
 import { t, tf } from "../i18n";
 import { getSharedRegistry, type PluginRegistry } from "../plugins/registry";
 import { TICKER_RESEARCH_PANE_ID } from "../types/config";
@@ -11,6 +12,7 @@ import {
 } from "../types/context-menu";
 import type { TickerFinancials } from "../types/financials";
 import type { TickerRecord } from "../types/ticker";
+import { canonicalTickerKey } from "../utils/exchanges";
 import { useRendererHost, useUiCapabilities } from "./host";
 import { menuAcceleratorFor, useKeybindings } from "../app/keybindings";
 
@@ -218,6 +220,51 @@ function appContextMenuItems(
   ];
 }
 
+/** Add Alert (SA), the alerts plugin's command. */
+export const ADD_ALERT_COMMAND_ID = "set-alert";
+
+/**
+ * Whether a menu can offer a plugin command: it is there, not hidden, and its
+ * plugin is on (a disabled plugin keeps it registered). A pane passes the
+ * disabled plugins from the config it renders with.
+ */
+export function pluginCommandAvailable(
+  registry: Pick<PluginRegistry, "commands" | "getCommandPluginId" | "getConfig">,
+  commandId: string,
+  disabledPlugins?: readonly string[],
+): boolean {
+  const command = registry.commands?.get(commandId);
+  if (!command || command.hidden?.()) return false;
+  const owner = registry.getCommandPluginId?.(commandId);
+  return !owner || !(disabledPlugins ?? registry.getConfig().disabledPlugins).includes(owner);
+}
+
+/**
+ * A saved row's listing as Add Alert reads a typed symbol: its key with the
+ * row's venue, as the row is quoted. BHP on ASX is BHP:ASX and SAN in Paris is
+ * SAN:EPA, never the bare symbol, which Add Alert reads as the US line (BHP's
+ * and Santander's NYSE ADRs) even when the row abroad is saved under it; a
+ * key saved under its venue's code (BHP:XASX) by the venue's own (BHP:ASX).
+ */
+export function alertListingOfTicker(ticker: TickerRecord): string {
+  return canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange);
+}
+
+/**
+ * A plugin command's form, as the command bar opens it, filled in with
+ * `values`. Nothing runs until the form is sent. Forms open in the main
+ * window only; anywhere else this says so.
+ */
+export function openPluginCommandForm(commandId: string, values: Record<string, string>, registry: Pick<PluginRegistry, "notify">): void {
+  const opened = openFormModal({ kind: "plugin-command", commandId, values });
+  if (!opened) registry.notify({ body: t("Open this from the main window."), type: "info" });
+}
+
+/** Add Alert's form, as SA opens it, filled in with the row's listing. */
+function openAddAlertForm(ticker: TickerRecord, registry: Pick<PluginRegistry, "notify">): void {
+  openPluginCommandForm(ADD_ALERT_COMMAND_ID, { symbol: alertListingOfTicker(ticker) }, registry);
+}
+
 export function tickerContextMenuItems({
   ticker,
   financials,
@@ -261,6 +308,13 @@ export function tickerContextMenuItems({
     },
   ];
 
+  if (registry && pluginCommandAvailable(registry, ADD_ALERT_COMMAND_ID)) {
+    items.push({
+      id: "ticker:add-alert",
+      label: "Add Alert...",
+      onSelect: () => openAddAlertForm(ticker, registry),
+    });
+  }
   if (ticker.metadata.watchlists.length > 0) {
     items.push({
       id: "ticker:remove-watchlist",

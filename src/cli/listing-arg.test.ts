@@ -22,6 +22,7 @@ afterEach(() => {
 
 test("VX=F, written as CL=F is for a root VIX futures do not list it for, is the front generic VX1, and says so", () => {
   expect(parseListingArg("vx=f")).toEqual({ symbol: "VX1", exchange: "", key: "VX1", readAs: "Read VX=F as VX1, the front VIX future.", readFromName: true });
+  expect(() => parseListingArg("vx=f", null, { currentSnapshot: true })).toThrow(ListingArgError);
 });
 
 test("SYM:EXCH and --exchange name the same listing through the exchange aliases, and must agree", () => {
@@ -216,6 +217,23 @@ test("IDX, KLSE, BKK and IST are the venues they name, typed either way, unless 
   });
   expect(await resolveCliListing("BBCA:IDX", undefined, deps)).toMatchObject({ key: "BBCA:IDX", saved: { metadata: { name: "Bank Central Asia" } } });
   expect(parseListingArg("IDX:ARCA").key).toBe("IDX:ARCA");
+});
+
+test("XPHS names the Philippine listing when a US stock shares its ticker", async () => {
+  const persistence = new AppPersistence(":memory:");
+  persistences.push(persistence);
+  const store = new TickerRepository(persistence.tickers);
+  const dataProvider = createTestDataProvider({
+    search: async () => [
+      { providerId: "test", symbol: "SM", name: "SM Energy", exchange: "NYSE", currency: "USD", type: "Common Stock" },
+      { providerId: "test", symbol: "SM", name: "SM Investments", exchange: "XPHS", currency: "PHP", type: "Common Stock" },
+    ],
+  });
+  const deps = { store, dataProvider };
+  expect(await resolveCliListing("SM:XPHS", undefined, deps)).toMatchObject({
+    key: "SM:XPHS", request: { symbol: "SM:XPHS", exchange: "XPHS" },
+  });
+  expect((await resolveCliListing("SM:NYSE", undefined, deps)).key).toBe("SM:NYSE");
 });
 
 test("BRK B and BRKB are Berkshire's class B, the saved row first, never the ETN named for it, naming the code's lines abroad", async () => {

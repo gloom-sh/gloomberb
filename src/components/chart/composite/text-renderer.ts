@@ -279,7 +279,7 @@ function renderOhlc(
   return risingAt;
 }
 
-export function resolveCompositeTextOhlcWidth(
+function resolveCompositeTextOhlcWidth(
   points: CompositeProjectedPoint[],
   width: number,
 ): number {

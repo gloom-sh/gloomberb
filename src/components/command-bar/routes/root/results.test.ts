@@ -1,10 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import type { PaneTemplateDef } from "../../../../types/plugin";
+import type { PluginRegistry } from "../../../../plugins/registry";
+import { tickerDetailModule } from "../../../../plugins/builtin/ticker-detail";
 import type { Command } from "../../commands/registry";
 import { resolveRowBadge } from "../../list/badge";
 import { orderListResults, type ResultItem } from "../../list/model";
-import { PLUGIN_INSTALL_CATEGORY } from "../../view-model";
-import { mergePlainRootTickerResults } from "../ticker-search/results";
+import { buildPaneShortcutItems, buildPaneTemplateItem } from "../../pane-templates/items";
+import { exactMatchAfterCommands, PLUGIN_INSTALL_CATEGORY } from "../../view-model";
+import { mergePlainRootTickerResults, wordNamesCommand } from "../ticker-search/results";
 import { buildRootResultModel, type RootResultModelOptions } from "./results";
 
 /** The AI's rows, as the assist model files them. */
@@ -78,6 +81,44 @@ const documentRow: ResultItem = {
   lines: [{ segments: [{ text: "margin pressure", emphasis: "match" }] }],
   action: () => {},
 };
+
+test("exact FA metrics lead the pane matches and open the named ratio tab", () => {
+  const template = tickerDetailModule.paneTemplates!.find((entry) => entry.shortcut?.prefix === "FA")!;
+  const registry = { getPaneTemplatePluginId: () => null, allPlugins: new Map(), panes: new Map() } as unknown as PluginRegistry;
+  for (const [query, label, statement] of [
+    ["interest coverage", "Leverage", "leverage"], ["coverage ratio", "Leverage", "leverage"],
+    ["net debt/EBITDA", "Leverage", "leverage"], ["current ratio", "Liquidity", "liquidity"], ["quick ratio", "Liquidity", "liquidity"],
+    ["ROE", "Profitability", "profitability"], ["margins", "Profitability", "profitability"], ["asset turnover", "Efficiency", "efficiency"],
+    ["P/E", "Valuation", "valuation"], ["EV/EBITDA", "Valuation", "valuation"],
+  ] as const) {
+    const ran: unknown[] = [];
+    const { items } = buildRootResultModel(rootOptions({
+      rootQuery: query,
+      paneShortcutItems: () => [
+        { ...paneRow, label: query },
+        ...buildPaneShortcutItems({
+          templates: [template], searchedQuery: query, registry,
+          createItem: (entry, options) => buildPaneTemplateItem({
+            template: entry, pluginRegistry: registry, ...options,
+            runPaneTemplateShortcut: (_template, arg, preset) => { ran.push([arg, preset]); },
+            shouldOpenTemplateConfig: () => false, openPaneTemplateWorkflow: () => {}, openPaneTemplateDirect: () => {},
+          }),
+        }),
+      ],
+    }));
+    const first = orderListResults(items)[0];
+    expect(first, query).toMatchObject({ label: "Financial Analysis", name: label, right: "FA" });
+    first!.action();
+    expect(ran, query).toEqual([["", { statement }]]);
+    if (query === "ROE") {
+      const listing: ResultItem = { ...paneRow, id: "ticker:ROE", label: "ROE", kind: "ticker", category: "Exact Match", right: "NYSE ARCA" };
+      const categoryPriorities = wordNamesCommand(query, items) ? exactMatchAfterCommands() : undefined;
+      const results = orderListResults(mergePlainRootTickerResults(query, [listing], items), { sectionOrder: "app-first", categoryPriorities });
+      expect(results[0]).toBe(first);
+      expect(results.some((result) => result.id === listing.id)).toBe(true);
+    }
+  }
+});
 
 describe("provider rows in the root result model", () => {
   test("land after the local matches instead of displacing them", () => {

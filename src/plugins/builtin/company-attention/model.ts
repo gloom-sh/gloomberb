@@ -6,6 +6,7 @@ import { humanLabel } from "../shared/research-cells";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { countOf, freePreviewNote } from "../shared/free-preview";
 import { countryName, postingPlace, postingTitle } from "../shared/job-posting";
+import { formatDay } from "../../../utils/day-format";
 import { formatShortDate } from "../../../utils/datetime-format";
 
 export type AttentionKind = "hiring" | "apps";
@@ -63,7 +64,7 @@ export function attentionTabs(kind: AttentionKind, symbol: string | null | undef
  */
 export type AttentionPaneTab = AttentionTab | "moves" | "expansion" | "anomalies" | "building";
 /** What HIRE says for a company whose open roles have no evidence rows yet. */
-export const NO_CURRENT_ROLE_EVIDENCE = "No current role evidence has been captured yet.";
+const NO_CURRENT_ROLE_EVIDENCE = "No current role evidence has been captured yet.";
 
 const HIRING_READ_TABS = ["moves", "expansion", "anomalies", "building"] as const;
 export function attentionPaneTabs(kind: AttentionKind, symbol: string | null | undefined): AttentionPaneTab[] {
@@ -78,7 +79,7 @@ export function attentionPaneTabs(kind: AttentionKind, symbol: string | null | u
 export function attentionSectionTitle(kind: AttentionKind, tab: AttentionTab, symbol: string | null | undefined, mix?: string): string {
   if (kind === "hiring") {
     return { table: symbol ? "Open roles" : "Companies hiring", chart: "Hiring trend", mix: HIRING_MIX_TITLES[mix ?? "functions"] ?? "Role family",
-      peers: "Peers", evidence: "Posting evidence" }[tab];
+      peers: "Mapped peers: posting counts", evidence: "Posting evidence" }[tab];
   }
   return { table: "App ranks", chart: "Attention trend", mix: mix === "spreads" ? "Rank spreads" : "Countries",
     peers: symbol ? "Peers" : "Companies", evidence: "Chart evidence" }[tab];
@@ -109,7 +110,19 @@ const day = (value: string | null | undefined) => value ? formatShortDate(value.
 const facts = (entries: Array<[string, string | number | null | undefined]>): AttentionFact[] =>
   entries.flatMap(([label, value]) => value == null || value === "" ? [] : [{ label, value: String(value) }]);
 const CAPTURES: Record<string, string> = { complete: "Complete", partial: "Partial", unknown: "Coverage not known" };
-const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
+/** Columns that date a row by when it was observed: one date on every row is the footer's, not a column. */
+export const OBSERVED_LABELS: ReadonlySet<string> = new Set(["Observed", "As of"]);
+export const attentionColumn = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({
+  id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}),
+});
+export const hiringCount = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
+export const hiringPace = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
+export const hiringAverage = (value: number) => formatNumber(value, value < 10 ? 1 : 0);
+export const hiringSigned = (value: number, decimals = 0) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
+export function hiringDayLabel(value: string | null | undefined, year = false): string {
+  return /^\d{4}-\d{2}-\d{2}/.test(value ?? "") ? formatDay(value, year ? "full" : "no-year") : MISSING_VALUE;
+}
+const column = attentionColumn;
 const roleFamily = (value: string | null) => value === "data_ai" || value === "data ai" ? "Data / AI" : value ? humanLabel(value) : null;
 const COMPANY_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 24, false, true), column("open", "Open roles", 12, true), column("net", "Net vs prior", 13, true), column("remote", "Remote %", 17, true), column("z", "Z-score", 10, true), column("signal", "Signal", 12), column("date", "As of", 12)];
 const HISTORY_COLUMNS = [column("date", "Week", 12), column("open", "Open roles", 12, true), column("added", "Added", 9, true), column("removed", "Removed", 9, true), column("net", "Net", 9, true), column("change", "Change %", 11, true), column("remote", "Remote %", 17, true), column("coverage", "Capture", 13, false, true)];
@@ -138,8 +151,8 @@ export function hiringPreviewNote(data: HiringBoard | HiringPayload): string | n
   if (evidence + history + peers <= 0) return null;
   const roles = data.evidence.length;
   return freePreviewNote({
-    shows: evidence > 0 ? `${roles} of ${grouped(roles + evidence)} open roles` : countOf(roles, "open role"),
-    adds: joinList([evidence > 0 ? `the other ${grouped(evidence)} roles` : "", history > 0 ? `${grouped(history)} ${history === 1 ? "week" : "weeks"} of history` : "", peers > 0 ? `${grouped(peers)} more peers` : ""].filter(Boolean)),
+    shows: evidence > 0 ? `${roles} of ${grouped(roles + evidence)} retained postings` : "the latest hiring capture",
+    adds: joinList([evidence > 0 ? `the other ${grouped(evidence)} postings` : "", history > 0 ? `${grouped(history)} ${history === 1 ? "week" : "weeks"} of capture history` : "", peers > 0 ? `${grouped(peers)} more mapped peers` : ""].filter(Boolean)),
     historyFrom: history > 0 ? data.coverage.firstObservedAt : null,
   });
 }
@@ -171,12 +184,12 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
   const rows = mixKey === "signals" ? (detail?.signals ?? []).map((row, i): AttentionRow => ({ id: `${row.type}:${i}`, url: row.evidenceUrls[0], values: { label: row.label, count: row.value, share: row.confidence * 100, date: row.asOf.slice(0, 10) }, details: facts([["As of", day(row.asOf)], ["Location", row.location]]) }))
     : (detail?.[mixKey] ?? []).map((row): AttentionRow => ({ id: row.id, values: { label: mixKey === "functions" ? roleFamily(row.label) : mixKey === "seniority" ? humanLabel(row.label) : row.label, count: row.count, share: row.share * 100 } }));
   const model: AttentionModel = {
-    asOf: latest?.observedAt ?? data.generatedAt,
+    asOf: latest?.observedAt ?? history.at(-1)?.observedAt ?? ("companies" in data ? data.companies.flatMap(row => row.latest ? [row.latest.observedAt] : []).sort().at(-1) : null) ?? null,
     preview: data.preview,
     locked: typeof data.locked === "number" ? data.locked : Object.values(data.locked).reduce((a, b) => a + b, 0),
     // How counts compare is methodology (docs/hiring-app-attention.md); the footer keeps only what is wrong with this capture.
     // A board that covers part of the company (one country, one unit) says which, beside counts that are only that part's.
-    notices: detail ? [...(detail.coverage.boardScope ? [detail.coverage.boardScope] : []), ...(latest?.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])] : [],
+    notices: detail ? [...(detail.coverage.boardScope ? [detail.coverage.boardScope] : []), ...(latest && latest.completeness !== "complete" ? ["The latest capture has incomplete or unknown coverage."] : []), ...(detail.status === "stale" ? ["The latest hiring capture is stale."] : [])] : [],
     partial: !!detail && (latest?.completeness !== "complete" || detail.status === "stale"),
     // A figure the first capture cannot give yet (a weekly change, a z-score) is left out, not shown as a dash.
     figures: latest ? [
@@ -189,9 +202,9 @@ export function hiringModel(data: HiringBoard | HiringPayload, mix = "functions"
     ] : [],
     sections: {
       table: { columns: COMPANY_COLUMNS, rows: companies.map(companyRow), empty: "Hiring observations are not available yet." },
-      chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, remoteKnown: row.remoteKnown, coverage: row.completeness }, details: facts([["Captured", day(row.observedAt)], ["Coverage", CAPTURES[row.completeness] ?? null], ["Open roles", count(row.openCount)], ["Standing roles", row.evergreenCount ? count(row.evergreenCount) : null]]) })), empty: hiringHistoryLocked(data) ? "Weekly history is part of Gloom Pro." : "History is accumulating from the first capture.", ...(hiringHistoryLocked(data) ? { locked: true } : {}) },
+      chart: { columns: HISTORY_COLUMNS, rows: [...history].reverse().map((row): AttentionRow => ({ id: row.week, date: row.week, values: { date: row.week, open: row.openCount, added: row.added, removed: row.removed, net: row.netChange, change: row.changePct, remote: row.remoteShare == null ? null : row.remoteShare * 100, remoteKnown: row.remoteKnown, coverage: row.completeness }, details: facts([["Captured", day(row.observedAt)], ["Coverage", CAPTURES[row.completeness] ?? null], ["Open roles", count(row.openCount)], ["Standing roles", row.evergreenCount ? count(row.evergreenCount) : null]]) })), empty: hiringHistoryLocked(data) ? "Weekly history is part of Gloom Pro." : latest ? "History is accumulating from the first capture." : "No hiring captures yet.", ...(hiringHistoryLocked(data) ? { locked: true } : {}) },
       mix: { columns: [column("label", mixKey === "signals" ? "Signal" : "Group", 28, false, true), column("count", mixKey === "signals" ? "Value" : "Roles", 12, true), column("share", mixKey === "signals" ? "Confidence %" : "Share %", mixKey === "signals" ? 14 : 30, true), ...(mixKey === "signals" ? [column("date", "Observed", 12)] : [])], rows, empty: "No classified observations for this group yet." },
-      peers: { columns: COMPANY_COLUMNS, rows: (detail?.peers ?? []).map(companyRow), empty: "No comparable mapped peers yet." },
+      peers: { columns: COMPANY_COLUMNS.filter(entry => ["symbol", "name", "open", "date"].includes(entry.id)), rows: latest ? (detail?.peers ?? []).filter(row => row.latest).map(companyRow) : [], empty: "No mapped peer posting counts available." },
       evidence: { columns: [column("title", "Role", 32, false, true), column("location", "Location", 24), column("function", "Function", 18), column("seniority", "Seniority", 13), column("date", "Observed", 12), column("confidence", "Confidence %", 13, true)], rows: (detail?.evidence ?? []).map((row): AttentionRow => ({ id: `${row.snapshotId}:${row.id}`, url: row.url ?? row.sourceUrl, values: { title: postingTitle(row.title, row.id), location: row.location, function: roleFamily(row.jobFunction), seniority: row.seniority ? humanLabel(row.seniority) : null, date: row.observedAt.slice(0, 10), confidence: row.confidence * 100 }, details: facts([["Place", postingPlace(row)], ["Role family", roleFamily(row.jobFunction)], ["Seniority", row.seniority ? humanLabel(row.seniority) : null], ["Seen", day(row.observedAt)]]),
         posting: { ticker: row.sourceTicker, externalId: row.id } })), empty: "No primary posting evidence is available yet." },
     },
@@ -234,7 +247,7 @@ const appCompanyRow = (row: AppCompany): AttentionRow => ({ id: row.symbol, symb
  * sees, so an empty preview is never the free cap. Null when the report has rows, a filter is set, or nothing has
  * been captured yet.
  */
-export function appsUnmappedReason(data: AppAttentionPayload, filtered: boolean): string | null {
+function appsUnmappedReason(data: AppAttentionPayload, filtered: boolean): string | null {
   if (!data.symbol || filtered || data.apps.length || (data.page?.total ?? 0) > 0 || data.summary.appCount > 0) return null;
   // Rows held back for Pro are apps it maps, so a capped preview is never read as none.
   if (!Object.values(data.locked).every((count) => !count)) return null;

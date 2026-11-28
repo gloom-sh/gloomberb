@@ -37,7 +37,7 @@ export interface FetchCacheOptions {
   forceRefresh?: boolean;
 }
 
-export interface ScreenerFetchOptions extends FetchCacheOptions {
+interface ScreenerFetchOptions extends FetchCacheOptions {
   /** What the server selects and ranks Gainers and Losers by; Most Active has none. */
   session?: CloudMoverSession;
 }
@@ -251,7 +251,7 @@ function floatOf(source: { floatShares?: unknown; floatSharesState?: unknown; fl
 }
 
 /** Validate numeric fields at the API boundary so absent values stay unavailable. */
-export function parseScreenerResponse(data: unknown): ScreenerQuote[] {
+function parseScreenerResponse(data: unknown): ScreenerQuote[] {
   if (!data || typeof data !== "object" || !("quotes" in data) || !Array.isArray(data.quotes)) {
     throw new Error("Invalid market movers response");
   }
@@ -274,7 +274,7 @@ export function parseScreenerResponse(data: unknown): ScreenerQuote[] {
   });
 }
 
-export async function fetchScreenerResult(
+async function fetchScreenerResult(
   category: ScreenerCategory,
   count = 25,
   api: MarketScreenerApi = screenerApi,
@@ -295,15 +295,6 @@ export async function fetchScreenerResult(
   return loadCached(`screener:${category}:count=${count}${session ? `:session=${session}` : ""}`, load, options);
 }
 
-export async function fetchScreener(
-  category: ScreenerCategory,
-  count = 25,
-  api: MarketScreenerApi = screenerApi,
-  options?: ScreenerFetchOptions,
-): Promise<ScreenerQuote[]> {
-  return (await fetchScreenerResult(category, count, api, options)).data;
-}
-
 function cloudScreenerCategory(category: ScreenerCategory): CloudMarketScreenerCategory {
   if (category === "day_gainers") return "gainers";
   if (category === "day_losers") return "losers";
@@ -315,7 +306,7 @@ function cloudScreenerCategory(category: ScreenerCategory): CloudMarketScreenerC
  * without its account, as the CLI starts from the saved one, is asked for it
  * first, so a Pro account is never handed the delayed lists.
  */
-export function isCloudScreenerEligible(): boolean | Promise<boolean> {
+function isCloudScreenerEligible(): boolean | Promise<boolean> {
   const user = apiClient.getCurrentUser();
   if (user || !apiClient.isSignedIn()) return apiClient.isVerified() && hasProAccess(user);
   return apiClient.ensureVerifiedSession().then((verified) => !!verified && hasProAccess(verified), (error: unknown) => {
@@ -466,7 +457,7 @@ export async function fetchPreferredMarketMovers(
   };
 }
 
-export function parseTrendingResponse(data: unknown): TrendingSymbol[] {
+function parseTrendingResponse(data: unknown): TrendingSymbol[] {
   if (!Array.isArray(data)) return [];
   return data.flatMap(q => q && typeof q.symbol === "string" && q.symbol.trim() ? [{ symbol: q.symbol.trim() }] : []);
 }

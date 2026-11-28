@@ -126,7 +126,7 @@ function namedRegions(): Map<string, string> {
  * "Euro area"), or the country's English name ("United Kingdom", "Korea").
  * Null for anything with no flag: a region, a city, several countries.
  */
-export function flagRegion(value: string | null | undefined): string | null {
+function flagRegion(value: string | null | undefined): string | null {
   const key = value?.trim().toUpperCase();
   if (!key) return null;
   if (EURO_AREA.has(key)) return "EU";

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import { usePaneInstance } from "../../../state/app/context";
 import { sourceDidNotAnswer } from "../../../api-client/errors";
-import { useAsyncResource } from "../../../react/async-resource";
+import { usePaneResource } from "../shared/pane-resource";
 import {
   DataTableStackView,
   DataTableView,
@@ -13,7 +13,7 @@ import {
   type DataTableColumn,
 } from "../../../components";
 import { DetailReader } from "../../../components/reader/detail-reader";
-import { loadingErrorFooterInfo, usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { getReleaseSummaries } from "../../../api-client/release-summaries";
 import { createTtlCache } from "../../../data/ttl-cache";
 import {
@@ -66,11 +66,6 @@ interface ChangelogData {
 // surfaces start reading releases too.
 const changelogCache = createTtlCache<ChangelogData>({ ttlMs: CHANGELOG_CACHE_TTL_MS });
 const CHANGELOG = "changelog";
-
-/** Every test reads its own answers, whichever file ran first. */
-export function resetChangelogCacheForTests(): void {
-  changelogCache.clear();
-}
 
 /**
  * CHANGELOG.md from Gloom Cloud, which reads GitHub with its own credentials,
@@ -269,7 +264,9 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
     }
   }, []);
 
-  const { data, error, loading, reload } = useAsyncResource(loader, {
+  const { data, error, loading } = usePaneResource(loader, {
+    focused,
+    autoRefresh: false,
     initialData: () => changelogCache.peek(CHANGELOG, { stale: true }) ?? null,
     savedCopy: { key: [CHANGELOG, CHANGELOG_LIMIT] },
   });
@@ -319,8 +316,6 @@ export function ChangelogPane({ focused, width, height }: PaneProps) {
     setSelectedReleaseId(match.id);
     setOpenReleaseId(match.id);
   }, [data, requestedVersion, versions]);
-
-  usePaneRefreshKey(reload, { focused });
 
   const columns = useMemo(() => buildVersionColumns(versions), [versions]);
 

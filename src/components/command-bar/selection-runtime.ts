@@ -1,135 +1,90 @@
 import { useCallback, useEffect, useMemo, useRef, type MutableRefObject } from "react";
-import type { AppState } from "../../state/app/context";
-import type { TickerRecord } from "../../types/ticker";
 import { t } from "../../i18n";
 import { listingChoiceQuery, normalizeTickerInput } from "../../tickers/search";
 import { isKnownExchangeCode, typedExchangeVenue } from "../../utils/exchanges";
 import type { PluginRegistry } from "../../plugins/registry";
 import type { Command } from "./commands/registry";
-import type {
-  CommandDef,
-  PaneTemplateCreateOptions,
-  PaneTemplateDef,
-} from "../../types/plugin";
-import { resolveCommandBarMode, type CommandBarMode } from "./view-model";
-import { isDefaultSelectable, type ListScreenState, type ResultItem } from "./list/model";
-import type { CommandBarRoute } from "./workflow/types";
-import type { CollectionCommandId } from "./helpers";
-import type { CommandBarCollectionWorkflowActions } from "./workflow/collection-actions";
+import { resolveCommandBarMode } from "./view-model";
+import { isDefaultSelectable, type ResultItem } from "./list/model";
+import type { CommandBarActionRuntime } from "./action-runtime";
+import type { CommandBarNavigationState } from "./routing/navigation-state";
+import type { CommandBarEnvironment } from "./surface/environment";
 import {
   acceptRootShortcutTabAction,
   buildImmediateRootSelection,
 } from "./routes/root/selection";
-import type { OpenInlineConfirm } from "./routing/confirm";
 import { activatePickerSelectionAction } from "./picker-activation";
 import type { RunRootRow } from "./routes/root/search-report";
 import type { ShortcutIntent } from "./routes/root/shortcuts";
 import { isNamedListingRow } from "./routes/ticker-search/results";
 import { writtenAsSymbol } from "./routes/root/runtime";
 
-type OpenModeRouteFn = (
-  screen: "ticker-search" | "layout",
-  initialQuery?: string,
-  payload?: Record<string, unknown>,
-) => void;
-
-type ExecuteCollectionCommandFn = (
-  commandId: CollectionCommandId,
-  rawInput?: string,
-  explicitTargetId?: string | null,
-  selectedTicker?: TickerRecord,
-  directMembership?: boolean,
-) => Promise<void>;
-
 interface UseCommandBarSelectionRuntimeOptions {
-  activeTickerSymbol: string | null;
-  promptTickerSymbol?: string | null;
+  env: CommandBarEnvironment;
+  nav: CommandBarNavigationState;
+  actions: CommandBarActionRuntime;
   availableCommands: Command[];
   clearThemePreview: (themeId: string) => void;
   closeAll: (options?: { revertThemePreview?: boolean }) => void;
-  collectionWorkflowActions: CommandBarCollectionWorkflowActions;
-  createPaneTemplateItem: (template: PaneTemplateDef, options?: {
-    category?: string;
-    createOptions?: PaneTemplateCreateOptions;
-    showShortcut?: boolean;
-    shortcutExecution?: boolean;
-  }) => ResultItem;
-  createPluginCommandItem: (command: CommandDef, options?: { shortcutArg?: string }) => ResultItem;
-  currentRoute: CommandBarRoute | null;
-  currentRouteRef: MutableRefObject<CommandBarRoute | null>;
-  executeCollectionCommand: ExecuteCollectionCommandFn;
-  getAvailablePaneShortcutTemplates: (query: string) => PaneTemplateDef[];
-  getAvailablePluginCommands: () => CommandDef[];
-  openInlineConfirm: OpenInlineConfirm;
-  openModeRoute: OpenModeRouteFn;
-  openPaneTemplateWorkflow: (template: PaneTemplateDef, options?: { arg?: string }) => void;
-  persistLayoutChange: (nextLayout: AppState["config"]["layout"]) => void;
-  pluginCommandResultItems: (command: CommandDef, shortcutArg: string) => ResultItem[];
   pluginRegistry: PluginRegistry;
-  rootModeKindRef: MutableRefObject<CommandBarMode>;
-  rootQuery: string;
-  rootQueryRef: MutableRefObject<string>;
-  rootSelectedIdx: number;
-  rootSelectionNavigatedRef: MutableRefObject<boolean>;
+  promptTickerSymbol?: string | null;
   rootShortcutIntent: ShortcutIntent;
   rootThemeBaseIdRef: MutableRefObject<string | null>;
-  runDirectCommand: (command: Command, arg: string) => void;
   /**
    * The command-search report, which runs each root row (and Tab on a typed
    * shortcut) so it can tell a row that ran from one that only opened a route
    * or rewrote the query. It never holds the row up.
    */
   runRootRow?: RunRootRow;
-  runSecurityDescriptionShortcut: (query?: string, options?: { forceNewPane?: boolean }) => void | Promise<void>;
   /**
    * The search that decides the best row is still out, so the list on screen
    * is a stand-in for the answer.
    */
   searchPending: boolean;
-  setRootQuery: (query: string) => void;
-  stateConfigLayout: AppState["config"]["layout"];
-  stateRef: MutableRefObject<AppState>;
-  updateTopRoute: (updater: (route: CommandBarRoute) => CommandBarRoute) => void;
-  visibleListStateRef: MutableRefObject<ListScreenState | null>;
 }
 
 export function useCommandBarSelectionRuntime({
-  activeTickerSymbol,
-  promptTickerSymbol = null,
+  env,
+  nav,
+  actions,
   availableCommands,
   clearThemePreview,
   closeAll,
-  collectionWorkflowActions,
-  createPaneTemplateItem,
-  createPluginCommandItem,
-  currentRoute,
-  currentRouteRef,
-  executeCollectionCommand,
-  getAvailablePaneShortcutTemplates,
-  getAvailablePluginCommands,
-  openInlineConfirm,
-  openModeRoute,
-  openPaneTemplateWorkflow,
-  persistLayoutChange,
-  pluginCommandResultItems,
   pluginRegistry,
-  rootModeKindRef,
-  rootQuery,
-  rootQueryRef,
-  rootSelectedIdx,
-  rootSelectionNavigatedRef,
+  promptTickerSymbol = null,
   rootShortcutIntent,
   rootThemeBaseIdRef,
-  runDirectCommand,
   runRootRow,
-  runSecurityDescriptionShortcut,
   searchPending,
-  setRootQuery,
-  stateConfigLayout,
-  stateRef,
-  updateTopRoute,
-  visibleListStateRef,
 }: UseCommandBarSelectionRuntimeOptions) {
+  const { activeTickerSymbol, state: { config: { layout: stateConfigLayout } }, stateRef, visibleListStateRef } = env;
+  const {
+    currentRoute,
+    currentRouteRef,
+    rootModeKindRef,
+    rootQuery,
+    rootQueryRef,
+    rootSelectedIdx,
+    rootSelectionNavigatedRef,
+    setRootQuery,
+    updateTopRoute,
+  } = nav;
+  const {
+    collectionWorkflowActions,
+    createPaneTemplateItem,
+    createPluginCommandItem,
+    executeCollectionCommand,
+    getAvailablePaneShortcutTemplates,
+    getAvailablePluginCommands,
+    openInlineConfirm,
+    openModeRoute,
+    openPaneTemplateWorkflow,
+    persistLayoutChange,
+    pluginCommandResultItems,
+    runDirectCommand,
+    runSecurityDescriptionShortcut,
+  } = actions;
+
   const startThemePicker = useCallback((arg: string) => {
     rootThemeBaseIdRef.current = stateRef.current.config.theme;
     setRootQuery(arg ? `TH ${arg}` : "TH ");
@@ -147,7 +102,7 @@ export function useCommandBarSelectionRuntime({
     return true;
   }, [setRootQuery, visibleListStateRef]);
 
-  const resolveImmediateRootSelection = useCallback((query: string): ResultItem | null => buildImmediateRootSelection({
+  const rootSelectionOptions = useMemo(() => ({
     activeTickerSymbol,
     promptTickerSymbol,
     availableCommands,
@@ -159,7 +114,6 @@ export function useCommandBarSelectionRuntime({
     openModeRoute,
     openPaneTemplateWorkflow,
     pluginCommandResultItems,
-    query,
     runDirectCommand,
     runSecurityDescriptionShortcut,
     setRootQuery,
@@ -182,6 +136,11 @@ export function useCommandBarSelectionRuntime({
     startThemePicker,
   ]);
 
+  const resolveImmediateRootSelection = useCallback(
+    (query: string): ResultItem | null => buildImmediateRootSelection({ ...rootSelectionOptions, query }),
+    [rootSelectionOptions],
+  );
+
   /**
    * The typed ticker command Enter runs while no row is highlighted (DES
    * before its search answers), so the prompt names its keys as a ticker row's.
@@ -198,24 +157,7 @@ export function useCommandBarSelectionRuntime({
    */
   const acceptRootShortcutTab = useCallback((): boolean => {
     const query = rootQueryRef.current;
-    const accept = () => acceptRootShortcutTabAction({
-      activeTickerSymbol,
-      promptTickerSymbol,
-      availableCommands,
-      createPaneTemplateItem,
-      createPluginCommandItem,
-      executeCollectionCommand,
-      getAvailablePaneShortcutTemplates,
-      getAvailablePluginCommands,
-      openModeRoute,
-      openPaneTemplateWorkflow,
-      pluginCommandResultItems,
-      query,
-      runDirectCommand,
-      runSecurityDescriptionShortcut,
-      setRootQuery,
-      startThemePicker,
-    });
+    const accept = () => acceptRootShortcutTabAction({ ...rootSelectionOptions, query });
     const shortcutRow = runRootRow ? resolveImmediateRootSelection(query) : null;
     if (!runRootRow || !shortcutRow) return accept();
     let accepted = false;
@@ -224,26 +166,7 @@ export function useCommandBarSelectionRuntime({
       return accepted;
     });
     return accepted;
-  }, [
-    activeTickerSymbol,
-    promptTickerSymbol,
-    availableCommands,
-    createPaneTemplateItem,
-    createPluginCommandItem,
-    executeCollectionCommand,
-    getAvailablePaneShortcutTemplates,
-    getAvailablePluginCommands,
-    openModeRoute,
-    openPaneTemplateWorkflow,
-    pluginCommandResultItems,
-    resolveImmediateRootSelection,
-    rootQueryRef,
-    runDirectCommand,
-    runRootRow,
-    runSecurityDescriptionShortcut,
-    setRootQuery,
-    startThemePicker,
-  ]);
+  }, [resolveImmediateRootSelection, rootQueryRef, rootSelectionOptions, runRootRow]);
 
   /**
    * Runs `query` exactly as if it had been typed into the root bar and

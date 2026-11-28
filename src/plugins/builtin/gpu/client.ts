@@ -5,6 +5,7 @@ import type { GpuBoardPayload, GpuEventsPayload, GpuHistoryPayload, GpuHistoryQu
 import { createPluginCache } from "../../../data/plugin-cache";
 import { markSavedCopy, oldestSavedCopyAt } from "../../../data/saved-copies";
 import type { DataProvider } from "../../../types/data-provider";
+import { hasUniqueIds, isFiniteNumber, isIsoInstant, isNonNegativeInt, isNullableFinite, isNullableIsoInstant, isNullableString, isPositiveNumber, isRecord, isStringArray } from "../../../utils/guards";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 import { equityFiveDayReturn, GPU_EQUITIES, gpuPreviewRows, type GpuPreviewRow } from "./model";
 
@@ -63,24 +64,17 @@ function eventsForDisplay(value: GpuEventsPayload): GpuEventsPayload {
   })) };
 }
 
-const record = (value: unknown): value is Record<string, any> => !!value && typeof value === "object" && !Array.isArray(value);
-const finite = (value: unknown): value is number => typeof value === "number" && Number.isFinite(value);
-const nullableNumber = (value: unknown) => value === null || finite(value);
-const instant = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
-const nullableInstant = (value: unknown) => value === null || instant(value);
-const nullableText = (value: unknown) => value === null || typeof value === "string";
-const strings = (value: unknown): value is string[] => Array.isArray(value) && value.every((item) => typeof item === "string");
+const record = isRecord as (value: unknown) => value is Record<string, any>;
 const basis = (value: unknown) => ["list", "spot", "ask", "reserved", "index", "reference"].includes(String(value));
-
 const provenance = (value: unknown) => value === undefined || ["archive", "official-history", "live", "reference"].includes(String(value));
-const optionalText = (value: unknown) => value === undefined || nullableText(value);
+const optionalText = (value: unknown) => value === undefined || isNullableString(value);
 const validAccess = (value: unknown) => value === undefined || record(value) && ["pro", "preview"].includes(value.tier)
   && typeof value.preview === "boolean" && typeof value.locked === "boolean";
 const validEvidence = (row: Record<string, any>) => provenance(row.provenance) && optionalText(row.provenanceLabel)
   && [row.evidenceUrl, row.sourceUrl].every((value) => value === undefined || value === null || typeof value === "string" && /^https?:\/\//.test(value));
 
 /** Account and plan transitions must never reuse a full-history cache as a free preview. */
-export const gpuCacheScope = cloudDisplayScope;
+const gpuCacheScope = cloudDisplayScope;
 
 function readGpuResource<T>(cache: ReturnType<typeof createPluginCache<T>>, key: string, validate: (data: T) => T) {
   const scope = gpuCacheScope();
@@ -103,57 +97,57 @@ function validObservation(row: unknown): row is GpuObservation {
     || row.sourceUrl != null || row.evidenceUrl != null)) return false;
   return validEvidence(row) && [row.source, row.skuKey, row.provider, row.region, row.gpuModel].every((value) => typeof value === "string" && value.length > 0)
     && ["hyperscaler", "neocloud", "marketplace", "aggregate"].includes(row.providerClass)
-    && Number.isInteger(row.gpuCount) && row.gpuCount > 0 && nullableText(row.formFactor)
-    && (row.memoryGb === null || finite(row.memoryGb) && row.memoryGb > 0)
-    && basis(row.basis) && finite(row.pricePerGpuHr) && row.pricePerGpuHr > 0
-    && (row.priceNodeHr === null || finite(row.priceNodeHr) && row.priceNodeHr > 0)
-    && row.currency === "USD" && nullableText(row.availability) && instant(row.observedAt) && nullableInstant(row.effectiveAt)
-    && (stats === undefined || record(stats) && Number.isInteger(stats.n) && stats.n >= 0
-      && finite(stats.min) && finite(stats.max) && stats.min > 0 && stats.min <= stats.max
-      && [stats.p25, stats.p75, stats.rawMedian, stats.chainFactor].every((value) => value === undefined || finite(value) && value > 0)
+    && Number.isInteger(row.gpuCount) && row.gpuCount > 0 && isNullableString(row.formFactor)
+    && (row.memoryGb === null || isPositiveNumber(row.memoryGb))
+    && basis(row.basis) && isPositiveNumber(row.pricePerGpuHr)
+    && (row.priceNodeHr === null || isPositiveNumber(row.priceNodeHr))
+    && row.currency === "USD" && isNullableString(row.availability) && isIsoInstant(row.observedAt) && isNullableIsoInstant(row.effectiveAt)
+    && (stats === undefined || record(stats) && isNonNegativeInt(stats.n)
+      && isPositiveNumber(stats.min) && isFiniteNumber(stats.max) && stats.min <= stats.max
+      && [stats.p25, stats.p75, stats.rawMedian, stats.chainFactor].every((value) => value === undefined || isPositiveNumber(value))
       && (stats.p25 === undefined || stats.p75 === undefined || stats.p25 <= stats.p75)
-      && (stats.constituents === undefined || strings(stats.constituents))
-      && (stats.constituentPrices === undefined || record(stats.constituentPrices) && Object.values(stats.constituentPrices).every((value) => finite(value) && value > 0)));
+      && (stats.constituents === undefined || isStringArray(stats.constituents))
+      && (stats.constituentPrices === undefined || record(stats.constituentPrices) && Object.values(stats.constituentPrices).every(isPositiveNumber)));
 }
 
 function validSettle(row: unknown): row is GpuSettle {
   if (!record(row)) return false;
   const settled = row.status === "settled";
   return [row.id, row.gpuModel, row.formFactor, row.label].every((value) => typeof value === "string" && value.length > 0)
-    && typeof row.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && instant(row.settleAt) && instant(row.publishedAt)
-    && (row.memoryGb === null || finite(row.memoryGb) && row.memoryGb > 0)
-    && (settled ? finite(row.pricePerGpuHr) && row.pricePerGpuHr > 0 : row.status === "no-settle" && row.pricePerGpuHr === null)
-    && row.currency === "USD" && ["settle", "correction"].includes(row.kind) && nullableText(row.corrects)
-    && [row.change1d, row.change7d, row.change30d].every(nullableNumber);
+    && typeof row.date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(row.date) && isIsoInstant(row.settleAt) && isIsoInstant(row.publishedAt)
+    && (row.memoryGb === null || isPositiveNumber(row.memoryGb))
+    && (settled ? isPositiveNumber(row.pricePerGpuHr) : row.status === "no-settle" && row.pricePerGpuHr === null)
+    && row.currency === "USD" && ["settle", "correction"].includes(row.kind) && isNullableString(row.corrects)
+    && [row.change1d, row.change7d, row.change30d].every(isNullableFinite);
 }
 
 function validateBoard(payload: GpuBoardPayload): GpuBoardPayload {
-  if (!record(payload) || !validAccess(payload.access) || !instant(payload.generatedAt) || !nullableInstant(payload.asOf) || typeof payload.stale !== "boolean"
-    || !["available", "partial", "unavailable"].includes(payload.status) || !strings(payload.gaps)
+  if (!record(payload) || !validAccess(payload.access) || !isIsoInstant(payload.generatedAt) || !isNullableIsoInstant(payload.asOf) || typeof payload.stale !== "boolean"
+    || !["available", "partial", "unavailable"].includes(payload.status) || !isStringArray(payload.gaps)
     || !Array.isArray(payload.rows) || !payload.rows.every((row) => validObservation(row)
       && typeof row.id === "string" && row.id === `${row.source}:${row.skuKey}` && typeof row.label === "string" && typeof row.sourceLabel === "string"
-      && [row.change1d, row.change7d, row.change30d].every(nullableNumber) && typeof row.stale === "boolean" && nullableText(row.lastError))
-    || new Set(payload.rows.map((row) => row.id)).size !== payload.rows.length) throw new Error("The server returned invalid GPU rental prices.");
+      && [row.change1d, row.change7d, row.change30d].every(isNullableFinite) && typeof row.stale === "boolean" && isNullableString(row.lastError))
+    || !hasUniqueIds(payload.rows)) throw new Error("The server returned invalid GPU rental prices.");
   // The settles ride along with the board: one that does not read right is left out, never the board with it.
   return payload.settles === undefined ? payload
     : { ...payload, settles: Array.isArray(payload.settles) ? payload.settles.filter(validSettle) : [] };
 }
 
 function validateHistory(payload: GpuHistoryPayload): GpuHistoryPayload {
-  if (!record(payload) || !validAccess(payload.access) || !instant(payload.generatedAt) || !Array.isArray(payload.points) || !payload.points.every(validObservation)
+  if (!record(payload) || !validAccess(payload.access) || !isIsoInstant(payload.generatedAt) || !Array.isArray(payload.points) || !payload.points.every(validObservation)
     || !Array.isArray(payload.effectivePoints) || !payload.effectivePoints.every(validObservation)) throw new Error("The server returned invalid GPU price history.");
   return payload;
 }
 
 function validateEvents(payload: GpuEventsPayload): GpuEventsPayload {
-  if (!record(payload) || !validAccess(payload.access) || !instant(payload.generatedAt) || !Array.isArray(payload.events) || !payload.events.every((event) => record(event)
+  if (!record(payload) || !validAccess(payload.access) || !isIsoInstant(payload.generatedAt) || !Array.isArray(payload.events) || !payload.events.every((event) => record(event)
     && [event.id, event.source, event.skuKey, event.provider, event.gpuModel].every((value) => typeof value === "string")
     && ["price", "membership", "availability"].includes(event.kind) && validEvidence(event)
     && optionalText(event.oldAvailability) && optionalText(event.newAvailability) && (event.origin === undefined || ["published", "observed"].includes(event.origin))
-    && basis(event.basis) && nullableText(event.formFactor) && nullableNumber(event.memoryGb)
-    && instant(event.observedAt) && nullableInstant(event.effectiveAt) && finite(event.oldPrice) && event.oldPrice > 0
-    && finite(event.newPrice) && event.newPrice > 0 && finite(event.changePct)
-    && (event.oldMembers === null || strings(event.oldMembers)) && (event.newMembers === null || strings(event.newMembers))))
+    && basis(event.basis) && isNullableString(event.formFactor) && isNullableFinite(event.memoryGb)
+    && isIsoInstant(event.observedAt) && isNullableIsoInstant(event.effectiveAt) && isPositiveNumber(event.oldPrice)
+    && isPositiveNumber(event.newPrice) && isFiniteNumber(event.changePct)
+    && (event.oldMembers === null || isStringArray(event.oldMembers)) && (event.newMembers === null || isStringArray(event.newMembers))))
     throw new Error("The server returned invalid GPU price changes.");
   return payload;
 }
@@ -184,7 +178,7 @@ export async function fetchGpuEvents(gpuModel?: string, client: Pick<GpuApi, "ge
 }
 
 export const getCachedGpuBoard = () => readGpuResource(gpuBoardCache, "board", validateBoard);
-export const getCachedGpuHistory = (seriesId: string) => readGpuResource(gpuHistoryCache, `series:${seriesId}`, validateHistory);
+const getCachedGpuHistory = (seriesId: string) => readGpuResource(gpuHistoryCache, `series:${seriesId}`, validateHistory);
 export const getCachedGpuReferences = () => readGpuResource(gpuHistoryCache, "reference-catalog", validateHistory);
 export const getCachedGpuEvents = (gpuModel?: string) => readGpuResource(gpuEventsCache, gpuModel ?? "all", validateEvents);
 export const loadGpuBoard = (force = false) => loadGpuResource(gpuBoardCache, "board", () => fetchGpuBoard(), force, validateBoard);

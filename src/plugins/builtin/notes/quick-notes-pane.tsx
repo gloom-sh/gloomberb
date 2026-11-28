@@ -22,14 +22,14 @@ import {
 } from "./model";
 import {
   chooseNoteOwner,
+  handleNoteSaveError,
   mayDeleteNote,
   NOT_YOUR_NOTE,
   ownerColor,
   ownerLabel,
-  resolveNoteConflict,
   useNoteTeams,
 } from "./owner";
-import { NoteConflictError, type NoteOwner, noteOwnerKey, type NotesStore, type NotesStoreRegistry } from "./store";
+import { type NoteOwner, noteOwnerKey, type NotesStore, type NotesStoreRegistry } from "./store";
 import { useSyncedText } from "./text-state";
 
 const notesLog = debugLog.createLogger("notes");
@@ -137,31 +137,24 @@ export function createQuickNotesPane(registry: NotesStoreRegistry) {
       const store = storeFor(owner);
       if (store.readOnly) return;
       const key = store.quickNoteKey(tabId);
-      store.save(key, text).catch(async (error: unknown) => {
-        if (error instanceof NoteConflictError) {
-          lastSavedTextRef.current.delete(tabId);
-          const choice = await resolveNoteConflict(dialog, error);
-          const cloud = registry.cloud(owner);
-          if (choice === "reload") {
-            const theirs = error.current?.content ?? "";
-            if (cloud && error.current) cloud.acceptCurrent(key, error.current);
-            lastSavedTextRef.current.set(tabId, theirs);
-            if (loadedTabIdRef.current === tabId) {
-              setNoteText(theirs);
-              textareaRef.current?.setText(theirs);
-            }
-          } else if (choice === "overwrite") {
-            if (cloud && error.current) cloud.acceptCurrent(key, error.current);
-            lastSavedTextRef.current.set(tabId, text);
-            await store.save(key, text).catch((again: unknown) => {
-              notify({ body: again instanceof Error ? again.message : "Could not save the note.", type: "error" });
-            });
-          }
-          return;
-        }
-        notesLog.error("Failed to save note", { error: error instanceof Error ? error.message : String(error) });
-        notify({ body: error instanceof Error ? error.message : "Failed to save note.", type: "error" });
-      });
+      store.save(key, text).catch((error: unknown) => handleNoteSaveError(error, {
+        dialog,
+        cacheKey: tabId,
+        text,
+        lastSaved: lastSavedTextRef.current,
+        acceptCurrent: (current) => registry.cloud(owner)?.acceptCurrent(key, current),
+        onReload: (theirs) => {
+          if (loadedTabIdRef.current !== tabId) return;
+          setNoteText(theirs);
+          textareaRef.current?.setText(theirs);
+        },
+        save: () => store.save(key, text),
+        notify,
+        onOtherError: (err) => {
+          notesLog.error("Failed to save note", { error: err instanceof Error ? err.message : String(err) });
+          notify({ body: err instanceof Error ? err.message : "Failed to save note.", type: "error" });
+        },
+      }));
 
       const updatedAt = Date.now();
       setTabs((prev) => {

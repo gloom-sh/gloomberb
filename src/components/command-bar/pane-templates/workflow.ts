@@ -1,5 +1,4 @@
-import { useCallback, type Dispatch } from "react";
-import type { AppAction, AppState } from "../../../state/app/context";
+import { useCallback } from "react";
 import type { TickerRecord } from "../../../types/ticker";
 import type {
   PaneTemplateCreateOptions,
@@ -25,6 +24,7 @@ import {
   recentPaneTemplateArg,
 } from "./items";
 import type { FormModalRequest } from "../../form-modal";
+import type { CommandBarEnvironment } from "../surface/environment";
 import {
   resolveTickerInput,
   resolveTickerListInput,
@@ -34,51 +34,35 @@ import type { PluginRegistry } from "../../../plugins/registry";
 import { PluginOffError, notifyPluginOff } from "../../../plugins/plugin-off";
 import { shouldOpenPaneTemplateConfig } from "./workflow-route";
 
-type CloseAllFn = (options?: { revertThemePreview?: boolean }) => void;
-type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
-type OpenModeRouteFn = (
-  screen: "ticker-search" | "layout",
-  initialQuery?: string,
-  payload?: Record<string, unknown>,
-) => void;
-type ExecuteCollectionCommandFn = (
-  commandId: CollectionCommandId,
-  rawInput?: string,
-  explicitTargetId?: string | null,
-  selectedTicker?: TickerRecord,
-) => void | Promise<void>;
-
 interface UseCommandBarPaneTemplateActionsOptions {
-  activeCollectionId: string | null;
-  activeTickerSymbol: string | null;
+  env: CommandBarEnvironment;
   buildWorkflowDeps: () => SharedWorkflowDeps;
-  closeAll: CloseAllFn;
-  config: AppState["config"];
-  dispatch: Dispatch<AppAction>;
-  executeCollectionCommand: ExecuteCollectionCommandFn;
-  focusedPaneId: string | null;
-  notify: NotifyFn;
+  closeAll: (options?: { revertThemePreview?: boolean }) => void;
+  executeCollectionCommand: (
+    commandId: CollectionCommandId,
+    rawInput?: string,
+    explicitTargetId?: string | null,
+    selectedTicker?: TickerRecord,
+  ) => void | Promise<void>;
+  notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
   openForm: (request: FormModalRequest) => void;
-  openModeRoute: OpenModeRouteFn;
+  openModeRoute: (screen: "ticker-search" | "layout", initialQuery?: string, payload?: Record<string, unknown>) => void;
   pluginRegistry: PluginRegistry;
 }
 
 const commandBarLog = debugLog.createLogger("command-bar");
 
 export function useCommandBarPaneTemplateActions({
-  activeCollectionId,
-  activeTickerSymbol,
+  env,
   buildWorkflowDeps,
   closeAll,
-  config,
-  dispatch,
   executeCollectionCommand,
-  focusedPaneId,
   notify,
   openForm,
   openModeRoute,
   pluginRegistry,
 }: UseCommandBarPaneTemplateActionsOptions) {
+  const { activeCollectionId, activeTickerSymbol, dispatch, state: { config, focusedPaneId } } = env;
   const getPaneTemplateContext = useCallback(() => buildPaneTemplateContext({
     activeCollectionId,
     activeTicker: activeTickerSymbol,
@@ -231,43 +215,31 @@ export function useCommandBarPaneTemplateActions({
   ): ResultItem => {
     const routeAction = String(routePayload?.action ?? "");
     if (!item.resolveTicker) return item;
+    const withResolvedTicker = (run: (ticker: TickerRecord) => Promise<void>): ResultItem => ({
+      ...item,
+      secondaryAction: undefined,
+      action: async () => {
+        try {
+          await run(await item.resolveTicker!());
+        } catch (error) {
+          notify(error instanceof Error ? error.message : "Could not open the selected listing.", { type: "error" });
+        }
+      },
+    });
     if (routeAction === "pane-template") {
-      const templateId = String(routePayload?.templateId ?? "");
-      const template = pluginRegistry.paneTemplates.get(templateId);
+      const template = pluginRegistry.paneTemplates.get(String(routePayload?.templateId ?? ""));
       if (!template) return item;
       const preset = routePayload?.preset && typeof routePayload.preset === "object"
         ? { preset: routePayload.preset as Record<string, string> } : {};
-      return {
-        ...item,
-        secondaryAction: undefined,
-        action: async () => {
-          try {
-            const ticker = await item.resolveTicker!();
-            await openPaneTemplateDirect(template, {
-              arg: ticker.metadata.ticker, symbol: ticker.metadata.ticker, ticker,
-              instrument: item.instrument, listing: item.listing, ...preset,
-            });
-          } catch (error) {
-            notify(error instanceof Error ? error.message : "Could not open the selected listing.", { type: "error" });
-          }
-        },
-      };
+      return withResolvedTicker((ticker) => openPaneTemplateDirect(template, {
+        arg: ticker.metadata.ticker, symbol: ticker.metadata.ticker, ticker,
+        instrument: item.instrument, listing: item.listing, ...preset,
+      }));
     }
     if (routeAction === "collection-command") {
       const commandId = String(routePayload?.commandId ?? "");
       if (!isCollectionCommand(commandId)) return item;
-      return {
-        ...item,
-        secondaryAction: undefined,
-        action: async () => {
-          try {
-            const ticker = await item.resolveTicker!();
-            await executeCollectionCommand(commandId, ticker.metadata.ticker, undefined, ticker);
-          } catch (error) {
-            notify(error instanceof Error ? error.message : "Could not open the selected listing.", { type: "error" });
-          }
-        },
-      };
+      return withResolvedTicker((ticker) => Promise.resolve(executeCollectionCommand(commandId, ticker.metadata.ticker, undefined, ticker)));
     }
     // Plain ticker search (the backtick, a pane header's ticker) changes the focused pane's ticker;
     // a search DES opened keeps opening DES.

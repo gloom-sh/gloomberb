@@ -3,12 +3,12 @@ import {
   getDockResizeTargets,
   simulateDrop,
   type DockGeometryOptions,
-  type DropTarget,
   type FloatingRect,
   type FloatingResizeCorner,
   type LayoutBounds,
 } from "../../../layout/pane-manager";
 import {
+  leafDropTarget,
   normalizeWindowEditFocus,
   pathKey,
   type WindowEditDockMovePosition,
@@ -19,31 +19,6 @@ export interface WindowEditDockMovePreview {
   targetId: string;
   position: WindowEditDockMovePosition;
   rect: LayoutBounds;
-}
-
-function dockMovePositionLabel(position: WindowEditDockMovePosition): string {
-  switch (position) {
-    case "left":
-      return "left";
-    case "right":
-      return "right";
-    case "above":
-      return "above";
-    case "below":
-      return "below";
-  }
-}
-
-function dropPositionFromDockMovePosition(position: WindowEditDockMovePosition): Extract<DropTarget, { kind: "leaf" }>["position"] {
-  return position === "above" ? "top" : position === "below" ? "bottom" : position;
-}
-
-function leafDropTarget(targetId: string, position: WindowEditDockMovePosition): DropTarget {
-  return {
-    kind: "leaf",
-    targetId,
-    position: dropPositionFromDockMovePosition(position),
-  };
 }
 
 function windowEditLabel(state: WindowEditState, bounds: LayoutBounds, dockGeometryOptions: DockGeometryOptions): string {
@@ -64,7 +39,7 @@ export function windowEditStatusLine(
   targetTitle?: string,
 ): string {
   const target = state.mode === "move" && state.focus.kind === "dock-move" && targetTitle
-    ? ` -> ${targetTitle} ${dockMovePositionLabel(state.focus.position)}`
+    ? ` -> ${targetTitle} ${state.focus.position}`
     : "";
   const notice = state.notice ? ` · ${state.notice}` : "";
   return `${windowEditLabel(state, bounds, dockGeometryOptions)}${notice} · ${title}${target}`;

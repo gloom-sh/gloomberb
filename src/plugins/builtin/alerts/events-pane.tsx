@@ -42,6 +42,7 @@ import { checkIvLevelAlertsNow, IV_LEVEL_CHECKS_KEY, ivLevelCheckText, readIvLev
 import { alertTarget, alertViewHints, eventRuleSubject, useOpenAlertTarget } from "./targets";
 import { FIRED_LOG_KEY } from "./fired-log";
 import { withAlertChange } from "./alert-log";
+import { IV_LEVEL_DELIVERY } from "./research-builder";
 
 const columnsFor = (width: number, lastCheck: boolean, waiting: RuleState | null): DataTableColumn[] => [
   { id: "kind", label: "Event", width: 15, align: "left" },
@@ -185,6 +186,9 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
     "event-alerts",
     () => ({
       info: [
+        ...(selectedRule?.kind === "iv_level" ? [{ id: "iv-check", parts: [{
+          text: width < 96 ? `${IV_LEVEL_DELIVERY} · ${ivLevelCheckText(selectedRule, checks[selectedRule.id])}` : IV_LEVEL_DELIVERY, tone: "muted" as const,
+        }] }] : []),
         { id: "sync", parts: [{ text: status, tone: error || sync.error ? "warning" : "muted" }] },
       ],
       hints: [
@@ -210,7 +214,7 @@ export function EventAlertsPane({ focused, width, height }: PaneProps) {
           : []),
       ],
     }),
-    [status, error, selectedRule, selectedFired, selectedTarget, add, toggle, rearm, remove, openTarget],
+    [status, error, selectedRule, selectedFired, selectedTarget, checks, width, add, toggle, rearm, remove, openTarget],
   );
   return (
     <DataTableView<EventAlertRule, DataTableColumn>

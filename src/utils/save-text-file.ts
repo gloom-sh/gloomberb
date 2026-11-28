@@ -9,7 +9,7 @@ function safeFilename(name: string): string {
   return !safe || safe === "." || safe === ".." ? "gloomberb-export.txt" : safe;
 }
 
-export async function saveTextFileToDirectory(
+async function saveTextFileToDirectory(
   directory: string,
   name: string,
   text: string,

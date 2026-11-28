@@ -31,9 +31,10 @@ import type {
   TickerFinancialsBatchResult,
 } from "../../types/data-provider";
 import type { AnalystResearchData, CorporateActionsData, HolderData, OptionsChain, PricePoint, Quote, QuoteMetadata, SplitHistory, TickerFinancials } from "../../types/financials";
+import { fundCorporateActions, isIndianEtfListing } from "../../market-data/fund-actions";
 import type { PriceHistoryResult } from "../../types/price-history";
 import { parseHistorySession } from "../../market-data/history-session";
-import { quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
+import { isOtcQuoteVenue, quoteMetadataFromQuote, quoteMetadataMatchesTarget } from "../../market-data/quotes/metadata";
 import type { InstrumentSearchResult } from "../../types/instrument";
 import type { TickerChanges } from "../../types/ticker-changes";
 import type { IssuerListings } from "../../types/issuer-listings";
@@ -420,13 +421,11 @@ function cloudInstrumentTarget(symbol: string, exchange?: string) {
 /**
  * Whether a quote names a listing other than the one asked for: asked for BHP
  * on Cboe Australia, Gloom Cloud has answered with BHP on NYSE, in dollars. A
- * price for another instrument is worse than none. A quote that names no
- * listing is judged by its symbol alone, as the router judges it.
+ * price for another instrument is worse than none. An unnamed listing is
+ * judged by its symbol alone unless the request specifies an OTC tier.
  */
 function pricesOtherListing(quote: Quote, target: ReturnType<typeof cloudInstrumentTarget>): boolean {
-  const metadata = quoteMetadataFromQuote(quote);
-  const named = !!(metadata.listingExchangeName || parsePublicTickerKey(quote.symbol).exchange);
-  return !quoteMetadataMatchesTarget(metadata, named ? target.symbol : parsePublicTickerKey(target.symbol).symbol, named ? target.exchange : undefined);
+  return !quoteMetadataMatchesTarget(quoteMetadataFromQuote(quote), target.symbol, target.exchange, { allowUnnamedListing: true });
 }
 
 function otherListingMiss(ticker: string, quote: Quote) {
@@ -493,7 +492,10 @@ function matchCloudBatchItems<T extends { symbol: string; exchange?: string }, I
 }
 
 function retainRequestedQuoteSymbol(quote: Quote, ticker: string): Quote {
-  return parsePublicTickerKey(ticker).exchange || tickerHasListingSuffix(ticker) ? { ...quote, symbol: ticker } : quote;
+  const requestedExchange = parsePublicTickerKey(ticker).exchange;
+  if (typeof quote.symbol !== "string" || isOtcQuoteVenue(requestedExchange)
+    || isOtcQuoteVenue(parsePublicTickerKey(quote.symbol).exchange)) return quote;
+  return requestedExchange || tickerHasListingSuffix(ticker) ? { ...quote, symbol: ticker } : quote;
 }
 
 function retainRequestedFinancialsSymbol(financials: TickerFinancials, ticker: string): TickerFinancials {
@@ -881,7 +883,9 @@ export class GloomberbCloudProvider implements AssetDataProvider {
     const target = cloudInstrumentTarget(ticker, exchange);
     return withCloudFallback(async () => {
       const response = await apiClient.getCloudCorporateActions(target.symbol, target.exchange);
-      return unwrapRequiredCloudResponse(response, `Cloud corporate actions are unavailable for ${ticker}`) as CloudCorporateActionsPayload;
+      const actions = unwrapRequiredCloudResponse(response, `Cloud corporate actions are unavailable for ${ticker}`) as CloudCorporateActionsPayload;
+      return isIndianEtfListing(actions.exchange || target.exchange, actions.name)
+        ? fundCorporateActions(actions, { uncertainEmptyPayouts: true }) : actions;
     }, `Cloud corporate actions are unavailable for ${ticker}`);
   }
 

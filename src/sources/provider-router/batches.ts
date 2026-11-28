@@ -69,15 +69,7 @@ export class ProviderRouterBatchRoutes {
     const misses: Array<{ index: number; target: QuoteSubscriptionTarget }> = [];
 
     targets.forEach((target, index) => {
-      const context = target.context;
-      const entityKey = this.deps.getEntityKey(target.symbol, context?.instrument);
-      const variantKeys = this.deps.getTickerVariantCandidates(target.exchange);
-      const brokerSourceKeys = this.deps.getBrokerCandidatesForContext(context, false).map((candidate) => this.deps.brokerSourceKey(candidate));
-      const sourceKeys = [
-        ...brokerSourceKeys,
-        ...this.deps.getProviderSourceKeys(),
-      ];
-      const rawCached = selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, false);
+      const { brokerSourceKeys, rawCached } = this.readQuoteCacheEntry(target, false);
       const cached = rawCached && (brokerSourceKeys.includes(rawCached.sourceKey)
         ? !isQuoteStaleForCurrentSession(quoteWithFreshnessExchange(rawCached.value, target.exchange))
         : isProviderQuoteUsableForCurrentSession(rawCached.value, target.exchange, target.symbol, { recentAnswer: !rawCached.stale }))
@@ -98,18 +90,11 @@ export class ProviderRouterBatchRoutes {
 
     const batchProvider = this.deps.providersInPriorityOrder().find((provider) => provider.getQuotesBatch);
     const providerMisses = misses.filter(({ target }) => !this.deps.hasBrokerContext(target.context));
-    const providerIndexes = new Map<string, Array<{ index: number; target: QuoteSubscriptionTarget }>>();
     let batchFailure: unknown = null;
     // Listings the service refused for its request limit, by batch key, with the refusal.
     const limited = new Map<string, unknown>();
     if (batchProvider && providerMisses.length > 0) {
-      for (const entry of providerMisses) {
-        const key = this.quoteBatchKey(entry.target);
-        const bucket = providerIndexes.get(key) ?? [];
-        bucket.push(entry);
-        providerIndexes.set(key, bucket);
-      }
-      const uniqueTargets = [...providerIndexes.values()].map((bucket) => bucket[0]!.target);
+      const { buckets: providerIndexes, uniqueTargets } = this.groupBatchMisses(providerMisses);
       const batchResults = await batchProvider.getQuotesBatch!(uniqueTargets, providerOptions).catch((error: unknown) => {
         batchFailure = error;
         return logFailure("sources.provider-router.batches", "Loading batch quotes failed", [] as QuoteBatchResult[])(error);
@@ -117,7 +102,7 @@ export class ProviderRouterBatchRoutes {
       const answeredAt = Date.now();
       for (const answered of batchResults) {
         const item = { ...answered, quote: withRetrievedAt(answered.quote, answeredAt) };
-        const key = this.quoteBatchKey(item.target);
+        const key = this.batchTargetKey(item.target);
         if (!item.quote && isRateLimited(item.error)) limited.set(key, item.error);
         if (!isProviderQuoteUsableForCurrentSession(item.quote, item.target.exchange, item.target.symbol, { recentAnswer: true })) {
           const fallback = lastKnownProviderQuote(item.quote, item.target.exchange, item.target.symbol);
@@ -137,7 +122,7 @@ export class ProviderRouterBatchRoutes {
     // Refused for the request limit, a listing is never asked again alone: that is a request each, more of what was
     // refused. Its saved copy answers, as a single read's would, else the row says when to try again.
     for (const { index, target } of providerMisses) {
-      const refusal = isRateLimited(batchFailure) ? batchFailure : limited.get(this.quoteBatchKey(target));
+      const refusal = isRateLimited(batchFailure) ? batchFailure : limited.get(this.batchTargetKey(target));
       if (results[index] || refusal === undefined) continue;
       const copy = saved[index];
       results[index] = copy ? { target, quote: quoteServedFromSavedCopy(withRetrievedAt(copy.value, copy.fetchedAt), copy.fetchedAt) }
@@ -200,20 +185,13 @@ export class ProviderRouterBatchRoutes {
 
     const batchProvider = this.deps.providersInPriorityOrder().find((provider) => provider.getTickerFinancialsBatch);
     const providerMisses = misses.filter(({ target }) => target.statementHistory !== "extended" && !this.deps.hasCachedTargetBrokerContext(target));
-    const providerIndexes = new Map<string, Array<{ index: number; target: CachedFinancialsTarget }>>();
     if (batchProvider && providerMisses.length > 0) {
-      for (const entry of providerMisses) {
-        const key = this.cachedFinancialsBatchKey(entry.target);
-        const bucket = providerIndexes.get(key) ?? [];
-        bucket.push(entry);
-        providerIndexes.set(key, bucket);
-      }
-      const uniqueTargets = [...providerIndexes.values()].map((bucket) => bucket[0]!.target);
+      const { buckets: providerIndexes, uniqueTargets } = this.groupBatchMisses(providerMisses);
       const batchResults = await batchProvider.getTickerFinancialsBatch!(uniqueTargets, options).catch(logFailure("sources.provider-router.batches", "Loading batch financials failed", []));
       for (const item of batchResults) {
         if (!item.financials) continue;
         if (!item.target.instrument && !providerFinancialsMatchTarget(item.financials, item.target.symbol, item.target.exchange)) continue;
-        const key = this.cachedFinancialsBatchKey(item.target);
+        const key = this.batchTargetKey(item.target);
         let value = resolveTickerFinancialsQuoteState(normalizeTickerFinancialsPriceHistory(item.financials));
         if (value && !item.target.instrument && !providerFinancialsMatchTarget(value, item.target.symbol, item.target.exchange)) continue;
         if (value) value = dropUnusableProviderQuote(value, item.target.exchange, { recentAnswer: true });
@@ -248,24 +226,36 @@ export class ProviderRouterBatchRoutes {
     return results.map((result, index) => result ?? { target: targets[index]!, financials: null });
   }
 
-  /** The newest cached quote for a target from any source, however old: what a board paints first. */
-  private cachedQuote(target: QuoteSubscriptionTarget): Quote | null {
+  private readQuoteCacheEntry(target: QuoteSubscriptionTarget, allowExpired: boolean) {
     const context = target.context;
     const entityKey = this.deps.getEntityKey(target.symbol, context?.instrument);
     const variantKeys = this.deps.getTickerVariantCandidates(target.exchange);
-    const sourceKeys = [
-      ...this.deps.getBrokerCandidatesForContext(context, false).map((candidate) => this.deps.brokerSourceKey(candidate)),
-      ...this.deps.getProviderSourceKeys(),
-    ];
-    const cached = selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, true);
-    return cached ? withRetrievedAt(cached.value, cached.fetchedAt) : null;
+    const brokerSourceKeys = this.deps.getBrokerCandidatesForContext(context, false).map((candidate) => this.deps.brokerSourceKey(candidate));
+    const sourceKeys = [...brokerSourceKeys, ...this.deps.getProviderSourceKeys()];
+    return {
+      brokerSourceKeys,
+      rawCached: selectCachedResource<Quote>(this.deps.resources, "quote", entityKey, variantKeys, sourceKeys, allowExpired),
+    };
   }
 
-  private quoteBatchKey(target: QuoteSubscriptionTarget): string {
-    return `${target.symbol.trim().toUpperCase()}:${canonicalExchange(target.exchange ?? "")}`;
+  /** The newest cached quote for a target from any source, however old: what a board paints first. */
+  private cachedQuote(target: QuoteSubscriptionTarget): Quote | null {
+    const { rawCached } = this.readQuoteCacheEntry(target, true);
+    return rawCached ? withRetrievedAt(rawCached.value, rawCached.fetchedAt) : null;
   }
 
-  private cachedFinancialsBatchKey(target: CachedFinancialsTarget): string {
+  private groupBatchMisses<T extends { symbol: string; exchange?: string }>(misses: Array<{ index: number; target: T }>) {
+    const buckets = new Map<string, Array<{ index: number; target: T }>>();
+    for (const entry of misses) {
+      const key = this.batchTargetKey(entry.target);
+      const bucket = buckets.get(key) ?? [];
+      bucket.push(entry);
+      buckets.set(key, bucket);
+    }
+    return { buckets, uniqueTargets: [...buckets.values()].map((bucket) => bucket[0]!.target) };
+  }
+
+  private batchTargetKey(target: { symbol: string; exchange?: string }): string {
     return `${target.symbol.trim().toUpperCase()}:${canonicalExchange(target.exchange ?? "")}`;
   }
 }

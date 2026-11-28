@@ -4,6 +4,7 @@ import type { IpoCalendarParams, IpoCalendarPayload, IpoDeal, IpoLockup, IpoSour
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 import { createPluginCache } from "../../../data/plugin-cache";
 import { signalWithTimeout } from "../../../utils/async-deadline";
+import { isFiniteNumber, isNullableFinite, isNullableString, isPositiveNumber } from "../../../utils/guards";
 import { cachedCloudResource, loadCloudResource, unavailableOnServer, type CloudResource } from "../shared/cloud-resource";
 
 /**
@@ -25,34 +26,29 @@ const REGIONS = new Set(["us", "apac", "europe", "other"]);
 
 const dayOrNull = (value: unknown) => value === null || (typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value));
 const text = (value: unknown): value is string => typeof value === "string" && value.length > 0;
-const textOrNull = (value: unknown) => value === null || typeof value === "string";
-const numberOrNull = (value: unknown) => value === null || (typeof value === "number" && Number.isFinite(value));
 
 function validFirstDay(value: IpoDeal["firstDay"]): boolean {
   return value === null || (!!value && typeof value.session === "string" && dayOrNull(value.session)
-    && numberOrNull(value.open) && typeof value.close === "number" && Number.isFinite(value.close)
-    && numberOrNull(value.returnPct));
+    && isNullableFinite(value.open) && isFiniteNumber(value.close) && isNullableFinite(value.returnPct));
 }
 
 function validDeal(deal: IpoDeal): boolean {
   return !!deal
-    && text(deal.id) && text(deal.company) && textOrNull(deal.companyLocal)
-    && textOrNull(deal.symbol) && text(deal.mic) && textOrNull(deal.exchange)
+    && text(deal.id) && text(deal.company) && isNullableString(deal.companyLocal)
+    && isNullableString(deal.symbol) && text(deal.mic) && isNullableString(deal.exchange)
     && typeof deal.venue === "string" && typeof deal.country === "string"
     && STATUSES.has(deal.status)
     && dayOrNull(deal.listingDate) && dayOrNull(deal.subscriptionOpen) && dayOrNull(deal.subscriptionClose) && dayOrNull(deal.filedDate)
-    && textOrNull(deal.currency)
-    && numberOrNull(deal.priceLow) && numberOrNull(deal.priceHigh) && numberOrNull(deal.offerPrice)
-    && numberOrNull(deal.sharesOffered) && numberOrNull(deal.offerSize) && numberOrNull(deal.offerSizeUsd)
+    && isNullableString(deal.currency)
+    && [deal.priceLow, deal.priceHigh, deal.offerPrice, deal.sharesOffered, deal.offerSize, deal.offerSizeUsd].every(isNullableFinite)
     && validFirstDay(deal.firstDay);
 }
 
 function validLockup(value: unknown): value is IpoLockup {
   const lockup = value as IpoLockup | null;
   return !!lockup && typeof lockup === "object" && typeof lockup.endsOn === "string" && dayOrNull(lockup.endsOn)
-    && typeof lockup.days === "number" && Number.isFinite(lockup.days) && lockup.days > 0
-    && (lockup.basis === "prospectus" || lockup.basis === "typical")
-    && dayOrNull(lockup.prospectusDate ?? null) && textOrNull(lockup.prospectusUrl ?? null);
+    && isPositiveNumber(lockup.days) && (lockup.basis === "prospectus" || lockup.basis === "typical")
+    && dayOrNull(lockup.prospectusDate ?? null) && isNullableString(lockup.prospectusUrl ?? null);
 }
 
 /** A lock-up estimate the client cannot read is left off its deal; the deal stays. */
@@ -64,7 +60,7 @@ function withReadableLockup(deal: IpoDeal): IpoDeal {
 
 function validSource(source: IpoSourceHealth): boolean {
   return !!source && text(source.id) && Array.isArray(source.mics) && source.mics.every(text)
-    && typeof source.ok === "boolean" && textOrNull(source.asOf);
+    && typeof source.ok === "boolean" && isNullableString(source.asOf);
 }
 
 /**
@@ -72,7 +68,7 @@ function validSource(source: IpoSourceHealth): boolean {
  * read for what the pane draws, a region it does not know files under other,
  * and one unreadable deal is left out rather than failing the whole board.
  */
-export function validateIpoCalendar(data: IpoCalendarPayload): IpoCalendarPayload {
+function validateIpoCalendar(data: IpoCalendarPayload): IpoCalendarPayload {
   if (!data || !text(data.asOf) || !Array.isArray(data.deals) || !Array.isArray(data.sources)) {
     throw new Error("The server returned an unreadable IPO calendar");
   }

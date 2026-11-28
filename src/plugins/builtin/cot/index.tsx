@@ -24,6 +24,5 @@ export const cotModule: PluginModule = {
         settings: { report: options?.values?.report ?? cotDefaultFamily(code) }, placement: "floating" as const };
     },
   }],
-  setup(ctx) { cotBoardCache.attach(ctx.persistence); },
-  dispose() { cotBoardCache.reset(); },
+  caches: [cotBoardCache],
 };

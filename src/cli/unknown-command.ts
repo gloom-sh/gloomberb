@@ -19,7 +19,7 @@ export interface CatalogCommandHit {
 }
 
 /** An FX pair as a word reads: its listing for `quote` (EURUSD=X), as `fx` takes it (EUR/USD), and its code (EURUSD). */
-export interface CurrencyWordPair {
+interface CurrencyWordPair {
   listing: string;
   pair: string;
   code: string;
@@ -33,7 +33,7 @@ export interface CurrencyWordPair {
  * Null for anything else, and for the dollar on its own, which has no pair
  * of its own.
  */
-export function currencyWordPair(word: string): CurrencyWordPair | null {
+function currencyWordPair(word: string): CurrencyWordPair | null {
   const typed = word.trim();
   if (!typed || /\s/.test(typed)) return null;
   const spelled = currencyPairSpelling(typed.toUpperCase());
@@ -125,7 +125,7 @@ const TICKER_SHAPED = /^\^?[A-Z0-9][A-Z0-9.=-]{0,11}(?::[A-Z0-9]{1,8})?$/;
  * command that quotes it and the search that finds it. Null for a word not
  * written as a ticker.
  */
-export function tickerPointer(token: string): string | null {
+function tickerPointer(token: string): string | null {
   const word = token.trim();
   if (!TICKER_SHAPED.test(word) || !/[A-Z]/.test(word)) return null;
   return [`To quote it: gloom quote ${word}`, `Find the ticker: gloom search ${word}`].join("\n");
@@ -137,7 +137,7 @@ export function tickerPointer(token: string): string | null {
  * as a list, with the catalog search for more. Null when the catalog has
  * nothing for it.
  */
-export function catalogPointer(token: string, hits: readonly CatalogCommandHit[], args: readonly string[]): string | null {
+function catalogPointer(token: string, hits: readonly CatalogCommandHit[], args: readonly string[]): string | null {
   if (hits.length === 0) return null;
   const word = /^[\w.:-]+$/.test(token) ? token : JSON.stringify(token);
   const more = `gloom catalog ${word}`;
@@ -171,7 +171,7 @@ export interface CommandUsage {
  * belongs to when several share it (`add`). Read from the commands' usage
  * lines; null when no usage line has the word after a command's name.
  */
-export function subcommandPointer(
+function subcommandPointer(
   token: string,
   args: readonly string[],
   commands: readonly CommandUsage[],

@@ -1,7 +1,7 @@
 import type { Database } from "bun:sqlite";
 import { debugLog } from "../../utils/debug-log";
 import { logFailure } from "../../utils/log-failure";
-import { isSqliteBusyError, trySqliteBusyOperation, withSqliteBusyRetry, withSqliteLockWait } from "./retry";
+import { isSqliteBusyError, reportIfBlocking, trySqliteBusyOperation, withSqliteBusyRetry, withSqliteLockWait } from "./retry";
 
 /**
  * How long a write of the app waits for a lock another program holds (a
@@ -27,6 +27,14 @@ const QUEUED_WRITE_FIRST_RETRY_MS = 100;
 const QUEUED_WRITE_MAX_RETRY_MS = 2_000;
 /** At shutdown nothing waits on the thread any more, and what is queued has nowhere else to go. */
 const CLOSE_LOCK_WAIT_MS = 5_000;
+/** How often a commit held back for a flush looks again, should the flush's end go unannounced. */
+const COMMIT_HOLD_POLL_MS = 100;
+/**
+ * The longest commits are held back for one flush. Past it they go ahead and
+ * may wait on it: the slowest flush in stall reports was about 8 s, and a
+ * thread that stops answering is given up on after 30 s (checkpointer.ts).
+ */
+const COMMIT_HOLD_LIMIT_MS = 20_000;
 
 const sqliteLog = debugLog.createLogger("sqlite");
 
@@ -55,6 +63,13 @@ const sqliteLog = debugLog.createLogger("sqlite");
  * share a transaction and commit together once the turn is over: a batch of
  * quotes, a list's touched rows. A write of user data, the queue and close
  * commit them first, so a user write still commits on its own and flushes.
+ *
+ * While the checkpointer's thread flushes the WAL (`holdCommits`), the app's
+ * thread commits nothing: on Windows a commit made then waits for the flush
+ * to end, seconds on a slow disk, and the app stood still with it. The
+ * cache's transaction stays open and its commit comes after; a write of user
+ * data is queued, read back through its store until it lands, and written
+ * the moment the flush ends.
  */
 export interface SqliteAccess {
   /** A read of cached data; null when another program has it locked. */
@@ -74,6 +89,8 @@ export interface SqliteAccess {
    * the tick's budget. True when the queue is empty.
    */
   flush(): boolean;
+  /** The flush `holdCommits` named has ended: commits held back for it go ahead. */
+  resume(): void;
   /** Writes what is still queued, waiting up to 5 s for the lock. */
   close(): void;
 }
@@ -97,6 +114,8 @@ export interface SqliteAccessOptions {
    * command has nothing better to do.
    */
   interactive?: boolean;
+  /** Deadline for a command's durable write only; reads and cache work keep their own retries. */
+  commandWriteWaitMs?: number;
   /**
    * The connection runs `synchronous=NORMAL`, as it does once WAL took, and
    * a write of user data switches to `FULL` for its commit. Without it the
@@ -109,8 +128,15 @@ export interface SqliteAccessOptions {
    * `NORMAL` like the cache's.
    */
   flushedElsewhere?: () => boolean;
-  /** After each commit of the app's connection (see checkpointer.ts). */
-  onCommit?: () => void;
+  /**
+   * After each commit of the app's connection (see checkpointer.ts): of user
+   * data, which is flushed soon, or of cached data alone, which can wait.
+   */
+  onCommit?: (kind: "user" | "cache") => void;
+  /** Whether another thread is flushing the WAL now; the app's commits wait for the end of it. */
+  holdCommits?: () => boolean;
+  /** Overrides how long commits are held back for one flush, so a test need not wait for it. */
+  holdLimitMs?: number;
 }
 
 interface QueuedWrite {
@@ -147,9 +173,11 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
     // A failed statement can roll the whole transaction back; its writes are
     // gone then, which a cache can afford.
     if (!db.inTransaction) return;
+    const startedAt = now();
     try {
       db.exec("COMMIT");
-      options.onCommit?.();
+      reportIfBlocking("commit cached writes", startedAt, 1, false);
+      options.onCommit?.("cache");
     } catch (error) {
       logFailure("data.sqlite", "Committing cached writes failed")(error);
       if (!db.inTransaction) return;
@@ -185,6 +213,17 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
   };
 
   if (!options.interactive) {
+    const commandWriteWaitMs = options.commandWriteWaitMs;
+    const writeWithLockWait = (operationName: string, write: () => void): void => {
+      if (commandWriteWaitMs === undefined) return withSqliteBusyRetry(operationName, write);
+      const previous = db.query<{ timeout: number }, []>("PRAGMA busy_timeout").get()!.timeout;
+      db.exec("PRAGMA busy_timeout=0");
+      try {
+        withSqliteLockWait(operationName, write, commandWriteWaitMs);
+      } finally {
+        db.exec(`PRAGMA busy_timeout=${previous}`);
+      }
+    };
     return {
       readCache: (operationName, read) => trySqliteBusyOperation(operationName, read),
       writeCache: (operationName, write) => trySqliteBusyOperation(operationName, () => {
@@ -194,13 +233,14 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
       run: (operationName, statement) => withSqliteBusyRetry(operationName, statement),
       write: (operationName, write, writeOptions) => {
         try {
-          durable(() => withSqliteBusyRetry(operationName, write));
+          durable(() => writeWithLockWait(operationName, write));
         } finally {
           settle({ settled: writeOptions?.settled });
         }
         return true;
       },
       flush: () => true,
+      resume: () => {},
       close: () => {},
     };
   }
@@ -209,6 +249,27 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
   let timer: ReturnType<typeof setTimeout> | null = null;
   let retryMs = QUEUED_WRITE_FIRST_RETRY_MS;
   let closed = false;
+  /** When the flush commits are held back for was first seen, or null while none runs. */
+  let heldSince: number | null = null;
+
+  /** Whether commits wait for the flush that runs now, for at most `COMMIT_HOLD_LIMIT_MS` of it. */
+  const held = (): boolean => {
+    if (closed || !options.holdCommits?.()) {
+      heldSince = null;
+      return false;
+    }
+    const at = now();
+    heldSince ??= at;
+    return at - heldSince < (options.holdLimitMs ?? COMMIT_HOLD_LIMIT_MS);
+  };
+
+  const armCacheBatch = (delayMs: number): void => {
+    cacheBatch = setTimeout(() => {
+      if (held()) armCacheBatch(COMMIT_HOLD_POLL_MS);
+      else commitCacheBatch();
+    }, delayMs);
+    (cacheBatch as { unref?: () => void }).unref?.();
+  };
 
   /**
    * Writes the queue in order for up to `budgetMs`, each write waiting for
@@ -224,7 +285,7 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
       const next = queue[0]!;
       try {
         durable(() => withSqliteLockWait(next.operationName, next.write, Math.min(lockWaitMs, leftMs)));
-        options.onCommit?.();
+        options.onCommit?.("user");
       } catch (error) {
         if (isSqliteBusyError(error)) return "locked";
         logFailure("data.sqlite", "A queued write failed")(error);
@@ -236,6 +297,10 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
   };
 
   const flush = (): boolean => {
+    if (queue.length > 0 && held()) {
+      schedule(COMMIT_HOLD_POLL_MS);
+      return false;
+    }
     const result = drain(QUEUED_WRITE_TICK_BUDGET_MS, QUEUED_WRITE_LOCK_WAIT_MS);
     if (result === "empty") {
       retryMs = QUEUED_WRITE_FIRST_RETRY_MS;
@@ -276,8 +341,7 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
     // Inside a transaction a statement of this connection opened, the write is part of it.
     if (db.inTransaction) return true;
     if (!tryCache("begin cached writes", () => db.exec("BEGIN IMMEDIATE"))) return false;
-    cacheBatch = setTimeout(commitCacheBatch, 0);
-    (cacheBatch as { unref?: () => void }).unref?.();
+    armCacheBatch(0);
     return true;
   };
 
@@ -287,10 +351,11 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
     run: (operationName, statement) => withSqliteLockWait(operationName, statement, SQLITE_APP_READ_WAIT_MS),
     write: (operationName, write, writeOptions = {}) => {
       const { key, settled } = writeOptions;
-      if (queue.length === 0) {
+      const waitingOnFlush = held();
+      if (queue.length === 0 && !waitingOnFlush) {
         try {
           durable(() => withSqliteLockWait(operationName, write, SQLITE_APP_WRITE_WAIT_MS));
-          options.onCommit?.();
+          options.onCommit?.("user");
           settle({ settled });
           return true;
         } catch (error) {
@@ -305,11 +370,24 @@ export function createSqliteAccess(db: Database, options: SqliteAccessOptions = 
         if (superseded >= 0) settle(queue.splice(superseded, 1)[0]!);
       }
       queue.push({ operationName, write, key, settled });
-      if (queue.length === 1) sqliteLog.warn("A write is waiting for another program to release the database", { operation: operationName });
-      schedule(retryMs);
+      if (queue.length === 1 && !waitingOnFlush) sqliteLog.warn("A write is waiting for another program to release the database", { operation: operationName });
+      schedule(waitingOnFlush ? COMMIT_HOLD_POLL_MS : retryMs);
       return false;
     },
     flush,
+    resume: () => {
+      heldSince = null;
+      if (closed) return;
+      if (cacheBatch) {
+        clearTimeout(cacheBatch);
+        armCacheBatch(0);
+      }
+      if (queue.length > 0) {
+        if (timer) clearTimeout(timer);
+        timer = null;
+        schedule(0);
+      }
+    },
     close: () => {
       if (closed) return;
       closed = true;

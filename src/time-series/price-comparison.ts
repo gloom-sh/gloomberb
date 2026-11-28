@@ -8,6 +8,7 @@ import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { isCurrencyCode } from "../utils/currency-pair";
 import { priceComparisonCloseTimes } from "./coin-session-close";
 import { barLastSession } from "../market-data/market/bar-period";
+import { priceBasisBreaks, priceBasisFactor } from "../market-data/market/split-price-basis";
 import {
   barCloseDay, isIntradayDailyBar, isReturnPeriod, LATEST_INTRADAY_TEXT, periodBaseDay, periodBaseIndex, periodDayText,
 } from "../market-data/market/period-return";
@@ -214,66 +215,24 @@ function splitTerms(split: SplitAction): string | null {
   return `${to}-for-${from}${to! < from! ? " reverse" : ""}`;
 }
 
-/** A close more than this many times the one before it, or less than its fraction, is no day a split-adjusted series moves by. */
-const UNEXPLAINED_JUMP = 5;
-
-/** `18.4`, `20`, `5.23`: a jump's factor in three digits. */
-function jumpFactorText(ratio: number): string {
-  return String(Number(Math.max(ratio, 1 / ratio).toPrecision(3)));
-}
-
 /**
- * Each jump of a leg's closes inside its window: a close over UNEXPLAINED_JUMP
- * times the one before it or under its fraction. "SOXS falls 18.4× on Tue 26
- * May with no split recorded that day", or on a split's own day, "the day of
- * its 1-for-20 reverse split, unadjusted".
+ * Describe recorded splits separately from breaks in the served bars. A split record alone cannot tell
+ * which bars are on which basis. Withhold returns only for the legs whose windows cross a break.
+ * Null split history is unavailable or not yet read, not a successful empty result.
  */
-function legJumps(
-  label: string,
-  points: ReadonlyArray<{ date: Date; value: number | null }>,
-  window: { baseDay: string; endDay: string },
-  splits: readonly SplitAction[],
-  currentYear: number,
-): string[] {
-  const jumps: string[] = [];
-  let previous: number | null = null;
-  for (const point of points) {
-    const value = point.value;
-    if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) continue;
-    const day = point.date.toISOString().slice(0, 10);
-    const ratio = previous === null ? 1 : value / previous;
-    previous = value;
-    if (day <= window.baseDay || day > window.endDay || (ratio <= UNEXPLAINED_JUMP && ratio >= 1 / UNEXPLAINED_JUMP)) continue;
-    const split = splits.find((entry) => entry.date.slice(0, 10) === day);
-    const terms = split ? splitTerms(split) : null;
-    jumps.push(`${label} ${ratio < 1 ? "falls" : "rises"} ${jumpFactorText(ratio)}× on ${periodDayText(day, currentYear)}${
-      terms ? `, the day of its ${terms} split, unadjusted` : " with no split recorded that day"}`);
-  }
-  return jumps;
-}
-
-/**
- * The splits a comparison's returns run across, by leg: one that took effect
- * after a leg's base close and by its end (its `PriceComparison.legs` days).
- * The closes compared are split-adjusted, so a fund that reverse-split twice
- * reads its return, not its share price: "Splits in range: SOXS 1-for-20
- * reverse on Thu 5 Mar and 1-for-10 reverse on Wed 15 Jul; returns are
- * split-adjusted." That is said only when no leg's closes jump inside its
- * window (legJumps): a jump is named instead, a split or not, and the returns
- * across it called unreliable. Null when no leg has a split or a jump.
- */
-export function comparisonSplitNotice(
-  comparison: Pick<PriceComparison, "legs">,
-  legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[]; points?: ReadonlyArray<{ date: Date; value: number | null }> }>,
+export function comparisonSplitAssessment(
+  comparison: Pick<PriceComparison, "legs" | "sourceBounds">,
+  legs: ReadonlyArray<{ id: string; label: string; splits: readonly SplitAction[] | null; series?: ResolvedSeries }>,
   now = Date.now(),
-): string | null {
+): { notice: string | null; dropped: NonNullable<PriceComparison["dropped"]> } {
   const currentYear = new Date(now).getUTCFullYear();
   const named: string[] = [];
-  const jumps: string[] = [];
-  for (const { id, label, splits, points } of legs) {
+  const dropped: NonNullable<PriceComparison["dropped"]> = [];
+  for (const { id, label, splits, series } of legs) {
     const window = comparison.legs?.[id];
     if (!window) continue;
-    const inside = splits
+    const recordedSplits = splits ?? [];
+    const inside = recordedSplits
       .filter((split) => /^\d{4}-\d{2}-\d{2}/.test(split.date) && split.date.slice(0, 10) > window.baseDay && split.date.slice(0, 10) <= window.endDay)
       .sort((left, right) => left.date.localeCompare(right.date))
       .flatMap((split) => {
@@ -281,12 +240,30 @@ export function comparisonSplitNotice(
         return terms ? [`${terms} on ${periodDayText(split.date, currentYear)}`] : [];
       });
     if (inside.length) named.push(`${label} ${listLabels(inside)}`);
-    if (points) jumps.push(...legJumps(label, points, window, splits, currentYear));
+    const bounds = comparison.sourceBounds?.[id];
+    if (!series || !bounds) continue;
+    const bars = series.points.flatMap((point) => {
+      const time = point.date.getTime();
+      return time >= bounds.start && time <= bounds.end ? [{ date: observationDate(time, series),
+        close: point.close ?? point.value, high: point.high, low: point.low }] : [];
+    });
+    const breaks = priceBasisBreaks(bars, recordedSplits, { interval: series.historyResolution, venue: legVenue(series),
+      includeUnrecorded: true, includeUnrecordedRange: splits === null });
+    if (breaks.length) {
+      const period = series.historyResolution === "1mo" ? "monthly" : series.historyResolution === "1wk" ? "weekly" : null;
+      const descriptions = breaks.map(({ day, ratio, kind, split }) => {
+        const move = kind === "close" ? `close ${ratio < 1 ? "falls" : "rises"}` : "high/low range is";
+        const evidence = split ? `near the ${periodDayText(split.date.slice(0, 10), currentYear)} split`
+          : splits === null ? "with split history unavailable" : "with no split recorded nearby";
+        return `${move} ${priceBasisFactor(ratio)}× ${period ? `in the ${period} bar dated` : "on"} ${periodDayText(day, currentYear)} ${evidence}`;
+      });
+      dropped.push({ seriesId: id, label, reason: `${descriptions.join("; ")}. A consistent price basis cannot be verified` });
+    }
   }
   const splitsLine = named.length ? `Splits in range: ${named.join("; ")}` : null;
-  if (!jumps.length) return splitsLine && `${splitsLine}; returns are split-adjusted.`;
-  const jumpsLine = `${jumps.join("; ")}, so the returns across ${jumps.length === 1 ? "it" : "them"} are unreliable.`;
-  return splitsLine ? `${splitsLine}. ${jumpsLine}` : jumpsLine;
+  const notice = dropped.length ? [splitsLine && `${splitsLine}.`, ...dropped.map(({ label, reason }) => `${label}: ${reason}; returns withheld.`)]
+    .filter(Boolean).join(" ") : splitsLine && `${splitsLine}; returns are split-adjusted.`;
+  return { notice, dropped };
 }
 
 /**
@@ -389,7 +366,7 @@ export function resolvePriceComparison(
   const sessionDay = (key: string) => (barPeriod ? barLastSession(key, barPeriod, venue, now) : null) ?? key;
   const dayOf = (leg: ComparedLeg, key: string) => calendarBars ? key : observationDate(Number(key), leg.entry);
   const preset = options.preset ?? null;
-  const period = !dateWindow && isReturnPeriod(preset) ? preset : null;
+  const period = dateWindow?.returnPeriod ?? (!dateWindow && isReturnPeriod(preset) ? preset : null);
   const shared = (keys: (leg: ComparedLeg) => readonly string[]) => {
     const sets = legs.map((leg) => new Set(keys(leg)));
     return legs.length ? keys(legs[0]!).filter((key) => sets.every((set) => set.has(key))) : [];
@@ -402,7 +379,7 @@ export function resolvePriceComparison(
     : sharedWindow.at(-1);
   // Authored dates (`--from 2026-10-19`) measure from the close before the first date, as RETURN does: the last
   // date the legs share before it. Weekly and monthly bars keep the bar the window starts in.
-  const authoredFrom = !preset && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start) && (resolution === "1d" || !calendarBars)
+  const authoredFrom = !preset && !period && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.start) && (resolution === "1d" || !calendarBars)
     ? dateWindow.start : null;
   const firstInWindow = authoredFrom ? legs.map((leg) => leg.window[0]!).sort(order)[0] : undefined;
   const authoredBase = authoredFrom && firstInWindow !== undefined
@@ -410,7 +387,8 @@ export function resolvePriceComparison(
       && legs.every((leg) => nonzero(leg, key))).at(-1)
     : undefined;
   const sharedStart = authoredBase ?? sharedWindow.find((key) => legs.every((leg) => nonzero(leg, key)));
-  const anchor = period && sharedEnd !== undefined ? (calendarBars ? sessionDay(sharedEnd) : dayOf(legs[0]!, sharedEnd)) : null;
+  const anchor = dateWindow?.returnPeriod ? dateWindow.end
+    : period && sharedEnd !== undefined ? (calendarBars ? sessionDay(sharedEnd) : dayOf(legs[0]!, sharedEnd)) : null;
   const baseDay = anchor && period ? periodBaseDay(anchor, period) : null;
   const closeDay = (leg: ComparedLeg, key: string) => calendarBars && resolution !== "1d" ? barCloseDay(key, resolution, legVenue(leg.entry)) : key;
   // Intraday bars share their times, so their base is the last bar the legs share on or before the base day.
@@ -516,6 +494,7 @@ export function bufferPriceComparison(
   view: { start: number | null; end: number | null },
 ): ResolvedSeries {
   if (!comparison?.seriesIds.includes(series.id)) return series;
+  if (comparison.dropped?.some((entry) => entry.seriesId === series.id)) return { ...series, points: [] };
   return {
     ...series,
     latestChangePercent: undefined,

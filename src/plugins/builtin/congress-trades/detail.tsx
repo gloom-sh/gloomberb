@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import { aggregateLoadedCongress } from "./aggregates";
 import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { Box, Text, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
@@ -6,7 +7,9 @@ import { ClippedText } from "../../../components/ui/display";
 import {
   DataTableView,
   DetailScrollBody,
+  FigureList,
   KeyValueRow,
+  SectionHeading,
   StatGrid,
   usePaneFooter,
   usePaneNoticeFooter,
@@ -27,14 +30,17 @@ import {
   CONGRESS_MEMBER_FILING_LIMIT,
   CONGRESS_MEMBER_TRADE_LIMIT,
   CONGRESS_TRADES_PANE_ID,
-  canLoadMoreCongress,
   congressScanNotice,
-  nextCongressPage,
-  previousCongressYearPage,
   buildMemberTradeColumns,
+  foldFilingLines,
+  formatAmountRange,
   formatCongressReturn,
   formatLag,
+  plainAssetName,
   sortedTrades,
+  tradeAssetLabel,
+  tradeVehicle,
+  type CongressTradeRow,
   type TradeColumn,
   type TradeColumnId,
 } from "./model";
@@ -58,12 +64,35 @@ function ReturnRow({ label, value, spy, unavailable }: { label: string; value: n
   );
 }
 
+/**
+ * The lines a folded row stands for, each with its amount: what each was held
+ * through (or its own description), and its owner where the lines differ.
+ */
+function FilingLines({ lines, width }: { lines: CloudCongressTradePayload[]; width: number }) {
+  const owners = new Set(lines.map((line) => line.owner)).size > 1;
+  return (
+    <>
+      <SectionHeading title={`${lines.length} lines in the filing`} marginTop={1} width={width} />
+      <FigureList
+        width={width}
+        maxValueWidth={14}
+        figures={lines.map((line) => ({
+          id: line.id,
+          value: formatAmountRange(line.amountLow, line.amountHigh, line.amount),
+          label: tradeVehicle(line) ? `via ${tradeVehicle(line)}` : line.subholdingOf || line.description || tradeAssetLabel(line),
+          ...(owners ? { note: line.owner } : {}),
+        }))}
+      />
+    </>
+  );
+}
+
 export function TradeDetail({
   trade,
   width,
   scrollRef,
 }: {
-  trade: CloudCongressTradePayload;
+  trade: CongressTradeRow;
   width: number;
   scrollRef?: RefObject<ScrollBoxRenderable | null>;
 }) {
@@ -78,17 +107,17 @@ export function TradeDetail({
         <KeyValueRow {...DETAIL_ROW} label="chamber" value={`${trade.chamber === "senate" ? "Senate" : "House"}${trade.stateDistrict ? ` · ${trade.stateDistrict}` : ""}`} tone="muted" />
         <KeyValueRow {...DETAIL_ROW} label="party" value={trade.party ?? MISSING_VALUE} />
         <KeyValueRow {...DETAIL_ROW} label="side" value={trade.transactionType} tone={trade.side === "BUY" ? "positive" : trade.side === "SELL" ? "negative" : trade.side === "OTHER" ? "muted" : undefined} />
-        <KeyValueRow {...DETAIL_ROW} label="asset" value={fit(trade.assetName)} />
+        <KeyValueRow {...DETAIL_ROW} label="asset" value={fit(plainAssetName(trade.assetName))} />
         <KeyValueRow {...DETAIL_ROW} label="amount" value={trade.amount} color={colors.textBright} />
         <KeyValueRow {...DETAIL_ROW} label="owner" value={trade.owner} />
         <ReturnRow label="tx return" value={trade.returnSinceTx} unavailable={congressReturnUnavailableText(trade, "transaction")} />
         <ReturnRow label="tx vs SPY" value={trade.excessSinceTx} spy={trade.spyReturnSinceTx} unavailable={trade.returnSinceTx == null ? "No trade return" : "No matching SPY close"} />
         <ReturnRow label="filed return" value={trade.returnSinceFiling} unavailable={congressReturnUnavailableText(trade, "filing")} />
         <ReturnRow label="filed vs SPY" value={trade.excessSinceFiling} spy={trade.spyReturnSinceFiling} unavailable={trade.returnSinceFiling == null ? "No filed return" : "No matching SPY close"} />
-        {trade.returnAsOf && <KeyValueRow {...DETAIL_ROW} label="price as of" value={trade.returnAsOf} />}
-        <KeyValueRow {...DETAIL_ROW} label="tx date" value={trade.transactionDate ?? MISSING_VALUE} />
-        <KeyValueRow {...DETAIL_ROW} label="notification" value={trade.notificationDate ?? MISSING_VALUE} />
-        <KeyValueRow {...DETAIL_ROW} label="filed" value={trade.filingDate} />
+        {trade.returnAsOf && <KeyValueRow {...DETAIL_ROW} label="price as of" value={formatDay(trade.returnAsOf)} />}
+        <KeyValueRow {...DETAIL_ROW} label="tx date" value={formatDay(trade.transactionDate)} />
+        <KeyValueRow {...DETAIL_ROW} label="notification" value={formatDay(trade.notificationDate)} />
+        <KeyValueRow {...DETAIL_ROW} label="filed" value={formatDay(trade.filingDate)} />
         <KeyValueRow {...DETAIL_ROW} label="lag" value={`${formatLag(trade.lagDays)}${(trade.lagDays ?? 0) > 45 ? " (past 45 days)" : ""}`} tone={(trade.lagDays ?? 0) > 45 ? "warning" : undefined} />
         {trade.filingStatus ? <KeyValueRow {...DETAIL_ROW} label="status" value={trade.filingStatus} /> : null}
         {trade.subholdingOf ? <KeyValueRow {...DETAIL_ROW} label="subholding" value={fit(trade.subholdingOf)} /> : null}
@@ -99,6 +128,7 @@ export function TradeDetail({
             <ClippedText fg={colors.text} text={trade.description} width={lineWidth} cut={truncateWithEllipsis} wrap />
           </>
         ) : null}
+        {trade.lines ? <FilingLines lines={trade.lines} width={lineWidth} /> : null}
       </Box>
     </DetailScrollBody>
   );
@@ -121,7 +151,7 @@ export function MemberTradesDetail({
   const openTicker = useInlineTickerOpener();
   // A member sits in one chamber, so their history comes from that feed alone.
   const chamber = initialTrades[0]?.chamber ?? "all";
-  const { payload: detailPayload, status, error, loadPage, loadingMore, reload: refresh } = useCongressFeed({
+  const { payload: detailPayload, status, error, loadingMore, canLoadMore, loadMore, previousYearRequest, loadPreviousYear, reload: refresh } = useCongressFeed({
     chamber,
     member: member.memberName,
     limit: CONGRESS_MEMBER_TRADE_LIMIT,
@@ -139,23 +169,9 @@ export function MemberTradesDetail({
   });
   const tradeScrollRef = useRef<ScrollBoxRenderable | null>(null);
 
-  const loadMore = useCallback(() => {
-    if (!detailPayload || loadingMore || status !== "loaded") return;
-    loadPage(nextCongressPage(detailPayload));
-  }, [detailPayload, loadPage, loadingMore, status]);
-
-  // Reading an earlier year means reading its documents, so it stays a deliberate step.
-  const previousYearRequest = detailPayload && !canLoadMoreCongress(detailPayload)
-    ? previousCongressYearPage(detailPayload)
-    : null;
-  const loadPreviousYear = useCallback(() => {
-    if (loadingMore || status !== "loaded" || !previousYearRequest) return;
-    loadPage(previousYearRequest);
-  }, [loadPage, loadingMore, previousYearRequest, status]);
-
   const onTradeScroll = useTableLoadMore(
     tradeScrollRef,
-    !!detailPayload && status === "loaded" && !loadingMore && canLoadMoreCongress(detailPayload),
+    status === "loaded" && !loadingMore && canLoadMore,
     loadMore,
   );
 
@@ -163,7 +179,9 @@ export function MemberTradesDetail({
     setSelectedTradeId(initialTrades[0]?.id ?? null);
   }, [member.id]);
 
-  const sortedRows = useMemo(() => sortedTrades(trades, sortPreference), [sortPreference, trades]);
+  // One filing's alike lines are one row, as on the trades; Export CSV writes each line.
+  const sortedRows = useMemo(() => sortedTrades(foldFilingLines(trades), sortPreference), [sortPreference, trades]);
+  const sortedLines = useMemo(() => sortedTrades(trades, sortPreference), [sortPreference, trades]);
   const columns = useMemo(() => buildMemberTradeColumns(width), [width]);
   const selectedTrade = useMemo(() => (
     sortedRows.find((trade) => trade.id === selectedTradeId) ?? sortedRows[0] ?? null
@@ -210,7 +228,7 @@ export function MemberTradesDetail({
       ...(error ? [{ id: "member-error", parts: [{ text: error, tone: "warning" as const }] }] : []),
     ],
     hints: [
-      ...(detailPayload && canLoadMoreCongress(detailPayload)
+      ...(canLoadMore
         ? [{ id: "member-next", key: "n", label: "ext filings", onPress: loadMore, disabled: loadingMore }]
         : []),
       { id: "member-ticker", key: "t", label: "icker", onPress: openSelectedTicker, disabled: !selectedTrade?.ticker },
@@ -252,7 +270,7 @@ export function MemberTradesDetail({
 
   return (
     <Box flexDirection="column" flexGrow={1} overflow="hidden">
-      <DataTableView<CloudCongressTradePayload, TradeColumn>
+      <DataTableView<CongressTradeRow, TradeColumn>
         focused={focused}
         selection={{
           kind: "id",
@@ -269,6 +287,7 @@ export function MemberTradesDetail({
         resetScrollKey={member.id}
         columns={columns}
         items={sortedRows}
+        exportItems={sortedLines}
         sortColumnId={sortPreference.columnId}
         sortDirection={sortPreference.direction}
         onHeaderClick={(columnId) => {

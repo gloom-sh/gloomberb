@@ -7,7 +7,7 @@ import { Box, ScrollBox, Text } from "../../../ui";
 import { formatStrikeLabel } from "../../../utils/options";
 import { evaluateSmile, optionDelta } from "../shared/volatility";
 import { buildSurfaceGrid, deltaBasis, evaluateSurfaceSmile, type SurfaceExpiry, type SurfaceSnapshot } from "./model";
-import { expiryLabel, formatPrice } from "./tables";
+import { expiryLabel, formatPrice, surfaceTermAtmLabel, surfaceTermRows, type SurfaceAxis } from "./tables";
 import { expiryDay, surfaceEventSummary, surfaceReadingShortLabel, type SurfaceEventReading } from "./events";
 import { MACRO_EVENT_LABELS } from "../macro-day/releases";
 
@@ -69,7 +69,9 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height, foc
       ticks: Array.from({ length: 5 }, (_, i) => ({ ratio: i / 4, label: tickLabel(left + (right - left) * i / 4, axis) })),
       left, right };
   }, [axis, colors, expiry, overlay, snapshot]);
-  if (!model) return <EmptyState title="Smile unavailable." hint="No clean quoted smile for this expiry." />;
+  // An expiry left unfitted says why, as the Table's expiry list does.
+  const reason = expiry?.state === "empty" || expiry?.state === "error" ? expiry.error ?? expiry.warnings.at(-1) : null;
+  if (!model) return <EmptyState title="Smile unavailable." hint={reason ? `${reason}.` : "No clean quoted smile for this expiry."} />;
   const axisLabel = axis === "strike" ? "Strike" : axis === "delta" ? "100 x (1 - call delta)" : `${axis === "forward" ? "Forward" : "Spot"} %`;
   return <Box flexDirection="column" width={width} height={height}>
     <Box height={1} flexDirection="row" gap={3} paddingX={1}>
@@ -88,27 +90,28 @@ export function SmileChart({ snapshot, expiry, overlay, axis, width, height, foc
 /** The legend's series and the axes' units on one row, with its padding and gaps. */
 const TERM_LEGEND_UNITS_WIDTH = 2 + "ATM spot".length + "25d put".length + "25d call".length + "IV % · calendar days (log)".length + 3 * 3;
 
-export function TermChart({ snapshot, width, height, focused = false, events = [], historyFailed = false }: {
-  snapshot: SurfaceSnapshot; width: number; height: number; focused?: boolean;
+export function TermChart({ snapshot, axis, width, height, focused = false, events = [], historyFailed = false }: {
+  snapshot: SurfaceSnapshot; axis: SurfaceAxis; width: number; height: number; focused?: boolean;
   /** The next scheduled FOMC and CPI read off the expiries either side of each. */
   events?: readonly SurfaceEventReading[];
   /** MDAY's moves on release days did not load. */
   historyFailed?: boolean;
 }) {
   const colors = useThemeColors();
-  const rows = snapshot.expiries.filter((expiry) => expiry.atmIV != null).sort((a, b) => a.years - b.years);
-  if (!rows.length) return <EmptyState title="Term structure unavailable." hint="No clean ATM observations." />;
+  const rows = surfaceTermRows(snapshot, axis);
+  const atmLabel = surfaceTermAtmLabel(axis);
+  if (!rows.length) return <EmptyState title="Term structure unavailable." hint={`No clean ${atmLabel} observations.`} />;
   // Log tenor spacing keeps daily front expiries readable next to LEAPS.
   const scale = (days: number) => Math.log(Math.max(days, 0.25));
-  const first = scale(rows[0]!.years * 365), last = scale(rows.at(-1)!.years * 365);
+  const first = scale(rows[0]!.days), last = scale(rows.at(-1)!.days);
   const dayLabel = (ratio: number) => {
     const days = Math.exp(first + (last - first) * ratio);
     return days < 10 ? `${days.toFixed(1)}d` : `${Math.round(days)}d`;
   };
-  const points = rows.map((expiry) => point(scale(expiry.years * 365), expiry.atmIV! * 100));
+  const points = rows.map((row) => point(scale(row.days), row.atm * 100));
   const overlays: StaticChartOverlay[] = [
-    { id: "25d put", color: colors.warning, points: rows.flatMap((expiry, index) => expiry.skew.put25 == null ? [] : [{ index, value: expiry.skew.put25 * 100 }]) },
-    { id: "25d call", color: colors.negative, points: rows.flatMap((expiry, index) => expiry.skew.call25 == null ? [] : [{ index, value: expiry.skew.call25 * 100 }]) },
+    { id: "25d put", color: colors.warning, points: rows.flatMap((row, index) => row.put25 == null ? [] : [{ index, value: row.put25 * 100 }]) },
+    { id: "25d call", color: colors.negative, points: rows.flatMap((row, index) => row.call25 == null ? [] : [{ index, value: row.call25 * 100 }]) },
   ];
   // Each release sits on the calendar day it falls, counted back from the first expiry after it.
   const byExpiration = new Map(rows.map((expiry) => [expiry.expiration, expiry]));
@@ -116,7 +119,7 @@ export function TermChart({ snapshot, width, height, focused = false, events = [
     const after = reading.after == null ? null : byExpiration.get(reading.after);
     if (!after || last <= first) return [];
     return reading.events.flatMap((event) => {
-      const days = after.years * 365 - calendarDaysBetween(event.date, expiryDay(after.expiration));
+      const days = after.days - calendarDaysBetween(event.date, expiryDay(after.expiration));
       const ratio = (scale(days) - first) / (last - first);
       return ratio >= 0 && ratio <= 1 ? [{ id: event.kind, xRatio: ratio, label: MACRO_EVENT_LABELS[event.kind], color: colors.warning }] : [];
     });
@@ -124,7 +127,7 @@ export function TermChart({ snapshot, width, height, focused = false, events = [
   const moveHeight = Math.min(7 + events.length, Math.max(2 + events.length, Math.floor(height / 4)));
   return <Box flexDirection="column" width={width} height={height}>
     <Box height={1} flexDirection="row" gap={3} paddingX={1}>
-      <Text fg={colors.positive}>ATM spot</Text><Text fg={colors.warning}>25d put</Text><Text fg={colors.negative}>25d call</Text>
+      <Text fg={colors.positive}>{atmLabel}</Text><Text fg={colors.warning}>25d put</Text><Text fg={colors.negative}>25d call</Text>
       {/* The axes' units give way first on a narrow pane: the y labels carry % and the x labels days. */}
       {width >= TERM_LEGEND_UNITS_WIDTH ? <Text fg={colors.textDim}>IV % · calendar days (log)</Text> : null}
     </Box>
@@ -136,9 +139,9 @@ export function TermChart({ snapshot, width, height, focused = false, events = [
     <ScrollBox flexDirection="column" paddingX={1} height={moveHeight} flexGrow={1} scrollY focusable={false}>
       {events.map((reading) => <KeyValueRow key={reading.events.map((event) => event.kind).join("+")} label={surfaceReadingShortLabel(reading)} labelWidth={12}
         width={Math.max(1, width - 2)} color={colors.warning} value={surfaceEventSummary(reading, { historyFailed })} />)}
-      {rows.map((expiry) => <KeyValueRow key={expiry.expiration}
-        label={expiryLabel(expiry.expiration)} labelWidth={12} width={Math.max(1, width - 2)}
-        value={`${formatPrice(expiry.expectedMove.straddle)} straddle / ${formatPrice(expiry.expectedMove.sigma)} 1-sigma (${formatPrice(expiry.expectedMove.sigmaPercent)}%)`} />)}
+      {rows.map((row) => <KeyValueRow key={row.expiration}
+        label={expiryLabel(row.expiration)} labelWidth={12} width={Math.max(1, width - 2)}
+        value={`${formatPrice(row.straddle)} straddle / ${formatPrice(row.sigma)} 1-sigma (${formatPrice(row.sigmaPercent)}%)`} />)}
     </ScrollBox>
   </Box>;
 }

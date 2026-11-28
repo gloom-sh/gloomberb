@@ -1,3 +1,4 @@
+import { asRecord, finiteOrNull, recordOrNull, textOrNull } from "../../../utils/guards";
 import { httpFetch } from "../../../utils/http-transport";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
 
@@ -87,22 +88,9 @@ export interface ClinicalTrialsPage {
   nextPageToken: string | null;
 }
 
-function asString(value: unknown): string | undefined {
-  if (typeof value !== "string") return undefined;
-  const trimmed = value.trim();
-  return trimmed || undefined;
-}
-
 function asStringArray(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
-  return value
-    .map((item) => (typeof item === "string" ? asString(item) : undefined))
-    .filter((item): item is string => item !== undefined);
-}
-
-function asCount(value: unknown): number | null {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  return null;
+  return value.map(textOrNull).filter((item): item is string => item !== null);
 }
 
 function datePrecision(value: unknown): DatePrecision {
@@ -122,11 +110,10 @@ const CONTROL_INTERVENTION = /^(?:placebo|sham|vehicle|saline|standard (?:of )?c
 function parseInterventions(value: unknown): TrialIntervention[] {
   if (!Array.isArray(value)) return [];
   return value.flatMap((item) => {
-    if (!item || typeof item !== "object") return [];
-    const record = item as Record<string, unknown>;
-    const name = asString(record.name);
+    const record = recordOrNull(item);
+    const name = record ? textOrNull(record.name) : null;
     if (!name || CONTROL_INTERVENTION.test(name)) return [];
-    return [{ name, type: asString(record.type) ?? "" }];
+    return [{ name, type: textOrNull(record?.type) ?? "" }];
   });
 }
 
@@ -136,11 +123,6 @@ const PRODUCT_TYPES = new Set(["DRUG", "BIOLOGICAL", "COMBINATION_PRODUCT", "GEN
 /** The one intervention the list names: the first drug or biologic, else the first thing tested; empty when none. */
 export function trialDrug(trial: Pick<ClinicalTrial, "interventions">): string {
   return (trial.interventions.find((item) => PRODUCT_TYPES.has(item.type)) ?? trial.interventions[0])?.name ?? "";
-}
-
-function moduleOf(record: Record<string, unknown>, key: string): Record<string, unknown> {
-  const value = record[key];
-  return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
 }
 
 function dateType(value: unknown): TrialDateType | undefined {
@@ -160,43 +142,43 @@ function trialDate(struct: Record<string, unknown>) {
  * Parse one v2 study record (`{ protocolSection: { ... } }`) into a trial.
  * Returns null when the record has no NCT id.
  */
-export function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
-  if (!raw || typeof raw !== "object") return null;
-  const study = raw as Record<string, unknown>;
-  const protocol = moduleOf(study, "protocolSection");
-  const identification = moduleOf(protocol, "identificationModule");
-  const nctId = asString(identification.nctId);
+function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
+  const study = recordOrNull(raw);
+  if (!study) return null;
+  const protocol = asRecord(study.protocolSection);
+  const identification = asRecord(protocol.identificationModule);
+  const nctId = textOrNull(identification.nctId);
   if (!nctId) return null;
 
-  const statusModule = moduleOf(protocol, "statusModule");
-  const sponsors = moduleOf(protocol, "sponsorCollaboratorsModule");
-  const leadSponsor = moduleOf(sponsors, "leadSponsor");
-  const design = moduleOf(protocol, "designModule");
-  const conditionsModule = moduleOf(protocol, "conditionsModule");
-  const description = moduleOf(protocol, "descriptionModule");
-  const enrollmentInfo = moduleOf(design, "enrollmentInfo");
-  const armsInterventions = moduleOf(protocol, "armsInterventionsModule");
+  const statusModule = asRecord(protocol.statusModule);
+  const sponsors = asRecord(protocol.sponsorCollaboratorsModule);
+  const leadSponsor = asRecord(sponsors.leadSponsor);
+  const design = asRecord(protocol.designModule);
+  const conditionsModule = asRecord(protocol.conditionsModule);
+  const description = asRecord(protocol.descriptionModule);
+  const enrollmentInfo = asRecord(design.enrollmentInfo);
+  const armsInterventions = asRecord(protocol.armsInterventionsModule);
 
-  const start = trialDate(moduleOf(statusModule, "startDateStruct"));
-  const primaryCompletion = trialDate(moduleOf(statusModule, "primaryCompletionDateStruct"));
-  const completion = trialDate(moduleOf(statusModule, "completionDateStruct"));
-  const briefTitle = asString(identification.briefTitle)
-    ?? asString(identification.officialTitle)
+  const start = trialDate(asRecord(statusModule.startDateStruct));
+  const primaryCompletion = trialDate(asRecord(statusModule.primaryCompletionDateStruct));
+  const completion = trialDate(asRecord(statusModule.completionDateStruct));
+  const briefTitle = textOrNull(identification.briefTitle)
+    ?? textOrNull(identification.officialTitle)
     ?? nctId;
 
   return {
     nctId,
     title: briefTitle,
-    officialTitle: asString(identification.officialTitle) ?? briefTitle,
-    status: asString(statusModule.overallStatus) ?? "UNKNOWN",
+    officialTitle: textOrNull(identification.officialTitle) ?? briefTitle,
+    status: textOrNull(statusModule.overallStatus) ?? "UNKNOWN",
     phases: asStringArray(design.phases),
-    sponsor: asString(leadSponsor.name) ?? "Unknown sponsor",
-    sponsorClass: asString(leadSponsor.class) ?? "",
+    sponsor: textOrNull(leadSponsor.name) ?? "Unknown sponsor",
+    sponsorClass: textOrNull(leadSponsor.class) ?? "",
     conditions: asStringArray(conditionsModule.conditions),
     interventions: parseInterventions(armsInterventions.interventions),
-    summary: asString(description.briefSummary) ?? "",
-    studyType: asString(design.studyType) ?? "",
-    enrollment: asCount(enrollmentInfo.count),
+    summary: textOrNull(description.briefSummary) ?? "",
+    studyType: textOrNull(design.studyType) ?? "",
+    enrollment: finiteOrNull(enrollmentInfo.count),
     startDate: start.date,
     startDatePrecision: start.precision,
     startDateType: start.type,
@@ -207,23 +189,20 @@ export function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
     completionDatePrecision: completion.precision,
     completionDateType: completion.type,
     firstSubmitDate: asDate(statusModule.studyFirstSubmitDate),
-    firstPostDate: asDate(moduleOf(statusModule, "studyFirstPostDateStruct").date),
-    lastUpdatePostDate: asDate(moduleOf(statusModule, "lastUpdatePostDateStruct").date),
+    firstPostDate: asDate(asRecord(statusModule.studyFirstPostDateStruct).date),
+    lastUpdatePostDate: asDate(asRecord(statusModule.lastUpdatePostDateStruct).date),
     url: `${CLINICAL_TRIALS_STUDY_BASE_URL}/${nctId}`,
   };
 }
 
 /** Parse a v2 `studies` response payload into a page. Pure: no network. */
-export function parseClinicalTrialsPage(payload: unknown): ClinicalTrialsPage {
-  const record = (payload && typeof payload === "object" ? payload : {}) as Record<
-    string,
-    unknown
-  >;
+function parseClinicalTrialsPage(payload: unknown): ClinicalTrialsPage {
+  const record = asRecord(payload);
   const studies = Array.isArray(record.studies) ? record.studies : [];
   const trials = studies
     .map((raw) => parseClinicalTrial(raw))
     .filter((trial): trial is ClinicalTrial => trial !== null);
-  return { trials, nextPageToken: asString(record.nextPageToken) ?? null };
+  return { trials, nextPageToken: textOrNull(record.nextPageToken) };
 }
 
 export interface StudiesQuery {
@@ -281,7 +260,7 @@ function excludeClause(area: string, values: string[]): string | null {
  * pane orders what has loaded. Filters go to the registry with the search, so
  * every page it returns already matches them.
  */
-export function buildStudiesUrl(query: StudiesQuery = {}): string {
+function buildStudiesUrl(query: StudiesQuery = {}): string {
   const params = new URLSearchParams();
   params.set("format", "json");
   params.set("pageSize", String(query.pageSize ?? DEFAULT_PAGE_SIZE));

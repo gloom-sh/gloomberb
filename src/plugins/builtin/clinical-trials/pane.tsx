@@ -1,3 +1,4 @@
+import { dayCell, formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   DataTableStackView,
@@ -10,8 +11,6 @@ import {
   useQueryBarSearch,
   useTableLoadMore,
   type DataTableCell,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PaneFooterSegment,
   type PaneHint,
   type QueryBarFilter,
@@ -30,8 +29,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import type { ThemeColors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { useOpenDescription } from "../shared/open-description";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { missingCell, NO_VALUE } from "../shared/research-cells";
@@ -72,7 +70,7 @@ const TICKER_WAIT_MS = 2000;
 /** As precise as the registry gave it, marked when it is the sponsor's estimate. */
 function formatDate(date: Date | null, precision: DatePrecision = "day", type?: TrialDateType): string {
   if (!date || Number.isNaN(date.getTime()) || date.getTime() === 0) return NO_VALUE;
-  const text = date.toISOString().slice(0, precision === "year" ? 4 : precision === "month" ? 7 : 10);
+  const text = precision === "year" || precision === "month" ? date.toISOString().slice(0, precision === "year" ? 4 : 7) : formatDay(date);
   return type === "ESTIMATED" ? `${text} (est.)` : text;
 }
 
@@ -358,22 +356,13 @@ export function TrialsPane({ width, height, focused }: PaneProps) {
     ],
   } : null), [focused, openAdjacent, openIndex, trials.length]);
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
   const layout = useMemo(() => trialLayout(width), [width]);
   const renderCell = useCallback((trial: ClinicalTrial, column: TrialColumn, _index: number, rowState: { selected: boolean }): DataTableCell => {
     switch (column.id) {
       case "updated": {
-        const updated = formatDate(trial.lastUpdatePostDate);
-        return trial.lastUpdatePostDate ? { text: updated, value: updated, color: colors.textDim } : missingCell(colors);
+        return trial.lastUpdatePostDate ? { ...dayCell(trial.lastUpdatePostDate), color: colors.textDim } : missingCell(colors);
       }
       case "phase": {
         if (!hasTrialPhase(trial.phases)) return missingCell(colors);

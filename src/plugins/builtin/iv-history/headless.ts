@@ -3,7 +3,7 @@ import type { HeadlessPaneDefinition } from "../../../types/plugin";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { createRealizedVolatilityDependencies, loadRealizedVolatilityHistory } from "../realized-vol/client";
 import { createHvDependencies, loadIvHistory, loadIvScreen, loadScreenVolatilities } from "./client";
-import { formatPoints, formatRank, formatSpot, formatStat, formatVol, IMPLIED_VOL_WORDS, readingLabel, sharedDates, skewHeader, statSource, vcaDefinitions, verdictLabel } from "./format";
+import { formatPoints, formatRank, formatSpot, formatStat, formatVol, IMPLIED_VOL_WORDS, readingLabel, readingValue, sharedDates, skewHeader, statSource, vcaDefinitions, verdictLabel } from "./format";
 import { HV_WINDOWS, type HvWindow, type IvLookback, type IvStatRow, projectIvHistory, projectRichCheap, type RichCheapRow, richCheapDates, screenCoverage, screenRiskReversalNote, screenStaleNote, VCA_LIMIT, VCA_PRESETS } from "./model";
 import { vcaUniverse } from "./universe";
 import { offsetText, releaseOffsetRows } from "./events";
@@ -134,7 +134,7 @@ export const ivHistoryHeadless: HeadlessPaneDefinition<"bundle"> = {
     const statColumns = [
       { key: "label", header: "Measure" },
       { key: "value", header: "Current", format: (value: unknown, row?: unknown) => formatStat(value as number | null, (row as IvStatRow).unit) },
-      { key: "date", header: "As of" }, { key: "method", header: "Method" },
+      { key: "date", header: "As of", omitWhenSame: true }, { key: "method", header: "Method" },
       { key: "low", header: "52w low", format: (value: unknown, row?: unknown) => formatStat(value as number | null, (row as IvStatRow).unit) },
       { key: "high", header: "52w high", format: (value: unknown, row?: unknown) => formatStat(value as number | null, (row as IvStatRow).unit) },
       { key: "rank", header: "Rank", format: (value: unknown) => formatRank(value as number | null) },
@@ -212,11 +212,15 @@ export const ivScreenHeadless: HeadlessPaneDefinition<"bundle"> = {
     const hasIv1y = rows.some((row) => row.iv1y != null), hasIv1yRank = rows.some((row) => row.iv1yPercentile != null);
     const dated = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
     return {
-      sections: [{ title: ["Rich/cheap", universe.label, ...sharedDates(dates)].join(" · "), columns: [
+      sections: [{ title: ["Rich/cheap", universe.label, ...sharedDates(dates, false, true)].join(" · "),
+        textTitle: ["Rich/cheap", universe.label, ...sharedDates(dates)].join(" · "), columns: [
         { key: "symbol", header: "Symbol" }, { key: "iv30", header: "IV30", format: percent },
+        // The text reads the day first; CSV keeps the ISO day, with the same words.
         ...(dates.reading ? [] : [{ key: "date", header: "As of", format: (value: unknown, row?: unknown) =>
-          typeof value === "string" ? readingLabel(value, (row as RichCheapRow).method, false,
-            { basis: (row as RichCheapRow).basis, stale: (row as RichCheapRow).stale }) : MISSING_VALUE }]),
+          typeof value === "string" ? readingValue(value, (row as RichCheapRow).method, false,
+            { basis: (row as RichCheapRow).basis, stale: (row as RichCheapRow).stale }) : MISSING_VALUE,
+        textFormat: (value: unknown, row?: unknown) => typeof value === "string" ? readingLabel(value, (row as RichCheapRow).method, false,
+          { basis: (row as RichCheapRow).basis, stale: (row as RichCheapRow).stale }) : MISSING_VALUE }]),
         // The underlying's price on the row's own date, the title's or the As of column's; blank when no capture of it is that day's.
         { key: "spot", header: "Spot", format: (value: unknown) => typeof value === "number" ? formatSpot(value) : MISSING_VALUE },
         { key: "rank", header: "IVR", format: (value: unknown) => formatRank(value as number | null) },

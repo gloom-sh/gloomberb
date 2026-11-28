@@ -72,7 +72,7 @@ const RETURN_BASE_TOLERANCE_DAYS = 4;
  * daily bars only, so a gap in the history leaves the return unknown rather
  * than measuring a longer window.
  */
-export function oneMonthReturn(history: readonly PricePoint[]): { percent: number; date: string } | null {
+function oneMonthReturn(history: readonly PricePoint[]): { percent: number; date: string } | null {
   // Weekly or intraday bars would measure from the wrong close.
   if (realizedVolatilityCadenceIssue(history)) return null;
   // Cached histories come back with ISO-string dates.

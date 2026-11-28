@@ -1,13 +1,15 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import type { CpiRow } from "../../../api-client/cpi";
 import type { HeadlessPaneDefinition } from "../../../types/plugin";
+import { fixedCell, numCol, textCell } from "../shared/headless-columns";
+import { argumentText } from "../shared/headless-options";
 import { fetchCpiBoard } from "./client";
 import { cpiHeaderLine, cpiHeadlineYearGapLine, cpiMonth, cpiRowOption, cpiRows, cpiYearGapLine } from "./model";
 
 /** Two decimals; a value that rounds to zero reads 0.00, never -0.00. */
 const percent = (value: unknown) => typeof value === "number" ? (Number(value.toFixed(2)) === 0 ? "0.00" : value.toFixed(2)) : MISSING_VALUE;
-const weight = (value: unknown) => typeof value === "number" ? value.toFixed(3) : MISSING_VALUE;
-const text = (value: unknown) => typeof value === "string" ? value : MISSING_VALUE;
+const weight = fixedCell(3);
+const text = textCell();
 
 /** One row per component in the release's order; numbers stay raw for JSON, rounded for text. */
 function reportRow(row: CpiRow, indent = true) {
@@ -20,13 +22,14 @@ function reportRow(row: CpiRow, indent = true) {
 
 const SUMMARY_COLUMNS = [
   { key: "component", header: "Component" },
-  { key: "weight", header: "Weight %", align: "right" as const, format: weight },
-  { key: "monthChange", header: "M/M % SA", align: "right" as const, format: percent },
-  { key: "annualized3m", header: "3M ann %", align: "right" as const, format: percent },
-  { key: "annualized6m", header: "6M ann %", align: "right" as const, format: percent },
-  { key: "yearChange", header: "Y/Y % NSA", align: "right" as const, format: percent },
-  { key: "contributionMonth", header: "M/M pts", align: "right" as const, format: percent },
-  { key: "contributionYear", header: "Y/Y pts", align: "right" as const, format: percent },
+  numCol("weight", "Weight %", weight),
+  numCol("monthChange", "M/M % SA", percent),
+  numCol("annualized3m", "3M ann %", percent),
+  numCol("annualized6m", "6M ann %", percent),
+  numCol("yearChange", "Y/Y % NSA", percent),
+  numCol("contributionMonth", "M/M pts", percent),
+  // As the pane: a release without year-over-year contributions has no column for them.
+  numCol("contributionYear", "Y/Y pts", percent, { omitWhenEmpty: true }),
 ];
 
 const notesOf = (note: string | null) => note ? { notes: [note] } : {};
@@ -53,7 +56,7 @@ export const cpiHeadless: HeadlessPaneDefinition<"bundle"> = {
     const data = await fetchCpiBoard();
     const header = cpiHeaderLine(data.release) ?? "US consumer prices";
     const headline = data.rows.find((row) => row.code === "SA0") ?? null;
-    const argument = Array.isArray(args.argument) ? args.argument.join(" ") : args.argument;
+    const argument = argumentText(args.argument);
     const metadata = { ...data, complete: data.status === "available" };
     // The month the figures cover and when BLS released them: `Sep 2026, released Wed 14 Oct 12:30 UTC`.
     const period = data.release.period && data.release.releasedAt

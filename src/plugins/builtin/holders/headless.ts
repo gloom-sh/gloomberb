@@ -35,7 +35,7 @@ import {
   holderReportRows,
   holderReportUnits,
 } from "./report-rows";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption } from "../shared/headless-options";
 import { noHoldersAnswer } from "./fund-holders";
 import { companyDataNotes } from "../../../types/company-from";
 import { quarterFallbackText } from "../thirteenf/signals";
@@ -70,7 +70,7 @@ interface HolderSnapshot {
   price?: number;
 }
 
-export interface HoldersHeadlessDependencies {
+interface HoldersHeadlessDependencies {
   loadSnapshot(
     symbol: string,
     args: HeadlessPaneLoadArgs,
@@ -105,7 +105,7 @@ const defaultDependencies: HoldersHeadlessDependencies = {
   loadIndexedHolders: (ticker, limit, ctx) => loadIndexedHolders(ticker, limit, ctx.signal, ctx.apiClient),
 };
 
-export function createHoldersHeadless(
+function createHoldersHeadless(
   overrides: Partial<HoldersHeadlessDependencies> = {},
 ): HeadlessPaneDefinition<"rows"> {
   const dependencies = { ...defaultDependencies, ...overrides };
@@ -118,52 +118,25 @@ export function createHoldersHeadless(
       description: "Ticker whose institutional holders should be loaded.",
     },
     options: [
-      {
-        key: "sort",
-        description: "Column used to sort holder rows.",
-        type: "enum",
-        values: Object.keys(HOLDER_SORT_KEYS).map((value) => ({ value })),
-        defaultValue: "value",
-      },
-      {
-        key: "order",
-        description: "Sort direction.",
-        type: "enum",
-        values: [{ value: "desc" }, { value: "asc" }],
-        defaultValue: "desc",
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        aliases: ["count", "rows"],
+      enumOption("sort", Object.keys(HOLDER_SORT_KEYS), { description: "Column used to sort holder rows.", defaultValue: "value" }),
+      enumOption("order", ["desc", "asc"], { description: "Sort direction.", defaultValue: "desc" }),
+      limitOption({
+        aliases: ["count", "rows"], defaultValue: 25, maximum: HOLDER_ROWS_MAX,
         description: "Maximum holder rows, largest first. A US listing's 13F holders are every filer fn 13F lists; a listing abroad has only the source's largest few.",
-        type: "integer",
-        defaultValue: 25,
-        minimum: 1,
-        maximum: HOLDER_ROWS_MAX,
-      },
-      {
-        key: "view",
-        description: "Rendered pane view: the holder table, the ownership treemap, 13D/13G beneficial owners, or ownership disclosures for Korea and Taiwan.",
-        type: "enum",
-        values: [{ value: "table" }, { value: "chart" }, { value: "13dg", aliases: ["beneficial"] }, { value: "disclosures" }],
-        defaultValue: "table",
-        pluginState: { pluginId: "ticker-research", key: "viewMode" },
-      },
-      {
-        key: "form",
+      }),
+      enumOption("view", ["table", "chart", { value: "13dg", aliases: ["beneficial"] }, "disclosures"], {
+        description: "Rendered pane view: the holder table, the ownership treemap, 13D/13G beneficial owners, or ownership disclosures for Hong Kong, Korea, Singapore and Taiwan.",
+        defaultValue: "table", pluginState: { pluginId: "ticker-research", key: "viewMode" },
+      }),
+      enumOption("form", HOLDER_FORMS, {
         shot: { reportOnly: "picks the text report's rows; the pane shows 13D/13G owners with --view 13dg" },
         description: "Rows: 13f for institutional holders, 13d or 13g for beneficial owners over 5% of the class (activists, crowding into large stakes), all for both kinds.",
-        type: "enum",
-        values: HOLDER_FORMS.map((value) => ({ value })),
         defaultValue: "13f",
-      },
+      }),
       {
-        key: "history",
-        shot: { reportOnly: "lists every 13D/13G report in the text report" },
+        key: "history", shot: { reportOnly: "lists every 13D/13G report in the text report" },
         description: "With a 13d, 13g or all form, every report newest first instead of the latest per filer.",
-        type: "boolean",
-        defaultValue: false,
+        type: "boolean", defaultValue: false,
       },
     ],
     columns: HOLDER_REPORT_COLUMNS,
@@ -180,7 +153,7 @@ export function createHoldersHeadless(
       const symbol = args.symbols[0]!;
       if (args.options.view === "disclosures") {
         const listing = disclosureListing(symbol) ?? disclosureListing(symbol, (await resolveHeadlessIssuerListing(ctx, symbol))?.exchange);
-        if (!listing) throw new Error("Ownership disclosures cover TWSE, TPEx, KRX and KOSDAQ listings.");
+        if (!listing) throw new Error("Ownership disclosures cover HKEX, SGX, TWSE, TPEx, KRX and KOSDAQ listings.");
         return disclosureReport(await ctx.apiClient.getOwnershipDisclosures(listing, Number(args.options.limit ?? 25), ctx.signal));
       }
       const requestedForm = parseHolderForm(args.options.form) ?? "13f";

@@ -142,7 +142,7 @@ const formatOpenRoles = (value: number) => formatNumber(value, 0);
  * (2,025 / 2,000 / 1,975), where 1.9k would repeat down the gutter; above
  * that, compact with the decimals the tick step needs (160.0k / 159.5k).
  */
-export function formatOpenRolesAxisValue(value: number, domain: CompositeAxisDomain): string {
+function formatOpenRolesAxisValue(value: number, domain: CompositeAxisDomain): string {
   const magnitude = Math.max(Math.abs(domain.min), Math.abs(domain.max));
   if (magnitude < 10_000) return formatNumber(Math.round(value), 0);
   const [divisor, suffix] = COMPACT_AXIS_UNITS.find(([unit]) => magnitude >= unit)!;
@@ -554,7 +554,7 @@ function CompanyPanel({
 
   if (data?.kind === "denied") {
     if (data.status === 402) return <HiringProWall symbol={symbol} exchange={exchange} width={width} height={height} />;
-    return <SignInWall placement="jobs-detail-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="see who is hiring" needsVerification={data.status === 403} />;
+    return <SignInWall placement="jobs-detail-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="see who is hiring" needsVerification={data.status === 403} pro />;
   }
   if ((status === "idle" || status === "loading") && !data) {
     return <PaneStatusBody loading align="center" loadingLabel={`Loading ${symbol} hiring...`} />;
@@ -758,7 +758,7 @@ function JobsView({ width, height, focused, companyOnly = false }: JobsViewProps
   const access = usePlanAccess();
   const registrationId = JOBS_PANE_ID;
 
-  if (!access.signedIn) return <SignInWall placement="jobs-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="see who is hiring" />;
+  if (!access.signedIn) return <SignInWall placement="jobs-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="see who is hiring" pro />;
   if (!access.emailVerified) return <SignInWall placement="jobs-signin" width={width} height={height} symbol={symbol} exchange={exchange} action="see who is hiring" needsVerification />;
   if (!access.hasProAccess) return <HiringProWall symbol={symbol} exchange={exchange} width={width} height={height} />;
 

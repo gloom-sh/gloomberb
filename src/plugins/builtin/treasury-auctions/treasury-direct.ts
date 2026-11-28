@@ -1,6 +1,8 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
 import { createThrottledFetch } from "../../../utils/throttled-fetch";
+import { getCurrentPluginTarget } from "../../current-target";
 import { inClearingOrder } from "./client";
 import type { TreasuryAuction } from "./types";
 
@@ -39,14 +41,14 @@ const isoDate = (time: number): string => new Date(time).toISOString().slice(0, 
  * that many days back, no further than `DIRECT_LOOKBACK_DAYS`, up to a month
  * ahead. Both ends are inclusive.
  */
-export function directSearchRange(days: number, now = Date.now()): { startDate: string; endDate: string } {
+function directSearchRange(days: number, now = Date.now()): { startDate: string; endDate: string } {
   return {
     startDate: isoDate(now - Math.min(days, DIRECT_LOOKBACK_DAYS) * 86_400_000),
     endDate: isoDate(now + DIRECT_LOOKAHEAD_DAYS * 86_400_000),
   };
 }
 
-export function buildDirectSearchUrl(days: number, now = Date.now()): string {
+function buildDirectSearchUrl(days: number, now = Date.now()): string {
   const params = new URLSearchParams({
     ...directSearchRange(days, now),
     dateFieldName: "competitiveAuctionCloseDate",
@@ -73,7 +75,7 @@ function toNumber(value: unknown): number | null {
  * Fiscal Data's (CUSIP and auction date), so one auction in both feeds is one
  * row. Null for a record without a CUSIP, a type or the day bidding closes.
  */
-export function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
+function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const record = raw as Record<string, unknown>;
   const cusip = text(record.cusip);
@@ -115,7 +117,7 @@ export function normalizeDirectAuction(raw: unknown): TreasuryAuction | null {
  * securities is a failure (an error page, a changed endpoint), never a quiet
  * period; a record it cannot identify is skipped.
  */
-export function parseDirectAuctions(body: unknown): TreasuryAuction[] {
+function parseDirectAuctions(body: unknown): TreasuryAuction[] {
   if (!Array.isArray(body)) throw new Error("TreasuryDirect securities search did not return a list of securities");
   const auctions = new Map<string, TreasuryAuction>();
   for (const raw of body) {
@@ -125,8 +127,21 @@ export function parseDirectAuctions(body: unknown): TreasuryAuction[] {
   return [...auctions.values()];
 }
 
-/** The auctions of the last `days` days (at most `DIRECT_LOOKBACK_DAYS`) and the ones announced. */
+/**
+ * The auctions of the last `days` days (at most `DIRECT_LOOKBACK_DAYS`) and the
+ * ones announced. The hosted web app reads them through Gloom Cloud (needs the
+ * matching server change) because the edge worker cannot complete TreasuryDirect's
+ * TLS handshake; desktop and terminal fetch TreasuryDirect directly.
+ */
 export async function fetchDirectAuctions(days: number): Promise<TreasuryAuction[]> {
+  if (getCurrentPluginTarget() === "web") {
+    const { startDate, endDate } = directSearchRange(days);
+    try {
+      return parseDirectAuctions(await apiClient.getCloudUsTreasuryDirect(startDate, endDate));
+    } catch (error) {
+      if (!(error instanceof ApiRequestError && error.status === 404)) throw error;
+    }
+  }
   const response = await DIRECT_FETCH.fetch(buildDirectSearchUrl(days));
   // The status stays: an overloaded server is a failure a saved board may answer for, a refusal is not.
   if (!response.ok) throw new ApiRequestError(`TreasuryDirect request failed (${response.status})`, response.status);

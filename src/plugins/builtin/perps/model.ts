@@ -1,3 +1,4 @@
+import { formatDay, formatDayTime } from "../../../utils/day-format";
 import type { PerpBoardRow, PerpHistoryPayload, PerpLongShortRatio, PerpRankingsPayload } from "../../../api-client/perps";
 import type { DataTableCell, DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
@@ -35,9 +36,9 @@ export const label = (s: string) => s === "fx" ? "FX" : s.charAt(0).toUpperCase(
 export const percent = (n: number | null | undefined, digits = 3) => n == null ? MISSING_VALUE : `${n > 0 ? "+" : ""}${(n * 100).toFixed(digits)}%`;
 export const price = (n: number | null | undefined) => n == null ? MISSING_VALUE : n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: n < 1 ? 6 : 2 });
 export const compact = (n: number | null | undefined) => n == null ? MISSING_VALUE : formatCompact(n, { fixedDecimals: true });
-export const time = (s: string | null | undefined) => s ? `${s.slice(0, 10)} ${s.slice(11, 16)} UTC` : MISSING_VALUE;
+export const time = (s: string | null | undefined) => s ? `${formatDay(s)} ${s.slice(11, 16)} UTC` : MISSING_VALUE;
 /** A list row's observation, month to minute: the header names UTC and the footer the full as-of. */
-export const observed = (s: string | null | undefined) => s ? `${s.slice(5, 10)} ${s.slice(11, 16)}` : MISSING_VALUE;
+export const observed = (s: string | null | undefined) => s ? `${formatDay(s, "no-year")} ${s.slice(11, 16)}` : MISSING_VALUE;
 /**
  * The listed security a market tracks, as DES, FA and G take it: a US listing by its symbol, the key a stock is
  * saved and opened under, and a listing abroad with its venue (`NET:XLON`), so they open the security the premium
@@ -237,7 +238,15 @@ export function openInterestFields(row: Pick<PerpBoardRow, "venue" | "baseAsset"
 }
 
 // One text per figure, shared by the pane cells and the text report so the two always agree.
-const markText = (row: Pick<PerpBoardRow, "markPrice" | "quoteCurrency">) => row.markPrice == null ? MISSING_VALUE : `${price(row.markPrice)} ${row.quoteCurrency}`;
+export function perpMarkText(value: number | null, currency: string): string {
+  return value == null || !currency ? price(value) : `${price(value)} ${currency}`;
+}
+
+export function stockPerpPremiumText(row: Pick<PerpBoardRow, "underlying">, premium: number | null): string | null {
+  const reference = row.underlying;
+  return premium != null && reference?.symbol && reference.currency
+    ? `${percent(premium, 2)} vs ${reference.symbol} ${reference.currency}` : null;
+}
 const fundingPerInterval = (row: Pick<PerpBoardRow, "fundingRate" | "fundingIntervalHours" | "fundingKind">) => row.fundingRate == null ? MISSING_VALUE : `${percent(row.fundingRate, 5)} /${fundingInterval(row)}`;
 /**
  * The contract a bare name opens: the one with the largest open interest across venues, among the venues read
@@ -340,7 +349,7 @@ export function perpCellText(row: PerpBoardRow, id: PerpColumnId): string {
   if (id === "market") return marketLabel(row);
   if (id === "venue") return venueLabel(row);
   if (id === "symbol") return row.symbol;
-  if (id === "markPrice") return markText(row);
+  if (id === "markPrice") return perpMarkText(row.markPrice, row.quoteCurrency);
   if (id === "fundingRate") return fundingPerInterval(row);
   if (id === "openInterestUsd") return compact(row.openInterestUsd);
   // A row is dated by its oldest figure: a streamed mark can sit beside the open interest the last poll read.
@@ -416,7 +425,7 @@ export function historyCaption(data: PerpHistoryPayload | null | undefined, metr
 
 export function historyCell(row: HistoryRow, column: string, metric: HistoryMetric, colors?: Pick<ThemeColors, "positive" | "negative" | "text" | "textMuted" | "textDim" | "textBright">): DataTableCell {
   // The header says UTC; each row only needs the day and the hour.
-  if (column === "time") return { text: row.time.slice(0, 16).replace("T", " "), value: row.time };
+  if (column === "time") return { text: formatDayTime(row.time), value: row.time };
   if (column === "basis") return { text: row.basis, color: colors?.textDim };
   if (column === "short") return { text: share(row.shortShare, 2), value: row.shortShare == null ? null : row.shortShare * 100, color: colors?.text };
   if (column === "ratio") return { text: ratioText(row.ratio), value: row.ratio ?? null, color: colors?.text };

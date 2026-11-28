@@ -18,8 +18,9 @@ const CROSS_COLUMNS: HeadlessPaneColumn[] = [
   { key: "pair", header: "Pair" },
   { key: "rate", header: "Rate", align: "right", format: (value, row) => typeof value === "number" ? formatRate(value, String(row.quote)) : "—" },
   MOVE_COLUMN,
-  { key: "asOf", header: "As of", shrink: false, format: (value) => typeof value === "string" ? formatUtcTime(value) : "—" },
-  { key: "stale", header: "Status", format: (value, row) => (
+  // A time and status every cross shares are no columns; one stale or late cross brings them back.
+  { key: "asOf", header: "As of", shrink: false, omitWhenSame: true, format: (value) => typeof value === "string" ? formatUtcTime(value) : "—" },
+  { key: "stale", header: "Status", omitWhenSame: true, format: (value, row) => (
     row.rate == null ? "unavailable" : value ? "stale" : row.asOf == null ? "time unknown" : "current"
   ) },
 ];
@@ -79,7 +80,7 @@ function usdPerUnit(readings: ReadonlyMap<string, FxLegReading>, currency: strin
  * report itself is dated by the legs, so its closing line is the one the
  * pane's capture ends with.
  */
-export function projectFxCrosses(
+function projectFxCrosses(
   currencies: readonly FxCurrency[],
   readings: ReadonlyMap<string, FxLegReading>,
   options: { notices?: string[]; now?: number; amount?: FxBoardAmount | null } = {},

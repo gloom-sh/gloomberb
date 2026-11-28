@@ -12,7 +12,7 @@ const EXCHANGE_SUFFIX_MAP: Record<string, string> = {
   IDX: ".JK",
   NSE: ".NS", BSE: ".BO",
   ASX: ".AX", NZE: ".NZ",
-  SET: ".BK", BKK: ".BK", KLSE: ".KL", MYX: ".KL", PSE: ".PS", HOSE: ".VN", HNX: "",
+  SET: ".BK", BKK: ".BK", KLSE: ".KL", MYX: ".KL", PSE: ".PS", XPHS: "", HOSE: ".VN", HNX: "",
   LSE: ".L", LSEETF: ".L",
   XETRA: ".DE", XETR: ".DE", IBIS: ".DE", IBIS2: ".DE", FWB: ".F", FWB2: ".F", GETTEX: ".DE", TGATE: ".DE", SWB: ".SG",
   EURONEXT: ".AS", AEB: ".AS", AMS: ".AS", SBF: ".PA", EPA: ".PA", "ENEXT.BE": ".BR", BRU: ".BR", BVL: ".LS", LIS: ".LS",
@@ -203,6 +203,12 @@ export function listingSuffixExchange(ticker: string): string | undefined {
  */
 export function hongKongListingCode(ticker: string, exchange: string): string {
   return isHongKongExchange(exchange) && /^\d+$/.test(ticker) ? ticker.padStart(4, "0") : ticker;
+}
+
+/** Accept both short and zero-padded Hong Kong codes without dropping a significant fifth digit. */
+export function hongKongWorkingCode(ticker: string, exchange = "HKEX"): string | null {
+  if (!isHongKongExchange(exchange) || !/^\d{1,5}$/.test(ticker) || !Number(ticker)) return null;
+  return String(Number(ticker)).padStart(4, "0");
 }
 
 function normalizeListingTicker(ticker: string, exchange: string): string {

@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import {
@@ -10,8 +11,6 @@ import {
   usePaneStatusFooter,
   useQueryBarSearch,
   type DataTableCell,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
 } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { apiClient } from "../../../api-client";
@@ -22,8 +21,7 @@ import { usePaneInstance } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes } from "../../../ui";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState } from "../../runtime";
 import {
@@ -166,18 +164,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
     }));
   }, [setSort, sharedIssuer]);
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((
-    event: DataTableKeyEvent,
-    context: DataTableRootKeyContext,
-  ) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
   const renderCell = useCallback((row: CorporateBond, column: BondColumn): DataTableCell => {
     switch (column.id) {
@@ -192,7 +179,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
       case "coupon":
         return { text: formatBondDecimal(row.couponRate, 3), value: row.couponRate, color: colors.text };
       case "maturity":
-        return { text: dash(row.maturityDate), value: row.maturityDate, color: colors.textMuted };
+        return { ...dayCell(row.maturityDate), color: colors.textMuted };
       case "price":
         return { text: formatBondDecimal(row.lastSalePrice, 3), value: row.lastSalePrice, color: colors.text };
       case "yield":
@@ -205,7 +192,7 @@ export function TraceBondsPane({ focused, width, height }: PaneProps) {
           keepColorWhenSelected: row.priceChangeNumber != null && row.priceChangeNumber !== 0,
         };
       case "traded":
-        return { text: dash(row.lastTradeDate), value: row.lastTradeDate, color: colors.textMuted };
+        return { ...dayCell(row.lastTradeDate), color: colors.textMuted };
       case "grade":
         return { text: dash(row.traceGradeCode), color: colors.textDim };
     }

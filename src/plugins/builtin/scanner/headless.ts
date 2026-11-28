@@ -37,6 +37,7 @@ import { flowStrikeRows, flowTideMoves, flowTideRows, formatSignedFlowPremium } 
 import { signalWithTimeout } from "../../../utils/async-deadline";
 import { errorMessage } from "../../../utils/errors";
 import { explainRefusal, refusedLock } from "../shared/cloud-denied";
+import { enumOption } from "../shared/headless-options";
 import { captureScannerEvent, SCANNER_SNAPSHOT_TIMEOUT_MS, usScannerSessionClosed } from "../shared/scanner-capture";
 import { flowLockNote } from "./lock-note";
 import { buildHiloBarRows, filterHiloRows, formatHiloPrice, type HiloMinPrice, type HiloSort } from "./hilo-model";
@@ -75,14 +76,6 @@ function loadScannerSnapshot<T extends ScannerPayload>(
   });
 }
 
-export function loadHiloSnapshot(
-  client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
-  signal: AbortSignal,
-  timeoutMs = SCANNER_SNAPSHOT_TIMEOUT_MS,
-): Promise<ScannerHiloPayload> {
-  return loadScannerSnapshot<ScannerHiloPayload>(client, "hilo", signal, timeoutMs);
-}
-
 /**
  * A report's read of a scanner: HEADLESS_SCANNER_WAIT_MS at most, after which a starting scanner is answered as one.
  * While the market is shut (`closed`) its first answer, as no session is coming to wait for.
@@ -101,7 +94,7 @@ function loadReportSnapshot<T extends ScannerPayload>(
  * accounts get, and whether it is running: a closed session's scan is final,
  * and a degraded one may have fallen behind.
  */
-function scannerFreshness(payload: Pick<ScannerHiloPayload, "status"> & Partial<Pick<ScannerHiloPayload, "access" | "delayMinutes">>): HeadlessPaneFreshness {
+export function scannerFreshness(payload: Pick<ScannerHiloPayload, "status"> & Partial<Pick<ScannerHiloPayload, "access" | "delayMinutes">>): HeadlessPaneFreshness {
   if (payload.status === "closed") return { status: "not-a-feed", basis: "closed session" };
   if (payload.status === "degraded" || payload.status === "starting") return { status: "stale" };
   return payload.access === "realtime" ? { status: "live" } : { status: "delayed", delayMinutes: payload.delayMinutes };
@@ -162,7 +155,7 @@ function projectHiloSnapshot(
   };
 }
 
-export interface HiloHeadlessDependencies {
+interface HiloHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
@@ -176,44 +169,22 @@ const defaultDependencies: HiloHeadlessDependencies = {
   load: (_args, client, signal) => loadReportSnapshot<ScannerHiloPayload>(client, "hilo", signal),
 };
 
-export function createHiloHeadless(
+function createHiloHeadless(
   dependencies: HiloHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"snapshot"> {
   return {
     shape: "snapshot",
     argument: { kind: "none" },
     options: [
-      {
-        key: "minPrice",
-        aliases: ["min-price"],
-        settingKey: "minPrice",
-        description: "Minimum stock price.",
-        type: "enum",
-        values: [{ value: "off" }, { value: "1" }, { value: "5" }],
-        defaultValue: "1",
-      },
-      {
-        key: "sort",
-        settingKey: "sort",
-        description: "Extreme ordering.",
-        type: "enum",
-        values: [{ value: "recent" }, { value: "count" }],
-        defaultValue: "recent",
-      },
+      enumOption("minPrice", ["off", "1", "5"], { aliases: ["min-price"], settingKey: "minPrice", description: "Minimum stock price.", defaultValue: "1" }),
+      enumOption("sort", ["recent", "count"], { settingKey: "sort", description: "Extreme ordering.", defaultValue: "recent" }),
     ],
     columns: [
       { key: "side", header: "Side" },
       { key: "symbol", header: "Symbol" },
       { key: "price", header: "Price", align: "right", format: (value: unknown) => typeof value === "number" ? formatHiloPrice(value) : "" },
       { key: "count", header: "Count", align: "right" },
-      {
-        key: "at",
-        header: "Observed at",
-        format: (value: unknown) => {
-          const time = Number(value);
-          return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : MISSING_VALUE;
-        },
-      },
+      { key: "at", header: "Observed at", format: utcTime },
     ],
     describe: "New Highs / Lows",
     async load(args, ctx) {
@@ -268,12 +239,12 @@ type FlowReportTab = "prints" | "tide" | "strikes";
 const FLOW_REPORT_RECORDED = 100;
 
 /** The side rule, said once in every report that sums prints by side. */
-export const FLOW_SIDE_RULE = "Net premium counts a print at the ask as bought and one at the bid as sold; mid or unknown prints count as neither.";
+const FLOW_SIDE_RULE = "Net premium counts a print at the ask as bought and one at the bid as sold; mid or unknown prints count as neither.";
 
-const utcTime = (value: unknown) => {
+function utcTime(value: unknown): string {
   const time = Number(value);
   return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 19).replace("T", " ")} UTC` : MISSING_VALUE;
-};
+}
 const signedPremium = (value: unknown) => typeof value === "number" ? formatSignedFlowPremium(value) : "";
 /** A side's premium in the text view: `$2.1M`, blank where none traded. */
 const premium = (value: unknown) => typeof value === "number" && value > 0 ? formatFlowPremium(value) : "";
@@ -348,6 +319,8 @@ function projectFlowReport(
     sections.push({
       title: symbol ? `${symbol} prints` : "Prints",
       columns: PRINT_COLUMNS,
+      // As the pane: one ticker's prints name it in the title, not on every row; exports keep the column.
+      ...(symbol ? { textColumns: PRINT_COLUMNS.filter((column) => column.key !== "underlying") } : {}),
       rows: prints.map((event) => ({ ...event })),
       empty: payload.status === "starting" ? SCANNER_STARTING_TEXT
         : symbol ? `No ${symbol} prints under these filters.`
@@ -413,7 +386,7 @@ const flowDependencies: FlowHeadlessDependencies = {
   session: (search, client, signal) => client.getScannerFlowSession(search, signalWithTimeout(signal, 20_000)),
 };
 
-export function createFlowHeadless(
+function createFlowHeadless(
   dependencies: FlowHeadlessDependencies = flowDependencies,
 ): HeadlessPaneDefinition<"bundle"> {
   const keys: FlowHeadlessFilterKey[] = ["minPremium", "side", "kind", "volOi", "expiry"];
@@ -427,13 +400,10 @@ export function createFlowHeadless(
     },
     options: [
       ...keys.map(flowOption),
-      {
-        key: "tab",
+      enumOption("tab", ["prints", "tide", "strikes"], {
         settingKey: "tab",
         description: "One section: the prints, the net-premium tide through the session, or a ticker's strikes. Every section when left out.",
-        type: "enum",
-        values: [{ value: "prints" }, { value: "tide" }, { value: "strikes" }],
-      },
+      }),
     ],
     describe: (args) => {
       const symbol = flowScopeSymbol(Array.isArray(args.argument) ? args.argument[0] : args.argument);

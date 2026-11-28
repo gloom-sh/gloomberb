@@ -8,6 +8,7 @@ import { FRED_CATALOG_SERIES } from "../econ/fred-catalog";
 import { FRED_VINTAGE_NOTE, laggingSeriesNote } from "../../../cli/commands/fred-series";
 import { formatBasisPoints, toBasisPoints } from "../../../utils/basis-points";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
+import { formatDaysInText } from "../../../utils/day-format";
 import type { StatDef } from "./defs";
 import {
   createStatSeriesLoader,
@@ -18,6 +19,8 @@ import {
 } from "./client";
 import { cpiNextYearGap } from "../shared/cpi-year-gap";
 import { historyStartNotice } from "../shared/history-span";
+import { enumOption } from "../shared/headless-options";
+import { numCol } from "../shared/headless-columns";
 import { formatMoveRank } from "../shared/move-rank";
 import type { StatPoint } from "../shared/stat-transform";
 import { formatSigma } from "../shared/trend";
@@ -44,12 +47,14 @@ function exportUnit(stat: StatDef): string {
  */
 function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean): HeadlessPaneEntry[] {
   const format = reportFormat(view.stat);
+  // The text reads a reading's day first; JSON and CSV keep it in ISO, as they always wrote it.
+  const dayText = (line: string) => text ? formatDaysInText(line) : line;
   return [
     { label: "Latest", value: view.latest.value, formatted: format(view.latest.value) },
     {
       label: "Previous",
       value: view.previous?.value ?? null,
-      formatted: view.previous ? `${format(view.previous.value)}${text && view.previousReading ? ` (${view.previousReading})` : ""}` : MISSING_VALUE,
+      formatted: view.previous ? `${format(view.previous.value)}${text && view.previousReading ? ` (${formatDaysInText(view.previousReading)})` : ""}` : MISSING_VALUE,
       ...(view.stat.seriesId === "GDPNOW" && view.previous
         ? { period: view.latest.date, released: view.previous.date, asOf: view.previous.date }
         : earlierDating(view, view.previous)),
@@ -75,12 +80,13 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
     {
       label: "High",
       value: view.high,
-      formatted: `${format(view.high.value)} ${view.high.date}`,
+      // The text names the period as the pane does (`Jun 2022`); JSON and CSV keep the reading's ISO day.
+      formatted: `${format(view.high.value)} ${text ? view.highPeriod : view.high.date}`,
     },
     {
       label: "Low",
       value: view.low,
-      formatted: `${format(view.low.value)} ${view.low.date}`,
+      formatted: `${format(view.low.value)} ${text ? view.lowPeriod : view.low.date}`,
     },
     // A daily rate's last moves, in bp, ranked by size against every move since the series began.
     ...view.moves.map((move): HeadlessPaneEntry => ({
@@ -94,7 +100,7 @@ function detailEntries(view: StatViewModel, cutoffShown: boolean, text: boolean)
     // FRED dates a monthly reading at the month's first day; the text says which period it is.
     // A Treasury yield adds when in the day it was taken, so it is not read against ^TNX's earlier close.
     // A figure dated by its period also says when it was released: "Sep 2026, released Tue 20 Oct".
-    { label: "Period", value: view.latest.date, formatted: view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.readingReleased },
+    { label: "Period", value: view.latest.date, formatted: dayText(view.stat.cutoff && !cutoffShown ? `${view.reading} ${view.stat.cutoff}` : view.readingReleased) },
     { label: "Source", value: view.attribution.source },
   ];
 }
@@ -134,7 +140,7 @@ function exportAsOf(view: StatViewModel): string | null {
   return view.revisedOn ?? view.releasedOn ?? (view.periodicity ? null : view.latest.date);
 }
 
-export function projectStatsHeadlessBundle(
+function projectStatsHeadlessBundle(
   bundle: StatsBundle,
   range: StatRangeId,
   selectedId: string,
@@ -148,36 +154,17 @@ export function projectStatsHeadlessBundle(
     // The text table keeps the columns a terminal has room for; exports add what each figure is of.
     const columns = (text: boolean) => [
       { key: "indicator", header: "Indicator" },
-      {
-        key: "latest",
-        header: "Latest",
-        align: "right" as const,
-        format: (_value: unknown, row: Record<string, unknown>) => String(row.formattedLatest),
-      },
-      {
-        key: "previous",
-        header: "Previous",
-        align: "right" as const,
-        format: (_value: unknown, row: Record<string, unknown>) => String(row.formattedPrevious),
-      },
+      numCol("latest", "Latest", (_value, row) => String(row.formattedLatest)),
+      numCol("previous", "Previous", (_value, row) => String(row.formattedPrevious)),
       // Which period Previous is: exports carry it beside the figure, the text table has its Period column for the latest.
       ...text ? [] : [{ key: "previousPeriod", header: "Previous period" }],
       ...(!text && views.some((view) => view.stat.seriesId === "GDPNOW") ? [{ key: "previousReleased", header: "previous_released", literalHeader: true }] : []),
-      {
-        key: "percentile",
-        header: "%ile",
-        align: "right" as const,
-        format: (value: unknown) => formatNumber(Number(value), 0),
-      },
+      numCol("percentile", "%ile", (value) => formatNumber(Number(value), 0)),
       // `period` and `released` are the names every dated export gives these (`econ`, `fred`).
-      { key: "asOf", header: "period", literalHeader: true, textHeader: "Period", format: (_value: unknown, row: Record<string, unknown>) => String(row.reading) },
-      {
-        key: "releasedOn",
-        header: "released",
-        literalHeader: true,
-        textHeader: "Released",
-        format: (_value: unknown, row: Record<string, unknown>) => typeof row.released === "string" ? row.released.replace(/^released /, "") : "",
-      },
+      { key: "asOf", header: "period", literalHeader: true, textHeader: "Period",
+        format: (_value: unknown, row: Record<string, unknown>) => text ? formatDaysInText(String(row.reading)) : String(row.reading) },
+      { key: "releasedOn", header: "released", literalHeader: true, textHeader: "Released",
+        format: (_value: unknown, row: Record<string, unknown>) => typeof row.released === "string" ? row.released.replace(/^released /, "") : "" },
       ...text ? [] : [
         { key: "firstReleased", header: "first_released", literalHeader: true },
         { key: "revisedOn", header: "revised_on", literalHeader: true },
@@ -312,13 +299,7 @@ export const econStatisticsHeadless: HeadlessPaneDefinition<"bundle"> = {
     description: "Optional statistic id, name (PCE, GDP), label, FRED series id, or prefix.",
     optional: true,
   },
-  options: [{
-    key: "range",
-    description: "History window used by the selected statistic view.",
-    type: "enum",
-    values: [{ value: "5Y" }, { value: "20Y" }, { value: "ALL", aliases: ["all"] }],
-    defaultValue: "20Y",
-  }],
+  options: [enumOption("range", ["5Y", "20Y", { value: "ALL", aliases: ["all"] }], { description: "History window used by the selected statistic view.", defaultValue: "20Y" })],
   describe: (args) => `Economic Statistics | ${String(args.options.range)}`,
   async load(args, ctx) {
     const read = typeof args.argument === "string" ? readStatArg(args.argument) : null;

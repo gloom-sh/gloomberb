@@ -43,12 +43,13 @@ import {
   type BoxRenderable,
   type ScrollBoxRenderable,
 } from "../../ui";
-import { useDialog, useDialogKeyboard, type AlertContext, type PromptContext } from "../../ui/dialog";
+import { useDialog, useDialogKeyboard, type AlertContext } from "../../ui/dialog";
 import { useDialogIsTopmost } from "../../ui/dialog-context";
+import { errorMessage } from "../../utils/errors";
 import { wrapTextLines } from "../../utils/text-wrap";
 import type { PaneSettingField } from "../../types/plugin";
 import { Button } from "../ui/button";
-import { ChoiceDialog } from "../ui/choice-dialog";
+import { choiceDialog } from "../ui/choice-dialog";
 import { DialogActions } from "../ui/dialog-actions";
 import { DialogFrame } from "../ui/frame";
 import { Spinner } from "../ui/loading";
@@ -87,10 +88,6 @@ export const TERMINAL_DIALOG_INSET = 6;
  * wrapped text or the font scale.
  */
 const DESKTOP_MODAL_MAX_HEIGHT = "calc(100vh - 50px)";
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error && error.message ? error.message : t("Could not complete that action.");
-}
 
 function isCommit(event: KeyEventLike): boolean {
   return event.name === "return" || event.name === "enter";
@@ -319,22 +316,18 @@ export function FormModalContent({
       pendingRef.current = false;
       if (!mountedRef.current) {
         // Closed while it ran: the inline error has nowhere to go.
-        deps.pluginRegistry.notify({ body: errorMessage(error), type: "error" });
+        deps.pluginRegistry.notify({ body: errorMessage(error, t("Could not complete that action.")), type: "error" });
         return;
       }
       const listingPicker = buildTickerListingPicker(current, error, (fieldId) => coerceFieldString(current.values[fieldId]));
       if (listingPicker) {
         updateRoute((latest) => ({ ...latest, pending: false, error: null }));
         const fieldId = listingPicker.fieldId;
-        const choice = await dialog.prompt<string>({
-          closeOnClickOutside: true,
-          content: (context: PromptContext<string>) => (
-            <ChoiceDialog
-              {...context}
-              title={listingPicker.title}
-              choices={listingPicker.options.map((option) => ({ id: option.id, label: option.label }))}
-            />
-          ),
+        const choice = await choiceDialog(dialog, {
+          title: listingPicker.title,
+          choices: listingPicker.options.map((option) => ({ id: option.id, label: option.label })),
+          logSource: "form-modal.content",
+          logMessage: "Open listing picker failed",
         });
         // Resubmitted only once the picker is gone, so a second ambiguous
         // ticker opens its picker over the form, not over this one.
@@ -347,7 +340,7 @@ export function FormModalContent({
         void submit(next);
         return;
       }
-      updateRoute((latest) => ({ ...latest, pending: false, error: errorMessage(error) }));
+      updateRoute((latest) => ({ ...latest, pending: false, error: errorMessage(error, t("Could not complete that action.")) }));
       return;
     }
 

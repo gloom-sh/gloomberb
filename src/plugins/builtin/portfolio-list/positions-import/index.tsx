@@ -1,5 +1,5 @@
 import { createElement, useCallback, useRef, type ReactNode } from "react";
-import { TextPromptDialog } from "../../../../components";
+import { textPromptDialog } from "../../../../components/ui";
 import { ConfirmDialog } from "../../../../components/ui/confirm-dialog";
 import { t, tf } from "../../../../i18n";
 import { findNamedCollection } from "../../../../portfolio/collection-name";
@@ -117,7 +117,7 @@ export function usePositionsImport({
       initialTarget,
       baseCurrency: config.baseCurrency,
     };
-    const symbols = file.positions.map((position) => position.symbol);
+    const symbols = file.positions.map((position) => position.lookupSymbol);
     const lookUp = () => lookUpPositionSymbols(symbols, {
       tickers: stateRef.current.tickers,
       store: registry.tickerRepository,
@@ -200,21 +200,18 @@ export function usePositionsImport({
   }, [notify]);
 
   const askForPath = useCallback(async () => {
-    const path = await dialog.prompt<string>({
+    const path = await textPromptDialog(dialog, {
       size: "large",
-      content: (context) => (
-        <TextPromptDialog
-          {...context}
-          title="Import Positions"
-          body={[tf("A positions or holdings CSV from {brokers}, or any table with Symbol and Quantity columns.", {
-            brokers: POSITIONS_EXPORT_BROKERS.join(", "),
-          })]}
-          label="File"
-          placeholder="~/Downloads/Positions.csv"
-          confirmLabel="Preview"
-          footer={t("Enter preview · Esc cancel")}
-        />
-      ),
+      title: "Import Positions",
+      body: [tf("A positions or holdings CSV from {brokers}, or any table with Symbol and Quantity columns.", {
+        brokers: POSITIONS_EXPORT_BROKERS.join(", "),
+      })],
+      label: "File",
+      placeholder: "~/Downloads/Positions.csv",
+      confirmLabel: "Preview",
+      footer: t("Enter preview · Esc cancel"),
+      logSource: "portfolio-list.positions-import",
+      logMessage: "Open import positions prompt failed",
     });
     if (!path) return;
     const read = await readPositionsFilePath(path);

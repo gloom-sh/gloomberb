@@ -1,4 +1,6 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay, formatDayTime } from "../../../components/ui/day-cell";
+import { formatDaysInText } from "../../../utils/day-format";
 import type { CatalystEvent, CatalystFilters, CatalystResponse, CatalystType } from "../../../api-client/catalysts";
 import type { DataTableColumn, TableSection } from "../../../components";
 import { markHiddenTableColumns } from "../../../components/ui/table-layout";
@@ -8,7 +10,8 @@ import { humanLabel, type StateTone } from "../shared/research-cells";
 export const CATALYST_TABS = [{ value: "calendar", label: "Calendar" }, { value: "changes", label: "Changes" }] as const;
 export type CatalystTab = typeof CATALYST_TABS[number]["value"];
 export const catalystTab = (value: unknown): CatalystTab => value === "changes" ? "changes" : "calendar";
-export const catalystAgency = (value: string) => value === "ClinicalTrials.gov" ? "NIH registry" : value;
+/** The body an event is filed with or decided by, not the site that publishes it: `SSE (cninfo)` is the Shanghai exchange. */
+export const catalystAgency = (value: string) => value === "ClinicalTrials.gov" ? "NIH registry" : value.replace(/\s*\(cninfo\)$/i, "");
 export const catalystLabel = (value: string) => value === "pdufa" ? "PDUFA" : value.replaceAll("_", " ").replace(/^./, (c) => c.toUpperCase());
 export const catalystSymbol = (event: CatalystEvent): string | null => {
   const party = event.parties.find((party) => party.ticker);
@@ -62,6 +65,19 @@ function catalystListedField(event: CatalystEvent, read: CatalystDateRead): Date
   return "any";
 }
 
+/**
+ * The days the date a row is listed under covers, as the service orders the
+ * calendar by them; null for an undated or withheld row and the change feed.
+ */
+export function catalystListedSpan(event: CatalystEvent, read: CatalystDateRead = "any"): [string, string] | null {
+  const field = catalystListedField(event, read);
+  if (field === "observed" || catalystDateWithheld(event, field)) return null;
+  const key = field === "announced" || field === "effective" || field === "deadline" ? field
+    : event.deadlineDate ? "deadline" : event.effectiveDate ? "effective" : "announced";
+  const value = event[`${key}Date`];
+  return value ? dateSpan(value, event.datePrecision[key]) : null;
+}
+
 export const catalystDate = (event: CatalystEvent, read: CatalystDateRead = "any"): string => {
   const field = catalystListedField(event, read);
   if (field === "observed") return event.observedAt.slice(0, 16).replace("T", " ");
@@ -72,7 +88,17 @@ export const catalystDate = (event: CatalystEvent, read: CatalystDateRead = "any
   if (!value) return MISSING_VALUE;
   return value.slice(0, event.datePrecision[key] === "year" ? 4 : event.datePrecision[key] === "month" ? 7 : 10);
 };
-type FitColumn = DataTableColumn & { min?: number };
+/**
+ * A catalyst's date as its table and detail write it: a day first
+ * (`02 Nov 2026`), an observation with its UTC time; a month or year stays
+ * as the source dates it. `catalystDate` stays the ISO value exports keep.
+ */
+export const catalystDateText = (event: CatalystEvent, read: CatalystDateRead = "any"): string => {
+  if (catalystListedField(event, read) === "observed") return formatDayTime(event.observedAt);
+  const date = catalystDate(event, read);
+  return /^\d{4}-\d{2}-\d{2}$/.test(date) ? formatDay(date) : date;
+};
+export type FitColumn = DataTableColumn & { min?: number };
 
 /** Cells a table needs for `columns`: a gap after each, both edge paddings and the scrollbar. */
 const tableNeed = (columns: readonly FitColumn[]) => columns.reduce((sum, column) => sum + column.width + 1, 3);
@@ -80,12 +106,13 @@ const tableNeed = (columns: readonly FitColumn[]) => columns.reduce((sum, column
 /**
  * The columns that fit `width`. The wide-only columns go first, then every
  * column gives up its slack down to `min`, then the date basis and the
- * parties go; date, ticker, event and status always stay.
+ * parties go; date, ticker, event and status always stay. `keep` names a
+ * wide-only column a view reads first (a rule's agency), which stays as they do.
  */
-function fitColumns(columns: FitColumn[], width: number): DataTableColumn[] {
+export function fitCatalystColumns(columns: FitColumn[], width: number, keep: readonly string[] = []): DataTableColumn[] {
   let kept = columns;
   const drop = (id: string) => { if (tableNeed(kept) > width) kept = kept.filter((column) => column.id !== id); };
-  for (const id of ["country", "agency", "type"]) drop(id);
+  for (const id of ["country", "agency", "type", "phase"]) if (!keep.includes(id)) drop(id);
   // A long date basis gives up only the cells the table lacks before every column shrinks.
   const over = tableNeed(kept) - width;
   if (over > 0) kept = kept.map((column) => column.id === "basis" ? { ...column, width: Math.max(column.min ?? column.width, column.width - over) } : column);
@@ -99,8 +126,8 @@ export const catalystBasisWidth = (events: readonly CatalystEvent[], read: Catal
   Math.min(27, events.reduce((widest, event) => Math.max(widest, catalystDateBasis(event, read).length), 10));
 
 export function catalystColumns(width: number, changes: boolean, litigation: boolean, basisWidth = 10): DataTableColumn[] {
-  return fitColumns([
-    { id: "date", label: changes ? "Observed (UTC)" : "Date", width: changes ? 16 : 10, align: "left" },
+  return fitCatalystColumns([
+    { id: "date", label: changes ? "Observed (UTC)" : "Date", width: changes ? 17 : 11, align: "left" },
     ...(!changes ? [{ id: "basis", label: "Date basis", width: basisWidth, min: 10, align: "left" as const }] : []),
     ...(!litigation ? [{ id: "ticker", label: "Ticker", width: width < 110 ? 12 : 14, min: 10, align: "left" as const }] : []),
     // The entity the event is about, which the title alone buries.
@@ -117,7 +144,7 @@ type Party = CatalystEvent["parties"][number];
 
 /** Legal forms dropped from a party in a cell: `Vertex Pharmaceuticals Incorporated` reads `Vertex Pharmaceuticals`. */
 const LEGAL_FORM = /(?:,?\s+(?:inc|incorporated|corp|corporation|co|company|llc|l\.l\.c|ltd|limited|plc|p\.l\.c|lp|l\.p|ag|sa|s\.a|se|nv|n\.v|bv|b\.v|a\/s|as|ab|asa|oyj|spa|s\.p\.a|gmbh|kgaa|holdings?)\.?)+$/i;
-const shortPartyName = (name: string) => name.trim().replace(LEGAL_FORM, "").trim() || name.trim();
+export const shortPartyName = (name: string) => name.trim().replace(LEGAL_FORM, "").trim() || name.trim();
 
 /**
  * Federal Register titles name the filer before the action: `Self-Regulatory
@@ -132,6 +159,18 @@ function titleFiler(event: Pick<CatalystEvent, "parties" | "title">): { name: st
   if (event.parties.length > 0) return null;
   const match = SRO_TITLE.exec(event.title) ?? FILER_TITLE.exec(event.title);
   return match ? { name: match[1]!.trim(), rest: match[2]!.trim() } : null;
+}
+
+/**
+ * A title that opens with one of the row's parties (`PolyPid Ltd.: PDUFA
+ * target date for D-PLEX`) reads without it, since the parties have their
+ * own column. A title whose opening is not a party keeps it.
+ */
+function titleAfterParty(event: Pick<CatalystEvent, "parties" | "title">): string {
+  const at = event.title.indexOf(": ");
+  if (at <= 0) return event.title;
+  const lead = shortPartyName(event.title.slice(0, at)).toLowerCase();
+  return event.parties.some((party) => shortPartyName(party.name).toLowerCase() === lead) ? event.title.slice(at + 2) : event.title;
 }
 
 /** The parties a row names, the ones linked to a listing first, so the ticker beside them is the first one's. */
@@ -176,7 +215,8 @@ const TYPE_TONES: Record<CatalystType, StateTone> = {
   regulatory: "muted", rulemaking: "muted",
   results: "text", shareholder_meeting: "text", merger_vote: "text", deal_closing: "text", investor_day: "text",
 };
-export const catalystTypeTone = (type: CatalystType): StateTone => TYPE_TONES[type] ?? "text";
+/** `advisory-meeting`, as the service names an advisory committee's meeting, takes its type's tone. */
+export const catalystTypeTone = (type: CatalystType): StateTone => TYPE_TONES[type] ?? TYPE_TONES[type.split("-")[0] as CatalystType] ?? "text";
 function changeValue(value: unknown): string {
   if (value == null) return MISSING_VALUE;
   if (typeof value === "boolean") return value ? "Yes" : "No";
@@ -236,15 +276,18 @@ export function catalystSections(rows: readonly CatalystEvent[], read: CatalystD
 }
 
 /** The calendar groups by the month of the date it shows; the change feed by the day a change was observed. */
-export function catalystSection(event: CatalystEvent, read: CatalystDateRead, changes: boolean): string {
-  if (changes) return event.observedAt.slice(0, 10);
+function catalystSection(event: CatalystEvent, read: CatalystDateRead, changes: boolean): string {
+  if (changes) return formatDay(event.observedAt);
   const field = catalystListedField(event, read);
   if (catalystDateWithheld(event, field)) return CATALYST_DATE_WITHHELD;
   const date = catalystDate(event, field);
   if (date === MISSING_VALUE) return "Undated";
   return /^\d{4}-\d{2}/.test(date) ? `${MONTHS[Number(date.slice(5, 7)) - 1]} ${date.slice(0, 4)}` : date;
 }
-/** The first change in words, before and after: `Deadline 2027-03-01 → 2027-04-01`. */
+/**
+ * The first change in words, before and after, its days in ISO as exports keep
+ * them: `Deadline: 2027-03-01 → 2027-04-01`. A table draws them day first.
+ */
 function changeSummary(event: CatalystEvent): string {
   const [first, ...rest] = event.changes;
   if (!first) return "First observed";
@@ -252,13 +295,13 @@ function changeSummary(event: CatalystEvent): string {
 }
 export const catalystCell = (event: CatalystEvent, column: string, read: CatalystDateRead, changes: boolean): string => {
   switch (column) {
-    case "date": return catalystDate(event, changes ? "observed" : read);
+    case "date": return catalystDateText(event, changes ? "observed" : read);
     case "basis": return catalystDateBasis(event, read);
     case "ticker": return catalystTickers(event) || "Unlinked";
     case "parties": return catalystParties(event);
     // A filer read from the title is in the Parties column; the event is the rest.
-    case "title": return titleFiler(event)?.rest ?? event.title;
-    case "type": return catalystLabel(event.type);
+    case "title": return titleFiler(event)?.rest ?? titleAfterParty(event);
+    case "type": return catalystLabel(event.type.replaceAll("-", " "));
     case "status": return changes ? changeSummary(event) : humanLabel(catalystShownStatus(event));
     case "agency": return catalystAgency(event.agency);
     case "country": return event.country ?? event.jurisdiction;
@@ -282,12 +325,12 @@ const FILTER_KEYS = ["type", "agency", "country", "sector", "status", "source", 
  * company. Litigation also says which court dockets are not collected, since
  * an empty list there otherwise reads as a company with no cases.
  */
-export function catalystEmptyTitle(data: Pick<CatalystResponse, "coverage"> | null | undefined, query: CatalystFilters, changes: boolean): string {
+export function catalystEmptyTitle(data: Pick<CatalystResponse, "coverage"> | null | undefined, query: CatalystFilters, changes: boolean, noun = "events"): string {
   if (data?.coverage.totalEvents === 0) return "Catalyst history is collecting.";
   if (changes) return "No observed status or date changes match.";
   const filtered = FILTER_KEYS.some((key) => !!query[key]) || (query.dateField ?? "any") !== "any";
   if (filtered || !query.symbol) return "No events match these filters.";
-  if (!query.litigation) return `No events linked to ${query.symbol} yet.`;
+  if (!query.litigation) return `No ${noun} linked to ${query.symbol} yet.`;
   const courts = [...new Set(data?.coverage.sources.filter((source) => !source.enabled && /court/i.test(source.agency)).map((source) => `${source.jurisdiction} court dockets`) ?? [])];
   return `No cases linked to ${query.symbol}.${courts.length ? ` ${courts.join(" and ")} are not collected yet, so only agency and regulator actions show.` : ""}`;
 }
@@ -322,7 +365,7 @@ export function catalystFacts(event: CatalystEvent): Array<{ label: string; valu
     if (typeof metadata.enrollment === "number" && Number.isFinite(metadata.enrollment)) add("Enrollment", `${metadata.enrollment.toLocaleString("en-US")} participants${typeof metadata.enrollmentType === "string" ? ` · ${metadata.enrollmentType.toLowerCase()}` : ""}`);
     const completion = metadata.primaryCompletion;
     if (completion && typeof completion === "object") add("Completion basis", "type" in completion ? String(completion.type).toLowerCase() : "");
-    if (typeof metadata.hasResults === "boolean") add("Results", metadata.hasResults ? `Posted${date(metadata.resultsPosted) ? ` ${date(metadata.resultsPosted)}` : ""}` : "Not posted");
+    if (typeof metadata.hasResults === "boolean") add("Results", metadata.hasResults ? `Posted${date(metadata.resultsPosted) ? ` ${formatDaysInText(date(metadata.resultsPosted))}` : ""}` : "Not posted");
     if (Array.isArray(metadata.conditions)) add("Conditions", metadata.conditions.filter((value) => typeof value === "string").join(", "));
     if (Array.isArray(metadata.countries)) add("Study countries", metadata.countries.filter((value) => typeof value === "string").join(", "));
   }
@@ -332,7 +375,7 @@ export function catalystFacts(event: CatalystEvent): Array<{ label: string; valu
   // A company says the same date again in later filings; the row is its latest.
   if (event.restatedTimes && event.restatedTimes > 0) add("Restated", `${event.restatedTimes} ${event.restatedTimes === 1 ? "time" : "times"} in other filings; this is the latest`);
   // A later filing moved the date: the event stays, out of the calendar, and says where to.
-  if (event.supersededBy) add("Moved to", `${event.supersededBy.date} by a filing of ${event.supersededBy.announcedDate}`);
+  if (event.supersededBy) add("Moved to", formatDaysInText(`${event.supersededBy.date} by a filing of ${event.supersededBy.announcedDate}`));
   return facts;
 }
 

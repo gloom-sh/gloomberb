@@ -1,5 +1,7 @@
 import { apiClient } from "../../../api-client";
 import type { IpoDeal } from "../../../api-client/ipo";
+import { getRegularSessionDisplay, headlineCloseDate, quoteHeadlineTime } from "../../../market-data/market/status";
+import type { Quote } from "../../../types/financials";
 import type { HeadlessPaneApiClient } from "../../../types/plugin";
 import { canonicalExchange } from "../../../utils/exchanges";
 import { fetchIpoCalendar } from "./client";
@@ -57,7 +59,7 @@ function shiftDays(day: string, days: number): string {
  * listing older than that, one the calendar does not have, or one whose
  * symbol two deals on its exchange share.
  */
-export async function loadListingIpo(
+async function loadListingIpo(
   client: Pick<HeadlessPaneApiClient, "getCloudIpoCalendar">,
   listing: { symbol: string; exchange?: string | null },
   { signal, now = new Date() }: { signal?: AbortSignal; now?: Date } = {},
@@ -104,14 +106,39 @@ export function ipoDetailNotes(deal: IpoDeal, news: readonly IpoLockupStory[]): 
   ];
 }
 
+/** A listing's price as `quote` heads it, and when it is from. */
+export interface IpoPriceNow {
+  price: number;
+  /** "at the 2026-11-24 close" once the regular session is over, "as of 2026-11-25 15:02 UTC" while it trades; null reads "now". */
+  at: string | null;
+}
+
+/**
+ * The price `quote` and DES head a listing with: the regular session's, so an
+ * after-hours or pre-market print never stands in for it, dated by the close
+ * it is, else when `quote` dates it (quoteHeadlineTime): a closed market's
+ * price stamped after its venue closed is from that close, not from the
+ * stamp. Null without a price.
+ */
+export function ipoPriceNow(quote: Quote | null | undefined): IpoPriceNow | null {
+  const price = getRegularSessionDisplay(quote)?.price;
+  if (!quote || price == null || !Number.isFinite(price) || price <= 0) return null;
+  const close = headlineCloseDate(quote);
+  if (close) return { price, at: `at the ${close} close` };
+  const observed = quoteHeadlineTime(quote);
+  const time = Number.isFinite(observed) && observed > 0 ? new Date(observed).toISOString() : null;
+  return { price, at: time ? `as of ${time.slice(0, 10)} ${time.slice(11, 16)} UTC` : null };
+}
+
 /**
  * A deal's IPO in sentences, for a report's notes:
- * - "HAWK listed 2026-05-07 on NYSE at a $26 offer price; $42.30 now, +62.7% since the IPO."
+ * - "HAWK listed 2026-05-07 on NYSE at a $26 offer price; $16.62 at the 2026-11-24 close, -36.1% since the IPO."
  * - "GYGY listed 2026-07-30 on Nasdaq: direct listing, no offer price; $30.10 now, +33.8% since the first trade at $22.50."
  * - "HAWK lockup ends ~2026-11-02 (estimate): 180 days from the prospectus dated 2026-05-06; underwriters can release shares early."
  * - "Lock-up news 2026-08-31: HawkEye 360 Confirms Early Lock-up Release for September 2nd (PR Newswire)"
  */
-export function ipoDetailSentences(deal: IpoDeal, price: number | null | undefined, news: readonly IpoLockupStory[], now = new Date()): string[] {
+export function ipoDetailSentences(deal: IpoDeal, quoted: IpoPriceNow | null | undefined, news: readonly IpoLockupStory[], now = new Date()): string[] {
+  const price = quoted?.price ?? null;
   const name = deal.symbol ?? deal.company;
   const day = deal.listingDate ?? deal.firstDay?.session ?? null;
   const listed = deal.status === "listed" ? "listed"
@@ -119,12 +146,12 @@ export function ipoDetailSentences(deal: IpoDeal, price: number | null | undefin
   const where = `${day ? ` ${day}` : ""}${deal.venue ? ` on ${deal.venue}` : ""}`;
   const offer = deal.offerPrice != null ? ` at a ${formatIpoAmount(deal, deal.offerPrice)} offer price`
     : deal.listingType === "direct" ? `: ${formatIpoPrice(deal, { full: true })}` : "";
-  // The table's Return is the first day's; the sentence says which is which.
+  // The table's Day 1 is the first day's return; the sentence says which is which.
   const firstDay = deal.firstDay?.returnPct != null && deal.offerPrice != null
     ? `, ${formatIpoReturn(deal.firstDay.returnPct)} on the first day`
     : deal.opening?.returnPct != null ? `, opened at ${formatIpoAmount(deal, deal.opening.price)} (${formatIpoReturn(deal.opening.returnPct)} from the offer)` : "";
   const since = ipoReturnSince(deal, price);
-  const priceNow = since ? `; ${formatIpoAmount(deal, price!)} now, ${formatIpoReturn(since.returnPct)} since ${
+  const priceNow = since ? `; ${formatIpoAmount(deal, price!)} ${quoted?.at ?? "now"}, ${formatIpoReturn(since.returnPct)} since ${
     since.basis === "offer" ? "the IPO" : `the first trade at ${formatIpoAmount(deal, since.from)}`}` : "";
   const lockup = ipoLockupText(deal, now);
   const basis = ipoLockupBasis(deal);

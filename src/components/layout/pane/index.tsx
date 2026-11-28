@@ -3,22 +3,15 @@ import type { ReactNode } from "react";
 import { paneBg } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import { PaneBodyFrame, getPaneWindowAttributes, type DockEdge } from "./frame";
-import { PaneHeader, paneHeaderHoldsOneStrip, type PaneHeaderQuickSetting, type PaneHeaderStack } from "./header";
+import { PaneHeader, paneHeaderHoldsOneStrip, type PaneHeaderChromeProps } from "./header";
 import { PaneHeaderTabsProvider, usePaneHeaderTabsHost } from "./header-tabs";
 import { hasPaneFooterContent, PaneFooterBar, type CombinedPaneFooter } from "./footer";
 import { paneHeaderRows, resolvePaneBodyFrame, shouldReservePaneFooter } from "./sizing";
 
-interface PaneWrapperProps {
+interface PaneWrapperProps extends PaneHeaderChromeProps {
   paneId?: string;
   title?: string;
-  /**
-   * Desktop and web: the ticker the title shows, drawn as a control that opens ticker search for
-   * the pane (`onTitleTickerPress`).
-   */
-  titleTicker?: string | null;
-  onTitleTickerPress?: () => void;
   focused: boolean;
-  windowModeSelected?: boolean;
   width?: number;
   height?: number | `${number}%` | "auto";
   /**
@@ -28,28 +21,12 @@ interface PaneWrapperProps {
    */
   stretch?: boolean;
   flexGrow?: number;
-  locked?: boolean;
-  showActions?: boolean;
-  quickSettings?: PaneHeaderQuickSetting[];
   /** A dock divider line is drawn over the top row (the pane is below another). */
   topRule?: boolean;
   /** Desktop: the sides that face another docked pane across the gap between them. */
   dockEdges?: readonly DockEdge[];
-  /** Panes stacked as tabs in this spot. */
-  stack?: PaneHeaderStack | null;
   onMouseDown?: (event: any) => void;
   onMouseDownCapture?: (event: any) => void;
-  onHeaderMouseMove?: (event: any) => void;
-  onHeaderMouseDown?: (event: any) => void;
-  onHeaderMouseDrag?: (event: any) => void;
-  onHeaderMouseDragEnd?: (event: any) => void;
-  onHeaderContextMenu?: (event: any) => void;
-  onActionMouseDown?: (event: any) => void;
-  onHelpMouseDown?: (event: any) => void;
-  /** Ask Gloom about the pane, from the button beside the `?`. */
-  onAskMouseDown?: (event: any) => void;
-  onRestoreMouseDown?: (event: any) => void;
-  fullscreen?: boolean;
   footer?: CombinedPaneFooter | null;
   children: ReactNode;
 }
@@ -57,34 +34,20 @@ interface PaneWrapperProps {
 export function PaneWrapper({
   paneId,
   title,
-  titleTicker = null,
-  onTitleTickerPress,
   focused,
   windowModeSelected = false,
   width = 0,
   height,
   stretch = false,
   flexGrow,
-  locked = false,
-  showActions = false,
-  quickSettings,
   topRule = false,
   dockEdges,
   stack,
   onMouseDown,
   onMouseDownCapture,
-  onHeaderMouseMove,
-  onHeaderMouseDown,
-  onHeaderMouseDrag,
-  onHeaderMouseDragEnd,
-  onHeaderContextMenu,
-  onActionMouseDown,
-  onHelpMouseDown,
-  onAskMouseDown,
-  onRestoreMouseDown,
-  fullscreen = false,
   footer,
   children,
+  ...headerProps
 }: PaneWrapperProps) {
   const { nativePaneChrome } = useUiCapabilities();
   // A header too narrow for its stack's tabs and the pane's own strip keeps
@@ -130,29 +93,15 @@ export function PaneWrapper({
     >
       {title && (
         <PaneHeader
+          {...headerProps}
           title={title}
-          titleTicker={titleTicker}
-          onTitleTickerPress={onTitleTickerPress}
           width={width}
           focused={focused}
           windowModeSelected={windowModeSelected}
-          locked={locked}
-          showActions={showActions}
-          quickSettings={quickSettings}
           tabs={headerTabs}
           stack={stack}
           bodyBackground={bg}
           topRule={topRule}
-          onHeaderMouseMove={onHeaderMouseMove}
-          onHeaderMouseDown={onHeaderMouseDown}
-          onHeaderMouseDrag={onHeaderMouseDrag}
-          onHeaderMouseDragEnd={onHeaderMouseDragEnd}
-          onHeaderContextMenu={onHeaderContextMenu}
-          onActionMouseDown={onActionMouseDown}
-          onHelpMouseDown={onHelpMouseDown}
-          onAskMouseDown={onAskMouseDown}
-          fullscreen={fullscreen}
-          onRestoreMouseDown={onRestoreMouseDown}
         />
       )}
       <PaneBodyFrame layoutProps={bodyFrame.layoutProps} backgroundColor={bg}>

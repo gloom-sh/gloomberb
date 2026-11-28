@@ -1,9 +1,8 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useMemo, type ReactNode } from "react";
 import { listingIdentity, useIssuerListing } from "../shared/ticker-request";
 import { Box, ScrollBox, useUiCapabilities } from "../../../ui";
 import {
-  useAsyncResource,
-  useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
   useUpdatedAgo,
@@ -38,7 +37,7 @@ import { formatCompactAxis } from "../../../components/chart-table";
 import { staticSeries } from "../../../components/chart/static/series";
 import type { PaneProps } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { SignInWall } from "../cloud/auth-actions";
 import {
   isCloudSessionRequired,
@@ -155,7 +154,7 @@ function FactDetail({
       <KeyValueRow
         labelWidth={20}
         label="Filed"
-        value={fact.filed}
+        value={formatDay(fact.filed)}
         detail={fact.form}
       />
       <KeyValueRow labelWidth={20} label="Accession" value={fact.accession} />
@@ -192,12 +191,12 @@ function BandDetail({
         labelWidth={20}
         label={debtBasis(latest).amount}
         value={`${band.value.toLocaleString("en-US")} ${latest.currency}`}
-        detail={latest.asOf}
+        detail={formatDay(latest.asOf)}
       />
       <KeyValueRow
         labelWidth={20}
         label="Filed"
-        value={latest.filed}
+        value={formatDay(latest.filed)}
         detail={latest.form}
       />
       <KeyValueRow labelWidth={20} label="Accession" value={latest.accession} />
@@ -234,13 +233,13 @@ function BandFilingDetail({
       <KeyValueRow
         labelWidth={20}
         label="As of"
-        value={latest.asOf}
+        value={formatDay(latest.asOf)}
         detail={latest.currency}
       />
       <KeyValueRow
         labelWidth={20}
         label="Filed"
-        value={latest.filed}
+        value={formatDay(latest.filed)}
         detail={latest.form}
       />
       <KeyValueRow labelWidth={20} label="Accession" value={latest.accession} />
@@ -282,7 +281,7 @@ function BandFilingDetail({
         <KeyValueRow
           labelWidth={20}
           label="Expense period"
-          value={`${expense.start} to ${expense.end}`}
+          value={`${formatDay(expense.start)} to ${formatDay(expense.end)}`}
         />
       ) : null}
     </DetailScroll>
@@ -311,13 +310,13 @@ function FilingDetail({
       <KeyValueRow
         labelWidth={20}
         label="As of"
-        value={latest.asOf}
+        value={formatDay(latest.asOf)}
         detail={latest.currency}
       />
       <KeyValueRow
         labelWidth={20}
         label="Filed"
-        value={latest.filed}
+        value={formatDay(latest.filed)}
         detail={latest.form}
       />
       <KeyValueRow labelWidth={20} label="Accession" value={latest.accession} />
@@ -332,7 +331,7 @@ function FilingDetail({
         <KeyValueRow
           labelWidth={20}
           label="Expense period"
-          value={`${expense.start} to ${expense.end}`}
+          value={`${formatDay(expense.start)} to ${formatDay(expense.end)}`}
         />
       ) : null}
       {cost ? (
@@ -357,27 +356,27 @@ function FilingDetail({
         <KeyValueRow
           labelWidth={20}
           label="Cost period"
-          value={`${evidence.periodStart} to ${evidence.periodEnd}`}
+          value={`${formatDay(evidence.periodStart)} to ${formatDay(evidence.periodEnd)}`}
         />
       ) : null}
       <KeyValueRow
         labelWidth={20}
         label="Rank window"
-        value={`${latest.totalPrincipal.percentile.windowStart} to ${latest.asOf}`}
+        value={`${formatDay(latest.totalPrincipal.percentile.windowStart)} to ${formatDay(latest.asOf)}`}
       />
       <KeyValueRow
         labelWidth={20}
         label="Comparable filings"
         value={String(latest.totalPrincipal.percentile.sampleCount)}
-        detail={`${latest.totalPrincipal.percentile.historyStart ?? MISSING_VALUE} to ${latest.totalPrincipal.percentile.historyEnd ?? MISSING_VALUE}`}
+        detail={`${formatDay(latest.totalPrincipal.percentile.historyStart ?? MISSING_VALUE)} to ${formatDay(latest.totalPrincipal.percentile.historyEnd ?? MISSING_VALUE)}`}
       />
       {quarter ? (
         <>
           <KeyValueRow
             labelWidth={20}
             label="Latest 10-Q"
-            value={quarter.asOf}
-            detail={`filed ${quarter.filed}`}
+            value={formatDay(quarter.asOf)}
+            detail={`filed ${formatDay(quarter.filed)}`}
           />
           <KeyValueRow labelWidth={20} label="10-Q accession" value={quarter.accession} />
           <QuarterFactRow label="Current debt" fact={quarter.current} />
@@ -411,7 +410,7 @@ function HistoryDetail({
             : "Partial principal schedule"
         }
       />
-      <KeyValueRow labelWidth={20} label="Filed" value={point.filed} />
+      <KeyValueRow labelWidth={20} label="Filed" value={formatDay(point.filed)} />
       <KeyValueRow labelWidth={20} label="Accession" value={point.accession} />
       <KeyValueRow
         labelWidth={20}
@@ -455,7 +454,8 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     (force: boolean) => loadDebtMaturities(symbol!, listing, force),
     [symbol, listing, session.requestKey],
   );
-  const resource = useAsyncResource(symbol ? loader : null, {
+  const resource = usePaneResource(symbol ? loader : null, {
+    focused,
     initialData: () => (symbol ? cachedDebtMaturities(symbol, listing) : null),
     clearOnError: isAccessDenied,
   });
@@ -580,25 +580,25 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
         { id: "total", label: debtBasis(latest).total, value: `${debtAmount(bandTotal(bands))} ${latest.currency}`,
           detail: debtStandard(latest.taxonomy) ?? undefined },
         ...shares,
-        { id: "as-of", label: "As of", value: latest.asOf },
+        { id: "as-of", label: "As of", value: formatDay(latest.asOf) },
       ];
     }
     const metric = (id: string, label: string, value: DebtMetric): StatItem => ({
       id, label, value: debtMetricValue(value),
-      detail: `${formatPercentileRank(value.percentile.value, "10Y")}${value.asOf === latest.asOf ? "" : ` · ${value.asOf}`}`,
+      detail: `${formatPercentileRank(value.percentile.value, "10Y")}${value.asOf === latest.asOf ? "" : ` · ${formatDay(value.asOf)}`}`,
     });
     return [
       metric("principal", "Principal total", latest.totalPrincipal),
       metric("next12", "Due next 12 months", latest.next12MonthsShare),
       metric("next3", "Due next 3 years", latest.next3YearsShare),
-      { id: "as-of", label: "As of", value: latest.asOf },
+      { id: "as-of", label: "As of", value: formatDay(latest.asOf) },
       // A 10-Q filed since: its own row, named by its period, so it never reads
       // as the schedule's. The filed date goes beside the figures where it fits
       // and gives way to them where it does not: the footer says it
       // ("10-Q 2026-09-30, filed 2026-10-27").
       ...(quarter ? [{
-        id: "latest-10q", label: `10-Q ${quarter.asOf}`, value: quarterDebtText(quarter),
-        detail: `filed ${quarter.filed}`, detailVariants: [""], wide: true,
+        id: "latest-10q", label: `10-Q ${formatDay(quarter.asOf)}`, value: quarterDebtText(quarter),
+        detail: `filed ${formatDay(quarter.filed)}`, detailVariants: [""], wide: true,
       }] : []),
     ];
   }, [latest, bands, quarter]);
@@ -615,8 +615,6 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
     reportFooterSegment(debtMaturitiesHeadless, { sections: [], freshness: debtReportFreshness(data) }),
     ...(updatedAgo ? [ageFooterSegment(updatedAgo)] : []),
   ] : [], [data, updatedAgo, utcDay]);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "debt-maturities:notices",
     focused,
@@ -676,10 +674,11 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
   ): DataTableCell => ({
     text:
       column.id === "asOf" || column.id === "filed"
-        ? row[column.id]
+        ? formatDay(row[column.id])
         : column.id === "next12MonthsShare" || column.id === "next3YearsShare"
           ? debtPercent(row[column.id])
           : debtAmount(row[column.id]),
+    ...(column.id === "asOf" || column.id === "filed" ? { value: row[column.id] } : {}),
     color: state.selected
       ? colors.selectedText
       : row[column.id] === null
@@ -841,7 +840,7 @@ export function DebtMaturitiesPane({ width, height, focused }: PaneProps) {
                 onActivate={(row) => setOpenHistory(historyKey(row))}
                 detailOpen={!!openHistoryRow}
                 onBack={() => setOpenHistory(null)}
-                detailTitle={openHistoryRow?.asOf}
+                detailTitle={openHistoryRow ? formatDay(openHistoryRow.asOf) : undefined}
                 detailContent={
                   openHistoryRow ? (
                     <HistoryDetail

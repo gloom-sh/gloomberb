@@ -12,8 +12,8 @@ import {
 } from "./pane";
 
 export const revenueBreakdownModule: PluginModule = {
+  caches: [revenueBreakdownCache],
   setup(ctx) {
-    revenueBreakdownCache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({
       id: "revenue",
       name: "Revenue",
@@ -22,10 +22,6 @@ export const revenueBreakdownModule: PluginModule = {
       instruments: ["equity"],
       isVisible: ({ ticker }) => reportedRevenueVenue(canonicalExchange(ticker?.metadata.exchange)) || !isKnownNonUsListing(ticker),
     });
-  },
-
-  dispose() {
-    revenueBreakdownCache.reset();
   },
 
   panes: [

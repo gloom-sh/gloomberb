@@ -17,6 +17,7 @@ import {
   type DisplayNumber,
 } from "../utils/display-number";
 import { isEpochMilliseconds, parseReportTime } from "../utils/utc-time";
+import { dayFromText, isoFromDayText } from "../utils/day-format";
 import type { ReportFreshness } from "./pane-functions/freshness";
 import {
   EXPORT_DATING_COLUMNS,
@@ -45,6 +46,8 @@ export interface CliReportTable {
   identity?: ExportIdentity;
   /** What each row is of where it differs from the table's: a table of metrics whose rows have different units. */
   rowIdentities?: readonly (ExportIdentity | undefined)[];
+  /** Extra CSV export notes, in row order. */
+  rowNotes?: readonly (string | undefined)[];
   /**
    * How many of the last `columns` the export gained after its fixed columns
    * were set (a chart leg's contract, FUT's group): they follow the fixed
@@ -250,8 +253,10 @@ function atColumnScale(cells: Cell[]): Cell[] {
 
 function timeCell(instant: number, dateOnly: boolean, shown: string | null, raw?: string): Cell {
   if (!Number.isFinite(instant)) return shown ? { kind: "textual", text: shown } : BLANK;
-  // A date the text drew from an instant (a monthly bar) stays the date it shows.
+  // A date the text drew from an instant (a monthly bar) stays the date it shows, day first as tables write it too.
   if (shown != null && DATE_ONLY.test(shown)) return time(shown);
+  const day = shown == null ? null : dayFromText(shown);
+  if (day) return time(day);
   if (raw != null && shown == null) return time(raw);
   return time(dateOnly ? new Date(instant).toISOString().slice(0, 10) : isoInstant(instant));
 }
@@ -620,15 +625,20 @@ export function exportEntriesTable(title: string, entries: readonly CliReportEnt
 export function exportTextTable(
   title: string,
   headers: readonly string[],
-  rows: ReadonlyArray<ReadonlyArray<{ text: string; instant?: string; value?: number } | undefined>>,
+  rows: ReadonlyArray<ReadonlyArray<{ text: string; instant?: string; value?: number | null; unit?: string } | undefined>>,
 ): CliReportTable {
   return assembleTable(title, headers.map((header, index) => resolveColumn(
     header,
     rows.map((row) => {
       const cell = row[index];
       if (!cell) return BLANK;
+      if (cell.unit) return cell.value == null ? { kind: "blank", unit: cell.unit }
+        : { kind: "number", value: exportNumber(cell.value), unit: cell.unit };
       // The number behind a figure drawn short (a volume of 1.18M) exports as the source gave it.
       if (cell.instant) return exportCell(cell.instant, null);
+      // A day the pane draws first (`25 Nov 2026`) exports as its ISO day, as the pane's own Export CSV writes it.
+      const day = isoFromDayText(cell.text);
+      if (day) return exportCell(null, day);
       return exportCell(cell.value != null && COMPACT_FIGURE.test(cell.text.trim()) ? cell.value : null, cell.text);
     }),
     true,

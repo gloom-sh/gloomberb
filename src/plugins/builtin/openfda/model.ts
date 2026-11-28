@@ -18,7 +18,7 @@ const clamp = (value: number, min: number, max: number): number => Math.max(min,
 export function recordColumns(dataset: OpenFdaDataset, width: number): RecordColumn[] {
   const wide = width >= 76;
   const roomy = width >= 110;
-  const date: RecordColumn = { id: "date", label: dataset === "recall" ? "Initiated" : "Received", width: 10, align: "left" };
+  const date: RecordColumn = { id: "date", label: dataset === "recall" ? "Initiated" : "Received", width: 11, align: "left" };
   if (dataset === "drug") {
     return [
       date,

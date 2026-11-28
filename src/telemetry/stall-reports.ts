@@ -1,5 +1,6 @@
 import { logFailure } from "../utils/log-failure";
 import type { StallEvent } from "../utils/main-thread-stall";
+import { formatProcessActivity, formatProcessActivitySummary, type ProcessActivityDelta } from "../utils/stall-process-activity";
 import { VERSION } from "../version";
 import { reportCrash } from "./crash-reports";
 
@@ -82,6 +83,7 @@ export interface StallReport {
   cpuPercent?: number;
   /** Where the platform says: the CPU the process's other threads used meanwhile, in percent of one core, by tens. */
   otherCpuPercent?: number;
+  processActivity?: ProcessActivityDelta;
 }
 
 type StallBucket = "1-2s" | "2-5s" | "5-15s" | "15s+";
@@ -268,6 +270,7 @@ function formatStallLogLine(process: StallProcess, event: StallEvent, context: S
     ...(context.attention ? [`fg=${flag(context.attention.active)}`, `vis=${flag(context.attention.visible)}`] : []),
     ...(context.cpuPercent === undefined ? [] : [`cpu=${context.cpuPercent}`]),
     ...(context.otherCpuPercent === undefined ? [] : [`oth=${context.otherCpuPercent}`]),
+    ...(event.processActivity ? formatProcessActivity(event.processActivity) : []),
   ].join(" ");
   return `${time}  ${process.padEnd(8)}  froze ${formatSeconds(event.blockedMs).padStart(6)}  ${last}${sqlite}  [${facts}]`;
 }
@@ -289,20 +292,25 @@ function reportArch(arch: string): StallReport["arch"] {
  * One that would not fit is left out.
  */
 export function formatStallReportDetails(report: StallReport): string {
+  const activity = report.processActivity;
+  const deferSummaries = activity !== undefined || report.lockWait !== undefined || report.attempts !== undefined;
   const fields = [
     `process=${report.process}`,
-    `count=${report.count}`,
+    ...(!deferSummaries ? [`count=${report.count}`] : []),
     `longest=${report.longestMs}ms`,
     `phase=${report.phase}`,
     `up=${report.uptime}`,
     `gap=${report.gap}`,
-    ...(report.heldPercent === undefined ? [] : [`held=${report.heldPercent}`]),
+    ...(!deferSummaries && report.heldPercent !== undefined ? [`held=${report.heldPercent}`] : []),
     ...(report.active === undefined ? [] : [`fg=${flag(report.active)}`]),
     ...(report.visible === undefined ? [] : [`vis=${flag(report.visible)}`]),
     ...(report.cpuPercent === undefined ? [] : [`cpu=${report.cpuPercent}`]),
-    ...(report.otherCpuPercent === undefined ? [] : [`oth=${report.otherCpuPercent}`]),
     ...(report.lockWait === undefined ? [] : [`lock=${flag(report.lockWait)}`]),
     ...(report.attempts === undefined ? [] : [`try=${report.attempts}`]),
+    ...(activity ? formatProcessActivitySummary(activity) : []),
+    ...(deferSummaries ? [`count=${report.count}`] : []),
+    ...(deferSummaries && report.heldPercent !== undefined ? [`held=${report.heldPercent}`] : []),
+    ...(report.otherCpuPercent === undefined ? [] : [`oth=${report.otherCpuPercent}`]),
     `day=${report.day}`,
     `platform=${report.platform}-${report.arch}`,
   ];
@@ -403,6 +411,7 @@ export function recordStall(process: StallProcess, event: StallEvent): void {
         ...(context.attention ? { active: context.attention.active, visible: context.attention.visible } : {}),
         ...(context.cpuPercent === undefined ? {} : { cpuPercent: context.cpuPercent }),
         ...(context.otherCpuPercent === undefined ? {} : { otherCpuPercent: context.otherCpuPercent }),
+        ...(event.processActivity ? { processActivity: event.processActivity } : {}),
         ...(event.sqlite && section.startsWith("sqlite.blocked")
           ? { attempts: Math.max(1, Math.min(99, Math.round(event.sqlite.attempts))), lockWait: event.sqlite.lockWait }
           : {}),

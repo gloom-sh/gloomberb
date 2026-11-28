@@ -54,7 +54,7 @@ const SESSION_EXPIRY_GRACE_MS = 5_000;
  * A confirmation prompt closes this long before the server stops waiting for
  * its call, so an approval still leaves time for the write and its result.
  */
-export const CONFIRMATION_CLOSE_MARGIN_MS = 2_000;
+const CONFIRMATION_CLOSE_MARGIN_MS = 2_000;
 
 /**
  * How a confirmation prompt ended. `expired` is this app's own deadline for

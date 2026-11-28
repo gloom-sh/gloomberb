@@ -44,11 +44,13 @@ function asksToVerifyEmail(visibleText: string): boolean {
  * A pane behind the sign-in wall, as a report reads it: the wall's headline
  * without its buttons, and what it needs in place of them.
  */
-function signInWallText(visibleText: string): string {
+function signInWallText(visibleText: string, signInGate: "verify-email" | "pro" | "free" | undefined): string {
   const headline = visibleText.replace(SIGN_IN_WALL_BUTTONS, "").trim();
-  const needs = asksToVerifyEmail(visibleText)
+  const needs = signInGate === "verify-email" || (signInGate == null && asksToVerifyEmail(visibleText))
     ? "Requires a verified email on your Gloom account: open the app (gloom) and resend the verification email from the command bar (Ctrl+P, Resend Verification Email)."
-    : "Requires a free Gloom sign-in: open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.";
+    : signInGate === "pro" || (signInGate == null && /\bGloom Cloud Pro:\s*Sign in\b/i.test(headline))
+      ? "Sign in from the command bar (Ctrl+P, Log In or Sign Up), then upgrade if your account does not have Gloom Cloud Pro."
+      : "Requires a free Gloom sign-in: open the app (gloom) and log in or sign up free from the command bar (Ctrl+P, Log In or Sign Up); this command then reads with that session.";
   return headline ? `${headline} ${needs}` : needs;
 }
 
@@ -280,7 +282,7 @@ function reportRows(result: PaneScreenshotResult): DesktopPaneShotRenderedRow[] 
   }];
 }
 
-export async function buildDomPaneReportFromRender(
+async function buildDomPaneReportFromRender(
   resolved: ResolvedPaneFunction,
   result: PaneScreenshotResult,
   /** Reads data for the lock note, which names a free route only when it has data for the symbol. */
@@ -320,7 +322,8 @@ export async function buildDomPaneReportFromRender(
       gate,
       symbol: result.symbols[0] ?? null,
       token: resolved.token,
-      ...gate === "sign-in" && asksToVerifyEmail(result.render.visibleText ?? "") ? { verifyEmail: true } : {},
+      ...gate === "sign-in" && (result.render.signInGate === "verify-email"
+        || (result.render.signInGate == null && asksToVerifyEmail(result.render.visibleText ?? ""))) ? { verifyEmail: true } : {},
       ...context ? { context } : {},
     }) ?? null
     : null;
@@ -334,7 +337,7 @@ export async function buildDomPaneReportFromRender(
     // A pane with nothing but its empty state says that, not its filters' labels (`No trials match ZZQX.`).
     textLines.push(...result.render.emptyStateText.flatMap((line) => wrapText(line, Math.min(cliTerminalWidth() ?? 100, 100))));
   } else if (result.render.visibleText) {
-    textLines.push(...(gate === "sign-in" ? [signInWallText(result.render.visibleText)] : proseLines(result.render, resolved.label)));
+    textLines.push(...(gate === "sign-in" ? [signInWallText(result.render.visibleText, result.render.signInGate)] : proseLines(result.render, resolved.label)));
   } else {
     textLines.push(failureReason ?? "No rendered values were available.");
   }
@@ -430,6 +433,42 @@ export function domReportNote(view: DomReportView): string {
     : `Rendered view: values come from the visible pane. ${view === "clipped" ? "The rendered view is clipped." : "The rendered view may be clipped."}`;
 }
 
+function emptyDomReport(
+  resolved: ResolvedPaneFunction,
+  { symbols, unavailableSymbols, reason, textLines, freshness, locked }: {
+    symbols: string[];
+    unavailableSymbols: string[];
+    reason: string;
+    textLines: string[];
+    freshness?: ReportFreshness;
+    locked?: "pro" | "sign-in";
+  },
+): PaneFunctionReport {
+  return {
+    data: {
+      kind: "rendered-view",
+      target: resolved.token,
+      capabilityId: resolved.capability.id,
+      symbols,
+      options: resolved.options,
+      rowCount: 0,
+      empty: true,
+      complete: false,
+      unavailableSymbols,
+      rows: [],
+      visibleText: "",
+      truncated: false,
+      truncationReasons: [],
+      limitation: DOM_LIMITATION,
+      reason,
+      ...(freshness ? { freshness } : {}),
+      ...(locked ? { locked } : {}),
+    },
+    text: [resolved.label, "", ...textLines].join("\n").trimEnd(),
+    tables: { tables: [], footer: reportFooterLines({ ...(freshness ? { freshness } : {}), incomplete: reason }) },
+  };
+}
+
 function failedDomReport(
   resolved: ResolvedPaneFunction,
   rawArg: string,
@@ -442,28 +481,7 @@ function failedDomReport(
   const reason = `The rendered view could not be read: ${message || "unknown renderer error"}`;
   const symbols = collectShotSymbols(resolved, rawArg);
   const freshness = deriveRenderedFreshness(declaredReportFreshness(resolved), { footerText: "", cellTimes: [] });
-  return {
-    data: {
-      kind: "rendered-view",
-      target: resolved.token,
-      capabilityId: resolved.capability.id,
-      symbols,
-      options: resolved.options,
-      rowCount: 0,
-      empty: true,
-      complete: false,
-      unavailableSymbols: symbols,
-      rows: [],
-      visibleText: "",
-      truncated: false,
-      truncationReasons: [],
-      limitation: DOM_LIMITATION,
-      reason,
-      freshness,
-    },
-    text: [resolved.label, "", reason].join("\n"),
-    tables: { tables: [], footer: reportFooterLines({ freshness, incomplete: reason }) },
-  };
+  return emptyDomReport(resolved, { symbols, unavailableSymbols: symbols, reason, textLines: [reason], freshness });
 }
 
 /** A report the rendered pane says it cannot give; the command fails with the pane's words and advice line. */
@@ -514,28 +532,13 @@ async function signedOutDomReport(
     ...catalog ? { functionsFor: (question: string, limit: number) => functionsForQuestion(catalog, question, limit) } : {},
   });
   const reason = lockNoteReason(note);
-  return {
-    data: {
-      kind: "rendered-view",
-      target: resolved.token,
-      capabilityId: resolved.capability.id,
-      symbols,
-      options: resolved.options,
-      rowCount: 0,
-      empty: true,
-      complete: false,
-      unavailableSymbols: [],
-      rows: [],
-      visibleText: "",
-      truncated: false,
-      truncationReasons: [],
-      limitation: DOM_LIMITATION,
-      reason,
-      locked: "sign-in",
-    },
-    text: [resolved.label, "", ...lockNoteLines(note)].join("\n").trimEnd(),
-    tables: domReportTables([], resolved.label, null, reason, []),
-  };
+  return emptyDomReport(resolved, {
+    symbols,
+    unavailableSymbols: [],
+    reason,
+    textLines: lockNoteLines(note),
+    locked: "sign-in",
+  });
 }
 
 export async function buildDomFunctionReport(

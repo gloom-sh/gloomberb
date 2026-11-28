@@ -68,7 +68,7 @@ function createUserFeedId(url: string, name: string): string {
   return `user-${hashString(`${url}|${name}`)}`;
 }
 
-export function createUserFeed(input: UserNewsFeedInput): RssFeedConfig {
+function createUserFeed(input: UserNewsFeedInput): RssFeedConfig {
   const url = normalizeUrl(input.url);
   const name = normalizeName(input.name);
   if (!url) throw new Error("Feed URL must be an http(s) URL.");
@@ -197,55 +197,4 @@ export async function addUserNewsFeed(
     disabledDefaultFeedIds: settings.disabledDefaultFeedIds,
   });
   return feed;
-}
-
-export async function updateUserNewsFeed(
-  configState: PluginConfigState,
-  feedId: string,
-  patch: Partial<UserNewsFeedInput>,
-): Promise<RssFeedConfig | null> {
-  const settings = requireReadableSettings(configState);
-  const existing = settings.userFeeds.find((feed) => feed.id === feedId);
-  if (!existing) return null;
-  const nextFeed = createUserFeed({
-    ...existing,
-    ...patch,
-    id: feedId,
-  });
-  await saveNewsFeedSettings(configState, {
-    userFeeds: settings.userFeeds.map((feed) => feed.id === feedId ? nextFeed : feed),
-    disabledDefaultFeedIds: settings.disabledDefaultFeedIds,
-  });
-  return nextFeed;
-}
-
-export async function removeUserNewsFeed(
-  configState: PluginConfigState,
-  feedId: string,
-): Promise<boolean> {
-  const settings = requireReadableSettings(configState);
-  const nextUserFeeds = settings.userFeeds.filter((feed) => feed.id !== feedId);
-  if (nextUserFeeds.length === settings.userFeeds.length) return false;
-  await saveNewsFeedSettings(configState, {
-    userFeeds: nextUserFeeds,
-    disabledDefaultFeedIds: settings.disabledDefaultFeedIds,
-  });
-  return true;
-}
-
-export async function setDefaultNewsFeedEnabled(
-  configState: PluginConfigState,
-  feedId: string,
-  enabled: boolean,
-): Promise<boolean> {
-  if (!DEFAULT_FEED_IDS.has(feedId)) return false;
-  const settings = requireReadableSettings(configState);
-  const disabled = new Set(settings.disabledDefaultFeedIds);
-  if (enabled) disabled.delete(feedId);
-  else disabled.add(feedId);
-  await saveNewsFeedSettings(configState, {
-    userFeeds: settings.userFeeds,
-    disabledDefaultFeedIds: [...disabled],
-  });
-  return true;
 }

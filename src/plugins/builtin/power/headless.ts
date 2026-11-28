@@ -2,12 +2,13 @@ import { MISSING_VALUE } from "../../../utils/format";
 import type { DataTableColumn } from "../../../components";
 import type { HeadlessPaneColumn, HeadlessPaneDefinition, HeadlessPaneRow } from "../../../types/plugin";
 import { withoutQuietColumns } from "../shared/research-cells";
-import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { argumentText, enumOption, limitOption, offsetOption } from "../shared/headless-options";
 import { fetchPowerBoard, fetchAllPowerHistory, fetchPowerTickerScopes } from "./client";
 import { powerQuery } from "./query";
 import { loadPowerPricesReport } from "./prices-headless";
 import { isCarbonQuery, powerPriceMarket } from "./prices-model";
 import {
+  POWER_DATE_COLUMNS, powerStampText,
   COVERAGE_COLUMNS, EXPOSURE_COLUMNS, GENERATION_COLUMNS, HISTORY_COLUMNS, POWER_TABS, PROJECT_COLUMNS, RATE_COLUMNS, UTILITY_COLUMNS,
   historyRows, powerCoverageNote, powerLoadedSources, powerNumber, powerPercent, powerRegion, powerScopeOptions, powerTab, powerTickerEmpty, projectRows, tickerLabel, titleCase, UNMAPPED, type PowerTab,
 } from "./model";
@@ -62,7 +63,9 @@ function reportColumns(tab: PowerTab, context: unknown): HeadlessPaneColumn[] {
   };
   // The pane groups outcomes under region headings; the report names the region on each row.
   return [...(tab === "outcomes" ? [{ id: "region", label: "Region", width: 16, align: "left" as const }] : []), ...columns].filter((column) => !GRAPHIC_COLUMNS.has(column.id))
-    .map((column) => ({ key: column.id, header: column.label, align: column.align === "right" ? "right" as const : "left" as const, format: format(column) }));
+    .map((column) => ({ key: column.id, header: column.label, align: column.align === "right" ? "right" as const : "left" as const, format: format(column),
+      // A day or a stamp reads day first, as the pane writes it; an export keeps it as recorded.
+      ...(POWER_DATE_COLUMNS.has(column.id) ? { textFormat: (value: unknown) => typeof value === "string" ? powerStampText(value) : MISSING_VALUE } : {}) }));
 }
 
 export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
@@ -70,20 +73,20 @@ export const powerHeadless: HeadlessPaneDefinition<"bundle"> = {
   freshness: { source: "Grid operator queues and utility filings", status: "not-a-feed", basis: "published records", dataset: true },
   argument: { kind: "free-text", optional: true, placeholder: "ticker", description: "Optional listed developer or utility ticker, with exchange suffix where needed." },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", defaultValue: "queue", values: [...POWER_TABS], description: "Queue, history, outcomes, large loads, utility exposure, capacity, European day-ahead prices or coverage." },
+    enumOption("tab", POWER_TABS, { settingKey: "tab", defaultValue: "queue", description: "Queue, history, outcomes, large loads, utility exposure, capacity, European day-ahead prices or coverage." }),
     ...["country", "region", "fuel", "status", "search", "sourceId", "from", "to"].map((key) => ({ key, type: "string" as const, settingKey: key, description: `Filter by ${key}.` })),
-    { key: "context", type: "enum", settingKey: "context", values: [{ value: "capacity" }, { value: "generation" }, { value: "utility" }], defaultValue: "capacity", description: "Generation capacity, monthly generation or utility context on the Capacity tab." },
-    { key: "loadClass", aliases: ["load-class"], type: "enum", settingKey: "loadClass", values: [{ value: "datacenter" }], description: "Only loads explicitly classified as datacenters." },
+    enumOption("context", ["capacity", "generation", "utility"], { settingKey: "context", defaultValue: "capacity", description: "Generation capacity, monthly generation or utility context on the Capacity tab." }),
+    enumOption("loadClass", ["datacenter"], { aliases: ["load-class"], settingKey: "loadClass", description: "Only loads explicitly classified as datacenters." }),
     { key: "historical", type: "boolean", settingKey: "historical", defaultValue: false, description: "Use historical benchmark queues separately from direct observations." },
-    { key: "limit", shot: REPORT_ROWS, type: "integer", minimum: 1, maximum: POWER_ROW_LIMIT, description: `Records to list on the queue, loads and capacity tabs, in the table's order: ${POWER_PAGE_ROWS} unless given, up to ${powerNumber(POWER_ROW_LIMIT)}.`, example: "--limit 20000" },
-    { key: "offset", shot: REPORT_PAGE, type: "integer", minimum: 0, maximum: POWER_MAX_OFFSET, description: "Records to skip before the first one listed, to page past --limit.", example: "--offset 500" },
+    limitOption({ maximum: POWER_ROW_LIMIT, description: `Records to list on the queue, loads and capacity tabs, in the table's order: ${POWER_PAGE_ROWS} unless given, up to ${powerNumber(POWER_ROW_LIMIT)}.`, example: "--limit 20000" }),
+    offsetOption({ maximum: POWER_MAX_OFFSET, description: "Records to skip before the first one listed, to page past --limit.", example: "--offset 500" }),
   ],
   discovery: { aliases: ["POWER"], dataRequirements: ["Gloom Cloud power queues and large-load disclosures"],
     limitations: ["Pro dataset; free accounts see three rows per section and limited history.", "Proposed projects are not committed supply; requests and approvals are distinct.", "Coverage varies by jurisdiction; missing MW and unavailable sources remain explicit."] },
   describe: "Power queues, large loads and utility exposure (Pro)",
   async load(args, ctx) {
     const tab = powerTab(args.options.tab);
-    const symbol = (Array.isArray(args.argument) ? args.argument.join(" ") : args.argument)?.trim();
+    const symbol = argumentText(args.argument).trim() || undefined;
     // Prices are their own board (EPWR); a typed market narrows it, a ticker does not apply.
     const recordTab = RECORD_TABS.includes(tab);
     // A flag the tab does not use is named, never dropped without a word.

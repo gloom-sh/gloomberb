@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import type {
   HeadlessPaneContext,
   HeadlessPaneDefinition,
@@ -19,28 +20,26 @@ import { savedCopyMark } from "../../../data/saved-copies";
 import { formatSwapBp, selectedSwapTenor } from "./swaps-model";
 import { logFailure } from "../../../utils/log-failure";
 import { usBondMarketClosedNote } from "../../../market-data/us-bond-market";
+import { enumOption } from "../shared/headless-options";
+import { fixedCell, numCell, numCol } from "../shared/headless-columns";
 
-const percent = (value: unknown) => value == null ? MISSING_VALUE : `${Number(value).toFixed(2)}%`;
+const percent = fixedCell(2, { suffix: "%" });
 /** A move already in basis points: `+3bp`, `-1bp`, `0bp`. */
-const basisPoints = (value: unknown) => value == null ? MISSING_VALUE : formatBasisPoints(Number(value) / 100);
+const basisPoints = numCell((value) => formatBasisPoints(value / 100));
 const MATURITY_COLUMNS = [
   { key: "maturity", header: "Maturity" },
-  {
-    key: "maturityYears",
-    header: "Years",
-    align: "right" as const,
-    format: (value: unknown) => Number(value).toFixed(2).replace(/\.00$/, ""),
-  },
-  { key: "yield", header: "Yield", align: "right" as const, format: percent },
+  numCol("maturityYears", "Years", numCell((value) => value.toFixed(2).replace(/\.00$/, ""))),
+  numCol("yield", "Yield", percent),
 ];
-const AS_OF_COLUMN = { key: "asOf", header: "As of" };
+/** As the pane: only tenors from different sessions need their dates; the source line dates one session. */
+const AS_OF_COLUMN = { key: "asOf", header: "As of", omitWhenSame: true };
 /** The move since the previous session with a yield, per tenor. */
 const COLUMNS = [
   ...MATURITY_COLUMNS,
-  { key: "change1dBasisPoints", header: "1D bp", align: "right" as const, format: basisPoints },
+  numCol("change1dBasisPoints", "1D bp", basisPoints),
   AS_OF_COLUMN,
 ];
-const percentile = (value: unknown) => value == null ? MISSING_VALUE : Number(value).toFixed(0);
+const percentile = fixedCell(0);
 /**
  * With Gloom Cloud's move ranks: each tenor's 1D and 1W move, how big it was
  * against every move of its kind (a percentile), and the year that history
@@ -48,10 +47,10 @@ const percentile = (value: unknown) => value == null ? MISSING_VALUE : Number(va
  */
 const RANKED_COLUMNS = [
   ...MATURITY_COLUMNS,
-  { key: "change1dBasisPoints", header: "1D bp", align: "right" as const, format: basisPoints },
-  { key: "move1dPercentile", header: "1D pctl", align: "right" as const, format: percentile },
-  { key: "change1wBasisPoints", header: "1W bp", align: "right" as const, format: basisPoints },
-  { key: "move1wPercentile", header: "1W pctl", align: "right" as const, format: percentile },
+  numCol("change1dBasisPoints", "1D bp", basisPoints),
+  numCol("move1dPercentile", "1D pctl", percentile),
+  numCol("change1wBasisPoints", "1W bp", basisPoints),
+  numCol("move1wPercentile", "1W pctl", percentile),
   { key: "movesSince", header: "Since", format: (value: unknown) => typeof value === "string" ? value.slice(0, 4) : MISSING_VALUE },
   AS_OF_COLUMN,
 ];
@@ -60,28 +59,28 @@ const RANK_NOTE = "pctl is the share of the tenor's 1D (or 1W) moves since the y
 const compareColumns = (compareAsOf: string | null) => [
   ...MATURITY_COLUMNS,
   AS_OF_COLUMN,
-  { key: "compare", header: compareAsOf ? `vs ${compareAsOf}` : "Compare", align: "right" as const, format: percent },
-  { key: "changeBasisPoints", header: "Chg bp", align: "right" as const, format: basisPoints },
+  numCol("compare", compareAsOf ? `vs ${compareAsOf}` : "Compare", percent, compareAsOf ? { textHeader: `vs ${formatDay(compareAsOf)}` } : undefined),
+  numCol("changeBasisPoints", "Chg bp", basisPoints),
 ];
 const WORLD_COLUMNS = [
   { key: "market", header: "Market" },
-  { key: "twoYear", header: "2Y", align: "right" as const, format: percent },
-  { key: "tenYear", header: "10Y", align: "right" as const, format: percent },
-  { key: "thirtyYear", header: "30Y", align: "right" as const, format: percent },
-  { key: "twosTensBasisPoints", header: "2s10s bp", align: "right" as const, format: basisPoints },
-  { key: "tenYearChangeBasisPoints", header: "10Y 1D bp", align: "right" as const, format: basisPoints },
+  numCol("twoYear", "2Y", percent),
+  numCol("tenYear", "10Y", percent),
+  numCol("thirtyYear", "30Y", percent),
+  numCol("twosTensBasisPoints", "2s10s bp", basisPoints),
+  numCol("tenYearChangeBasisPoints", "10Y 1D bp", basisPoints),
   { key: "asOf", header: "As of" },
 ];
+const swapBp = numCell(formatSwapBp);
 const SWAP_COLUMNS = [
   { key: "tenor", header: "Tenor" },
-  { key: "rate", header: "Rate %", align: "right" as const, format: percent },
-  { key: "changeBp", header: "1D bp", align: "right" as const, format: (value: unknown) => value == null ? MISSING_VALUE : formatSwapBp(Number(value)) },
-  { key: "spreadBp", header: "Spread bp", align: "right" as const, format: (value: unknown) => value == null ? MISSING_VALUE : formatSwapBp(Number(value)) },
-  { key: "tradeCount", header: "Trades", align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => `${value}${row.quality === "thin" ? " Thin" : ""}` },
+  numCol("rate", "Rate %", percent),
+  numCol("changeBp", "1D bp", swapBp),
+  numCol("spreadBp", "Spread bp", swapBp),
+  numCol("tradeCount", "Trades", (value, row) => `${value}${row.quality === "thin" ? " Thin" : ""}`),
 ];
 
-export interface YieldCurveHeadlessDependencies {
+interface YieldCurveHeadlessDependencies {
   load(curve: CurveId, requestedDate: string, context: HeadlessPaneContext): Promise<CurveData>;
   compare?(curve: CurveId, date: string, context: HeadlessPaneContext): Promise<YieldPoint[]>;
   /** The 1D, 1W and 1M curves of a session, for a curve loaded without them (the FRED fallback). */
@@ -133,7 +132,7 @@ const CURVE_MARKETS: Record<CurveId, string> = {
   br: "Brazil",
 };
 
-export function createYieldCurveHeadless(
+function createYieldCurveHeadless(
   dependencies: YieldCurveHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   const loadCompare = dependencies.compare ?? defaultDependencies.compare;
@@ -148,20 +147,24 @@ export function createYieldCurveHeadless(
       { key: "date", type: "string", settingKey: "asOfDate", placeholder: "date", description: `Historical as-of date, as ${DATE_OPTION_EXAMPLES}; uses the latest session on or before it.` },
       { key: "curve", type: "string", description: "ust (default), tips, breakeven, euro, bund, gilt, jgb, canada, mexico or brazil." },
       { key: "compare", type: "string", description: `Compare with a date (${DATE_OPTION_EXAMPLES}) or a span back from the curve's session (1D, 1W, 1M, 3M, 1Y).` },
-      { key: "view", type: "enum", values: [{ value: "curve" }, { value: "difference", aliases: ["diff"] }],
+      enumOption("view", ["curve", { value: "difference", aliases: ["diff"] }], {
         description: "With a compare date: both curves, or the bp change by tenor as bars.",
-        pluginState: { pluginId: "macro", key: "yield-curve:view" } },
+        pluginState: { pluginId: "macro", key: "yield-curve:view" },
+      }),
       { key: "forward", type: "boolean", description: "Overlay the one-year-forward curve on the chart.",
         pluginState: { pluginId: "macro", key: "yield-curve:forward" } },
-      { key: "tab", type: "enum", values: [{ value: "curve" }, { value: "world" }, { value: "swaps" }],
+      enumOption("tab", ["curve", "world", "swaps"], {
         description: "curve (default), world (government yields), or swaps (USD SOFR rates and Treasury swap spreads). Spreads use native quotes: annual ACT/360 OIS versus semiannual bond-equivalent Treasury yields.",
-        pluginState: { pluginId: "macro", key: "yield-curve:tab" } },
-      { key: "tenor", type: "enum", values: SWAP_TENORS.map((value) => ({ value })),
+        pluginState: { pluginId: "macro", key: "yield-curve:tab" },
+      }),
+      enumOption("tenor", SWAP_TENORS, {
         description: "Swaps history tenor (default 10Y); the curve table always includes every tenor.",
-        pluginState: { pluginId: "macro", key: "yield-curve:swap-tenor" } },
-      { key: "swap-view", type: "enum", values: [{ value: "curve" }, { value: "history" }],
+        pluginState: { pluginId: "macro", key: "yield-curve:swap-tenor" },
+      }),
+      enumOption("swap-view", ["curve", "history"], {
         description: "Swaps chart: current curve with 1W/1M comparisons, or the selected tenor's history.",
-        pluginState: { pluginId: "macro", key: "yield-curve:swap-view" } },
+        pluginState: { pluginId: "macro", key: "yield-curve:swap-view" },
+      }),
     ],
     columns: COLUMNS,
     // The title names the curve, as the pane's Curve select does.

@@ -9,12 +9,11 @@ import {
   type DataTableCell,
   type QueryBarFilter,
 } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
 import { useThemeColors } from "../../../theme/theme-context";
 import { Box, useUiCapabilities } from "../../../ui";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { compareSortValues, nextHeaderSort } from "../../../utils/sort-values";
+import { nextHeaderSort, sortRowsBy } from "../../../utils/sort-values";
 import { usePluginPaneState } from "../../runtime";
 import { SignInWall } from "../cloud/auth-actions";
 import type { CloudResource } from "../shared/cloud-resource";
@@ -131,7 +130,10 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
     async (force: boolean): Promise<InsiderSignalsAnswer> => ({ query, resource: await loadInsiderSignals(query, { force }) }),
     [query, session.displayScope],
   );
-  const resource = useAsyncResource(loader, {
+  const detailOpen = !!openTicker;
+  const resource = usePaneResource(loader, {
+    focused,
+    refreshKey: { enabled: !detailOpen },
     initialData: () => {
       const cached = cachedInsiderSignals(query);
       return cached ? { query, resource: cached } : null;
@@ -148,23 +150,12 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
     if (!answered && resource.error) setFailedQuery(query);
   }, [answered, query, resource.error]);
   const shown = answered ?? (resource.loading && failedQuery !== query ? resource.data?.resource ?? null : null);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  const detailOpen = !!openTicker;
-  // An opened company refreshes itself.
-  usePaneRefreshKey(() => resource.reload(), { focused, enabled: !detailOpen });
 
   const data = shown?.payload ?? null;
   // Rows of the other side, kept on screen while this one loads, are drawn in their own side's words.
   const dataSide: InsiderSignalSide = data?.side ?? "buy";
   const rows = data?.rows ?? [];
-  const sortedRows = useMemo(() => {
-    const order = new Map(rows.map((row, index) => [row.ticker, index]));
-    // The shared sort: a missing fact last either way, the ranking's order between equals.
-    return [...rows].sort((a, b) => (
-      compareSortValues(insiderSignalSortValue(a, sort.columnId), insiderSignalSortValue(b, sort.columnId), sort.direction)
-      || order.get(a.ticker)! - order.get(b.ticker)!
-    ));
-  }, [rows, sort]);
+  const sortedRows = useMemo(() => sortRowsBy(rows, sort.direction, (row) => insiderSignalSortValue(row, sort.columnId)), [rows, sort]);
   const columns = useMemo(() => buildInsiderSignalColumns(width, rows, { side: dataSide }), [dataSide, rows, width]);
   // The company stays open while the ranking refreshes, ranked or not: it reads its own data.
   const openRow = openTicker ? rows.find((row) => row.ticker === openTicker) ?? null : null;
@@ -222,13 +213,14 @@ export function InsiderSignalsView({ width, height, focused, renderCompany }: In
         // Muted, as a role reads in INS's trades and the opened company's insiders.
         return role === INSIDER_SIGNAL_NONE ? missingCell(colors) : { text: role, color: colors.textMuted };
       }
-      case "nth": return factCell(insiderSignalRowFacts(row).nth, dataSide, colors, state.selected);
-      case "usual": return factCell(insiderSignalRowFacts(row).usual, dataSide, colors, state.selected);
+      // Every row is on one side, so only a figure against it keeps a tone.
+      case "nth": return factCell(insiderSignalRowFacts(row).nth, dataSide, colors, state.selected, undefined, true);
+      case "usual": return factCell(insiderSignalRowFacts(row).usual, dataSide, colors, state.selected, undefined, true);
       // The terminal sets content in the column's own cells; the desktop's cell aligns it.
-      case "stake": return factCell(insiderSignalRowFacts(row).stake, dataSide, colors, state.selected, nativePaneChrome ? undefined : column.width);
+      case "stake": return factCell(insiderSignalRowFacts(row).stake, dataSide, colors, state.selected, nativePaneChrome ? undefined : column.width, true);
       case "insiders": return { text: String(row.insiders), value: row.insiders, color: colors.text };
-      // Every row is buying, or selling, drawn as INS draws a buy or a sale.
-      case "value": return { text: formatSignalValue(row.value), value: row.value, color: dataSide === "sell" ? colors.negative : colors.positive };
+      // Every row is buying, or selling: the Side filter says which, so the figure is plain.
+      case "value": return { text: formatSignalValue(row.value), value: row.value, color: colors.text };
       case "lastBuy": return { text: formatSignalDay(row.lastBuy), value: row.lastBuy, color: colors.textDim };
     }
   }, [colors, dataSide, nativePaneChrome]);

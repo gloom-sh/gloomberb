@@ -22,6 +22,5 @@ export const socialMentionsModule: PluginModule = {
     // Typed alone with no active ticker it ranks the market's social outliers.
     withoutTickerTitle: SOCIAL_OUTLIERS_TITLE,
   }), headless: socialMentionsHeadless }],
-  setup(ctx) { socialMentionsCache.attach(ctx.persistence); socialMentionPostsCache.attach(ctx.persistence); socialOutliersCache.attach(ctx.persistence); },
-  dispose() { socialMentionsCache.reset(); socialMentionPostsCache.reset(); socialOutliersCache.reset(); },
+  caches: [socialMentionsCache, socialMentionPostsCache, socialOutliersCache],
 };

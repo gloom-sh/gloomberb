@@ -16,6 +16,7 @@ import {
 } from "../layout-marketplace/cloud";
 import { SyncRevisionConflictError, type SyncSnapshot } from "../sync/types";
 import { withDeadline } from "../utils/async-deadline";
+import { createListenerSet } from "../utils/listeners";
 import { sliceWholeCharacters } from "../utils/untrusted-text";
 import { CloudASKGApi } from "./askg";
 import { CloudAuthApi } from "./auth";
@@ -131,6 +132,89 @@ interface PendingSessionRequest {
   credential: string | null;
 }
 
+type SubApiMethods<T> = {
+  [K in keyof T as T[K] extends (...args: never[]) => unknown ? K : never]: T[K];
+};
+
+type MappedSubApi<T, M extends Record<string, keyof T>> = {
+  -readonly [K in keyof M]: T[M[K]];
+};
+
+const CHAT_METHOD_MAP = {
+  getChannels: "getChannels",
+  getChatPresence: "getPresence",
+  getChatState: "getState",
+  getChatMentionCandidates: "getMentionCandidates",
+  subscribeChatMentionCandidatesChanged: "subscribeMentionCandidatesChanged",
+  updateChatChannelState: "updateChannelState",
+  markChatNotificationsDelivered: "markNotificationsDelivered",
+  getUnseenChatNotificationIds: "getUnseenNotificationIds",
+  openDirectChannel: "openDirectChannel",
+  openGroupChannel: "openGroupChannel",
+  getMessages: "getMessages",
+  sendMessage: "sendMessage",
+  uploadChatAttachment: "uploadAttachment",
+  chatAttachmentsSupported: "attachmentsSupported",
+  subscribeChatAttachmentSupport: "subscribeAttachmentSupport",
+  editMessage: "editMessage",
+  setChatReaction: "setReaction",
+  subscribeChatReactions: "subscribeReactions",
+  connectChannel: "connectChannel",
+  subscribeChatNotifications: "subscribeNotifications",
+  subscribeChatChannelState: "subscribeChannelState",
+  subscribeChatPresence: "subscribePresence",
+  getChatDiscordLink: "getDiscordLink",
+  unlinkChatDiscord: "unlinkDiscord",
+  setChatDiscordMirror: "setDiscordMirror",
+} as const satisfies Record<string, keyof CloudChatApi>;
+
+const SOCKET_METHOD_MAP = {
+  subscribeQuotes: "subscribeQuotes",
+  subscribeSocketConnection: "subscribeConnection",
+  sendSocketFrame: "sendFrame",
+  socketServerOffers: "serverOffers",
+  subscribeTape: "subscribeTape",
+  subscribeScanner: "subscribeScanner",
+} as const satisfies Record<string, keyof CloudApiSocket>;
+
+const NOTES_METHOD_MAP = {
+  listCloudNotes: "listNotes",
+  getCloudNote: "getNote",
+  putCloudNote: "putNote",
+  deleteCloudNote: "deleteNote",
+} as const satisfies Record<string, keyof CloudNotesApi>;
+
+function parseRetentionOfferBase(body: { offer?: unknown; extendedTrialEndsAt?: unknown } | null): {
+  offer: CloudRetentionOffer | null;
+  extendedTrialEndsAt: string | null;
+} {
+  return {
+    offer: body?.offer === "discount" || body?.offer === "trial_extension" ? body.offer : null,
+    extendedTrialEndsAt: typeof body?.extendedTrialEndsAt === "string" ? body.extendedTrialEndsAt : null,
+  };
+}
+
+function requireLayoutData<T>(value: T | null, errorMessage: string): T {
+  if (!value) throw new Error(errorMessage);
+  return value;
+}
+
+interface GloomApiClient
+  extends Omit<SubApiMethods<CloudAuthApi>, "restoreCachedUser" | "signUp" | "signIn" | "signInWithGoogle" | "signOut" | "getSession">,
+    SubApiMethods<CloudDataApi>,
+    SubApiMethods<CloudTeamsApi>,
+    SubApiMethods<CloudThesesApi>,
+    SubApiMethods<CloudCollectionsApi>,
+    SubApiMethods<CloudViewsApi>,
+    SubApiMethods<CloudFeedbackApi>,
+    SubApiMethods<CloudRoadmapApi>,
+    SubApiMethods<CloudWaitlistApi>,
+    SubApiMethods<CloudHeardFromApi>,
+    Omit<SubApiMethods<CloudTelemetryApi>, "reportCommandSearch">,
+    MappedSubApi<CloudChatApi, typeof CHAT_METHOD_MAP>,
+    MappedSubApi<CloudApiSocket, typeof SOCKET_METHOD_MAP>,
+    MappedSubApi<CloudNotesApi, typeof NOTES_METHOD_MAP> {}
+
 class GloomApiClient {
   private currentUser: AuthUser | null = null;
   /** Local user/credential binding, masked until verified and never serialized. */
@@ -141,6 +225,8 @@ class GloomApiClient {
   private sessionTransition: Promise<void> | null = null;
   /** Device adoption and external session installs supersede pending email auth. */
   private sessionInstallationGeneration = 0;
+  /** Set while this client replaces the credential itself: it tells listeners once its own state is in place. */
+  private replacingCredential = false;
   private sessionRevalidationGeneration = 0;
   private sessionRevalidationTimer: ReturnType<typeof setTimeout> | null = null;
   private sessionChecked = false;
@@ -151,8 +237,8 @@ class GloomApiClient {
   private authTrace: Array<{ at: number; event: string; token: boolean; user: string }> = [];
   private sessionRequest: PendingSessionRequest | null = null;
   private sessionRequestGeneration = 0;
-  private readonly currentUserListeners = new Set<() => void>();
-  private readonly transport = new CloudApiRequestTransport();
+  private readonly currentUserListeners = createListenerSet();
+  private readonly transport = new CloudApiRequestTransport({ onCredentialChange: () => this.credentialReplaced() });
   private readonly auth: CloudAuthApi = new CloudAuthApi({
     getCurrentUser: () => this.currentUser,
     getSessionToken: () => this.transport.getSessionToken(),
@@ -225,13 +311,42 @@ class GloomApiClient {
     return this.transport.getWebSocketToken();
   }
 
+  /**
+   * Changes each time the session credential is replaced (a token installed, changed or cleared, one taken from a
+   * response's headers, the cookie mode switched), before the account it belongs to is known: a non-secret count,
+   * for answers that must not outlive the credential they were sent with.
+   */
+  getCredentialGeneration(): number {
+    return this.transport.getCredentialGeneration();
+  }
+
+  /**
+   * The transport replaced the credential. Taken from a response's headers, listeners are told now, with the body
+   * still out and the account it belongs to not read yet; replaced here, they are told once by the caller.
+   */
+  private credentialReplaced(): void {
+    if (this.replacingCredential) return;
+    this.traceAuth("sessionToken:fromResponse");
+    this.emitCurrentUserChange();
+  }
+
+  /** Replaces the credential in the transport without telling listeners: the caller does, once its state is set. */
+  private replaceCredential(replace: () => void): void {
+    this.replacingCredential = true;
+    try {
+      replace();
+    } finally {
+      this.replacingCredential = false;
+    }
+  }
+
   setCookieSessionMode(enabled: boolean): void {
     this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
     this.sessionChecked = false;
     this.cookieIdentity = "ready";
     this.verifiedSessionIdentity = null;
-    this.transport.setCookieSessionMode(enabled);
+    this.replaceCredential(() => this.transport.setCookieSessionMode(enabled));
     this.emitCurrentUserChange();
   }
 
@@ -246,7 +361,7 @@ class GloomApiClient {
   private installSessionToken(token: string | null): void {
     const changed = this.transport.getSessionToken() !== token;
     this.sessionChecked = false;
-    this.transport.setSessionToken(token);
+    this.replaceCredential(() => this.transport.setSessionToken(token));
     if (changed) this.verifiedSessionIdentity = null;
     this.traceAuth(changed ? "setSessionToken:changed" : "setSessionToken:same");
     if (!token) {
@@ -290,10 +405,7 @@ class GloomApiClient {
 
   /** Notifies when the user or credential changes, including plan and trial entitlement. */
   subscribeCurrentUser(listener: () => void): () => void {
-    this.currentUserListeners.add(listener);
-    return () => {
-      this.currentUserListeners.delete(listener);
-    };
+    return this.currentUserListeners.subscribe(listener);
   }
 
   restoreCachedUser(user: PersistedAuthUser | null, confirmSession = true): void {
@@ -413,7 +525,7 @@ class GloomApiClient {
   }
 
   private emitCurrentUserChange(): void {
-    for (const listener of this.currentUserListeners) listener();
+    this.currentUserListeners.notify();
   }
 
   private updateCurrentUser(updater: (user: AuthUser) => AuthUser, confirmVerification = false): void {
@@ -458,14 +570,15 @@ class GloomApiClient {
 
   signUp = (email: string, username: string, name: string, password: string) =>
     this.withSessionTransition((isCurrent) => this.auth.signUp(email, username, name, password, isCurrent));
-  signIn = (email: string, password: string) =>
-    this.withSessionTransition((isCurrent) => this.auth.signIn(email, password, isCurrent));
-  signInWithGoogle = (idToken: string) =>
-    this.withSessionTransition((isCurrent) => this.auth.signInWithGoogle(idToken, isCurrent));
-  getOneTapConfig = this.auth.getOneTapConfig.bind(this.auth);
-  startDeviceSignIn = this.auth.startDeviceSignIn.bind(this.auth);
-  pollDeviceSignIn = this.auth.pollDeviceSignIn.bind(this.auth);
-  signOut = () => this.withSessionTransition((isCurrent) => this.auth.signOut(isCurrent), false);
+  signIn(email: string, password: string) {
+    return this.withSessionTransition((isCurrent) => this.auth.signIn(email, password, isCurrent));
+  }
+  signInWithGoogle(idToken: string) {
+    return this.withSessionTransition((isCurrent) => this.auth.signInWithGoogle(idToken, isCurrent));
+  }
+  signOut() {
+    return this.withSessionTransition((isCurrent) => this.auth.signOut(isCurrent), false);
+  }
 
   /** Cookies can change before an auth response's body arrives, including ones the browser hides. */
   private withSessionTransition<T>(run: (isCurrent: () => boolean) => Promise<T>, reconcileFailure = true): Promise<T> {
@@ -633,10 +746,6 @@ class GloomApiClient {
     return request.promise;
   }
 
-  sendVerification = this.auth.sendVerification.bind(this.auth);
-  requestPasswordReset = this.auth.requestPasswordReset.bind(this.auth);
-  createBrowserHandoff = this.auth.createBrowserHandoff.bind(this.auth);
-
   /**
    * Creates a Stripe checkout session for Cloud Pro. `link` is a short link to
    * the same checkout, to read or scan on another device, and the page the
@@ -775,11 +884,9 @@ class GloomApiClient {
       method: "GET",
       ...(options?.signal ? { signal: options.signal } : {}),
     });
-    const offer = body?.offer === "discount" || body?.offer === "trial_extension" ? body.offer : null;
     const kept = body?.keptPrice;
     return {
-      offer,
-      extendedTrialEndsAt: typeof body?.extendedTrialEndsAt === "string" ? body.extendedTrialEndsAt : null,
+      ...parseRetentionOfferBase(body),
       keptPrice: kept && Number.isFinite(kept.amount) && Number.isFinite(kept.listAmount)
         && (kept.interval === "month" || kept.interval === "year")
         ? { amount: kept.amount, listAmount: kept.listAmount, interval: kept.interval }
@@ -793,10 +900,7 @@ class GloomApiClient {
       method: "POST",
       body: JSON.stringify(cancelFeedbackBody(feedback)),
     });
-    return {
-      offer: body?.offer === "discount" || body?.offer === "trial_extension" ? body.offer : null,
-      extendedTrialEndsAt: typeof body?.extendedTrialEndsAt === "string" ? body.extendedTrialEndsAt : null,
-    };
+    return parseRetentionOfferBase(body);
   }
 
   /**
@@ -813,17 +917,6 @@ class GloomApiClient {
       ...(signal ? { signal } : {}),
     });
   }
-  getAccountProfile = this.auth.getAccountProfile.bind(this.auth);
-  getCloudPricing = this.auth.getCloudPricing.bind(this.auth);
-  getCloudAccountPlan = this.auth.getCloudAccountPlan.bind(this.auth);
-  getBuildoutAccount = this.auth.getBuildoutAccount.bind(this.auth);
-  getBuildoutToken = this.auth.getBuildoutToken.bind(this.auth);
-  updateAccountProfile = this.auth.updateAccountProfile.bind(this.auth);
-  getReferralInvite = this.auth.getReferralInvite.bind(this.auth);
-  getCalendarFeed = this.auth.getCalendarFeed.bind(this.auth);
-  ensureCalendarFeed = this.auth.ensureCalendarFeed.bind(this.auth);
-  rotateCalendarFeed = this.auth.rotateCalendarFeed.bind(this.auth);
-  createMcpKey = this.auth.createMcpKey.bind(this.auth);
 
   async getSyncSnapshot(): Promise<CloudSyncSnapshotResponse> {
     return this.request<CloudSyncSnapshotResponse>("/sync/snapshot", { method: "GET" });
@@ -849,67 +942,49 @@ class GloomApiClient {
     }
   }
 
-  async getMarketplaceLayout(
-    id: string,
-    options?: { signal?: AbortSignal },
-  ): Promise<LayoutMarketplaceEntry | null> {
+  async #fetchLayoutById<T>(id: string, query: string, parse: (raw: unknown) => T | null, options?: { signal?: AbortSignal }): Promise<T | null> {
     if (!isMarketplaceLayoutId(id)) return null;
     try {
-      return parseMarketplaceLayoutEntry(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}`, {
-        method: "GET",
-        signal: options?.signal,
-      }));
+      return parse(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}${query}`, { method: "GET", signal: options?.signal }));
     } catch (error) {
       if (error instanceof ApiRequestError && error.status === 404) return null;
       throw error;
     }
   }
 
-  async listMarketplaceLayouts(options?: { signal?: AbortSignal }): Promise<LayoutMarketplaceEntry[]> {
-    const items = parseMarketplaceLayoutList(await this.request<unknown>("/layouts", {
-      method: "GET",
-      signal: options?.signal,
-    }));
-    if (!items) throw new Error("The layout marketplace returned invalid data.");
-    return items;
+  getMarketplaceLayout(id: string, options?: { signal?: AbortSignal }): Promise<LayoutMarketplaceEntry | null> {
+    return this.#fetchLayoutById(id, "", parseMarketplaceLayoutEntry, options);
   }
 
-  async publishMarketplaceLayout(
-    name: string,
-    payload: LayoutMarketplacePayload,
-    options?: { signal?: AbortSignal },
-  ): Promise<LayoutMarketplaceEntry> {
-    const item = parseMarketplaceLayoutEntry(await this.request<unknown>("/layouts", {
-      method: "POST",
-      body: JSON.stringify({ name: name.trim(), ...payload }),
-      signal: options?.signal,
-    }));
-    if (!item) throw new Error("The layout marketplace returned invalid data.");
-    return item;
+  async listMarketplaceLayouts(options?: { signal?: AbortSignal }): Promise<LayoutMarketplaceEntry[]> {
+    return requireLayoutData(
+      parseMarketplaceLayoutList(await this.request<unknown>("/layouts", { method: "GET", signal: options?.signal })),
+      "The layout marketplace returned invalid data.",
+    );
+  }
+
+  async publishMarketplaceLayout(name: string, payload: LayoutMarketplacePayload, options?: { signal?: AbortSignal }): Promise<LayoutMarketplaceEntry> {
+    return requireLayoutData(
+      parseMarketplaceLayoutEntry(await this.request<unknown>("/layouts", {
+        method: "POST",
+        body: JSON.stringify({ name: name.trim(), ...payload }),
+        signal: options?.signal,
+      })),
+      "The layout marketplace returned invalid data.",
+    );
   }
 
   // Cloud layouts: the full, revisioned shape behind ?v=2 and the new routes.
 
-  async getCloudLayout(id: string, options?: { signal?: AbortSignal }): Promise<CloudLayoutEntry | null> {
-    if (!isMarketplaceLayoutId(id)) return null;
-    try {
-      return parseCloudLayoutEntry(await this.request<unknown>(`/layouts/${encodeURIComponent(id)}?v=2`, {
-        method: "GET",
-        signal: options?.signal,
-      }));
-    } catch (error) {
-      if (error instanceof ApiRequestError && error.status === 404) return null;
-      throw error;
-    }
+  getCloudLayout(id: string, options?: { signal?: AbortSignal }): Promise<CloudLayoutEntry | null> {
+    return this.#fetchLayoutById(id, "?v=2", parseCloudLayoutEntry, options);
   }
 
   async listTeamLayouts(teamId: string, options?: { signal?: AbortSignal }): Promise<CloudLayoutEntry[]> {
-    const items = parseCloudLayoutList(await this.request<unknown>(`/teams/${encodeURIComponent(teamId)}/layouts`, {
-      method: "GET",
-      signal: options?.signal,
-    }));
-    if (!items) throw new Error("The layout service returned invalid data.");
-    return items;
+    return requireLayoutData(
+      parseCloudLayoutList(await this.request<unknown>(`/teams/${encodeURIComponent(teamId)}/layouts`, { method: "GET", signal: options?.signal })),
+      "The layout service returned invalid data.",
+    );
   }
 
   async publishTeamLayout(
@@ -918,18 +993,19 @@ class GloomApiClient {
     payload: LayoutMarketplacePayload,
     options: { requires?: LayoutRequirement[]; note?: string | null; visibility?: "team" | "public" } = {},
   ): Promise<CloudLayoutEntry> {
-    const item = parseCloudLayoutEntry(await this.request<unknown>(`/teams/${encodeURIComponent(teamId)}/layouts`, {
-      method: "POST",
-      body: JSON.stringify({
-        name: name.trim(),
-        ...payload,
-        requires: options.requires ?? [],
-        ...(options.note ? { note: options.note } : {}),
-        ...(options.visibility ? { visibility: options.visibility } : {}),
-      }),
-    }));
-    if (!item) throw new Error("The layout service returned invalid data.");
-    return item;
+    return requireLayoutData(
+      parseCloudLayoutEntry(await this.request<unknown>(`/teams/${encodeURIComponent(teamId)}/layouts`, {
+        method: "POST",
+        body: JSON.stringify({
+          name: name.trim(),
+          ...payload,
+          requires: options.requires ?? [],
+          ...(options.note ? { note: options.note } : {}),
+          ...(options.visibility ? { visibility: options.visibility } : {}),
+        }),
+      })),
+      "The layout service returned invalid data.",
+    );
   }
 
   /**
@@ -941,27 +1017,25 @@ class GloomApiClient {
     payload: LayoutMarketplacePayload,
     options: { expectedRevision?: number; requires?: LayoutRequirement[]; note?: string | null; name?: string } = {},
   ): Promise<CloudLayoutEntry> {
-    const item = parseCloudLayoutEntry(await putWithRevision<unknown, CloudLayoutEntry>(
-      (path, init) => this.request(path, init),
-      `/layouts/${encodeURIComponent(id)}`,
-      {
-        ...payload,
-        requires: options.requires ?? [],
-        ...(options.note ? { note: options.note } : {}),
-        ...(options.name ? { name: options.name } : {}),
-      },
-      {
-        expected: options.expectedRevision,
-        loadCurrent: () => this.getCloudLayout(id),
-        conflict: LayoutRevisionConflictError,
-      },
-    ));
-    if (!item) throw new Error("The layout service returned invalid data.");
-    return item;
+    return requireLayoutData(
+      parseCloudLayoutEntry(await putWithRevision<unknown, CloudLayoutEntry>(
+        (path, init) => this.request(path, init),
+        `/layouts/${encodeURIComponent(id)}`,
+        {
+          ...payload,
+          requires: options.requires ?? [],
+          ...(options.note ? { note: options.note } : {}),
+          ...(options.name ? { name: options.name } : {}),
+        },
+        {
+          expected: options.expectedRevision,
+          loadCurrent: () => this.getCloudLayout(id),
+          conflict: LayoutRevisionConflictError,
+        },
+      )),
+      "The layout service returned invalid data.",
+    );
   }
-
-  changePassword = this.auth.changePassword.bind(this.auth);
-  deleteAccount = this.auth.deleteAccount.bind(this.auth);
 
   /**
    * Resolves a natural-language command-bar query into runnable command-bar
@@ -1021,106 +1095,6 @@ class GloomApiClient {
     }
   }
 
-  getChannels = this.chat.getChannels.bind(this.chat);
-  getChatPresence = this.chat.getPresence.bind(this.chat);
-  getChatState = this.chat.getState.bind(this.chat);
-  getChatMentionCandidates = this.chat.getMentionCandidates.bind(this.chat);
-  subscribeChatMentionCandidatesChanged = this.chat.subscribeMentionCandidatesChanged.bind(this.chat);
-  updateChatChannelState = this.chat.updateChannelState.bind(this.chat);
-  markChatNotificationsDelivered = this.chat.markNotificationsDelivered.bind(this.chat);
-  getUnseenChatNotificationIds = this.chat.getUnseenNotificationIds.bind(this.chat);
-  openDirectChannel = this.chat.openDirectChannel.bind(this.chat);
-  openGroupChannel = this.chat.openGroupChannel.bind(this.chat);
-  getMessages = this.chat.getMessages.bind(this.chat);
-  sendMessage = this.chat.sendMessage.bind(this.chat);
-  uploadChatAttachment = this.chat.uploadAttachment.bind(this.chat);
-  chatAttachmentsSupported = this.chat.attachmentsSupported.bind(this.chat);
-  subscribeChatAttachmentSupport = this.chat.subscribeAttachmentSupport.bind(this.chat);
-  editMessage = this.chat.editMessage.bind(this.chat);
-  setChatReaction = this.chat.setReaction.bind(this.chat);
-  subscribeChatReactions = this.chat.subscribeReactions.bind(this.chat);
-  connectChannel = this.chat.connectChannel.bind(this.chat);
-  subscribeChatNotifications = this.chat.subscribeNotifications.bind(this.chat);
-  subscribeChatChannelState = this.chat.subscribeChannelState.bind(this.chat);
-  subscribeChatPresence = this.chat.subscribePresence.bind(this.chat);
-  getChatDiscordLink = this.chat.getDiscordLink.bind(this.chat);
-  unlinkChatDiscord = this.chat.unlinkDiscord.bind(this.chat);
-  setChatDiscordMirror = this.chat.setDiscordMirror.bind(this.chat);
-  subscribeQuotes = this.socket.subscribeQuotes.bind(this.socket);
-
-  listTeams = this.teams.listTeams.bind(this.teams);
-  createTeam = this.teams.createTeam.bind(this.teams);
-  getTeamMembers = this.teams.getTeamMembers.bind(this.teams);
-  inviteTeamMemberByUsername = this.teams.inviteTeamMemberByUsername.bind(this.teams);
-  listTeamInviteLinks = this.teams.listTeamInviteLinks.bind(this.teams);
-  createTeamInviteLink = this.teams.createTeamInviteLink.bind(this.teams);
-  deleteTeamInviteLink = this.teams.deleteTeamInviteLink.bind(this.teams);
-  getTeamNotifications = this.teams.getTeamNotifications.bind(this.teams);
-  listTeamInvitations = this.teams.listTeamInvitations.bind(this.teams);
-  listMyTeamInvitations = this.teams.listMyTeamInvitations.bind(this.teams);
-  acceptTeamInvitation = this.teams.acceptTeamInvitation.bind(this.teams);
-  rejectTeamInvitation = this.teams.rejectTeamInvitation.bind(this.teams);
-  cancelTeamInvitation = this.teams.cancelTeamInvitation.bind(this.teams);
-  updateTeam = this.teams.updateTeam.bind(this.teams);
-  updateTeamMemberRole = this.teams.updateTeamMemberRole.bind(this.teams);
-  removeTeamMember = this.teams.removeTeamMember.bind(this.teams);
-  leaveTeam = this.teams.leaveTeam.bind(this.teams);
-  deleteTeam = this.teams.deleteTeam.bind(this.teams);
-  createTeamChannel = this.teams.createTeamChannel.bind(this.teams);
-  deleteTeamChannel = this.teams.deleteTeamChannel.bind(this.teams);
-  subscribeTeamUpdates = this.teams.subscribeTeamUpdates.bind(this.teams);
-  subscribeTeamNotifications = this.teams.subscribeTeamNotifications.bind(this.teams);
-  subscribeCloudEvent = this.teams.subscribeCloudEvent.bind(this.teams);
-  /** The Cloud socket's own lifecycle and frames, for protocols layered on it (the terminal relay). */
-  subscribeSocketConnection = this.socket.subscribeConnection.bind(this.socket);
-  sendSocketFrame = this.socket.sendFrame.bind(this.socket);
-  socketServerOffers = this.socket.serverOffers.bind(this.socket);
-  listCloudNotes = this.notes.listNotes.bind(this.notes);
-  getCloudNote = this.notes.getNote.bind(this.notes);
-  putCloudNote = this.notes.putNote.bind(this.notes);
-  submitFeedback = this.feedback.submitFeedback.bind(this.feedback);
-  listFeedback = this.feedback.listFeedback.bind(this.feedback);
-  getRoadmap = this.roadmap.getRoadmap.bind(this.roadmap);
-  setRoadmapVote = this.roadmap.setRoadmapVote.bind(this.roadmap);
-  getWaitlist = this.waitlist.getWaitlist.bind(this.waitlist);
-  joinWaitlist = this.waitlist.joinWaitlist.bind(this.waitlist);
-  leaveWaitlist = this.waitlist.leaveWaitlist.bind(this.waitlist);
-  getHeardFrom = this.heardFrom.getHeardFrom.bind(this.heardFrom);
-  reportHeardFromShown = this.heardFrom.reportHeardFromShown.bind(this.heardFrom);
-  answerHeardFrom = this.heardFrom.answerHeardFrom.bind(this.heardFrom);
-  skipHeardFrom = this.heardFrom.skipHeardFrom.bind(this.heardFrom);
-  reportCrashErrors = this.telemetry.reportCrashErrors.bind(this.telemetry);
-  reportUsageCounts = this.telemetry.reportUsageCounts.bind(this.telemetry);
-  reportInstallExperiment = this.telemetry.reportInstallExperiment.bind(this.telemetry);
-  reportAttentionCounts = this.telemetry.reportAttentionCounts.bind(this.telemetry);
-  deleteCloudNote = this.notes.deleteNote.bind(this.notes);
-  listTheses = this.theses.listTheses.bind(this.theses);
-  getThesis = this.theses.getThesis.bind(this.theses);
-  createThesis = this.theses.createThesis.bind(this.theses);
-  updateThesis = this.theses.updateThesis.bind(this.theses);
-  deleteThesis = this.theses.deleteThesis.bind(this.theses);
-  createThesisSignal = this.theses.createThesisSignal.bind(this.theses);
-  resolveThesisSignal = this.theses.resolveThesisSignal.bind(this.theses);
-  reviewThesis = this.theses.reviewThesis.bind(this.theses);
-  draftThesis = this.theses.draftThesis.bind(this.theses);
-  listTeamCollections = this.collections.listTeamCollections.bind(this.collections);
-  getTeamCollection = this.collections.getTeamCollection.bind(this.collections);
-  createTeamCollection = this.collections.createTeamCollection.bind(this.collections);
-  putTeamCollectionItem = this.collections.putTeamCollectionItem.bind(this.collections);
-  removeTeamCollectionItem = this.collections.removeTeamCollectionItem.bind(this.collections);
-  listTeamViews = this.views.listTeamViews.bind(this.views);
-  getTeamView = this.views.getTeamView.bind(this.views);
-  createTeamView = this.views.createTeamView.bind(this.views);
-  publishTeamViewRevision = this.views.publishTeamViewRevision.bind(this.views);
-  listTeamPluginState = this.views.listTeamPluginState.bind(this.views);
-  getTeamPluginState = this.views.getTeamPluginState.bind(this.views);
-  putTeamPluginState = this.views.putTeamPluginState.bind(this.views);
-  deleteTeamPluginState = this.views.deleteTeamPluginState.bind(this.views);
-
-  /** Subscribes to a shared scanner feed; all panes of one kind share one upstream subscription. */
-  subscribeTape = this.socket.subscribeTape.bind(this.socket);
-  subscribeScanner = this.socket.subscribeScanner.bind(this.socket);
-
   dispose(): void {
     this.cancelSessionRevalidation();
     this.sessionInstallationGeneration += 1;
@@ -1130,201 +1104,38 @@ class GloomApiClient {
     this.transport.dispose();
   }
 
-  searchInstruments = this.data.searchInstruments.bind(this.data);
-  getCloudQuote = this.data.getCloudQuote.bind(this.data);
-  getCloudQuotesBatch = this.data.getCloudQuotesBatch.bind(this.data);
-  getCloudWorldVenues = this.data.getCloudWorldVenues.bind(this.data);
-  getMarketEarningsCalendar = this.data.getMarketEarningsCalendar.bind(this.data);
-  getCloudArticleSummary = this.data.getCloudArticleSummary.bind(this.data);
-  getMarketMovers = this.data.getMarketMovers.bind(this.data);
-  getMarketTrending = this.data.getMarketTrending.bind(this.data);
-  getMarketHeatmap = this.data.getMarketHeatmap.bind(this.data);
-  getMarketDividends = this.data.getMarketDividends.bind(this.data);
-  getCloudMarketScreener = this.data.getCloudMarketScreener.bind(this.data);
-  getCloudOptionsChain = this.data.getCloudOptionsChain.bind(this.data);
-  getCloudFinancials = this.data.getCloudFinancials.bind(this.data);
-  getCloudFinancialsBatch = this.data.getCloudFinancialsBatch.bind(this.data);
-  getCloudHolders = this.data.getCloudHolders.bind(this.data);
-  getJpxShortPositions = this.data.getJpxShortPositions.bind(this.data);
-  getSgxShortSales = this.data.getSgxShortSales.bind(this.data);
-  getKoreanShortPositions = this.data.getKoreanShortPositions.bind(this.data);
-  getMainlandLendingBalances = this.data.getMainlandLendingBalances.bind(this.data);
-  getTaiwanShortBalances = this.data.getTaiwanShortBalances.bind(this.data);
-  getStockConnect = this.data.getStockConnect.bind(this.data);
-  getSfcShortPositions = this.data.getSfcShortPositions.bind(this.data);
-  getCloudShortInterest = this.data.getCloudShortInterest.bind(this.data);
-  getCloudAnalystResearch = this.data.getCloudAnalystResearch.bind(this.data);
-  getCloudCorporateActions = this.data.getCloudCorporateActions.bind(this.data);
-  getCloudSplitHistoryBatch = this.data.getCloudSplitHistoryBatch.bind(this.data);
-  getCloudTickerChanges = this.data.getCloudTickerChanges.bind(this.data);
-  getCloudOrganizationTickers = this.data.getCloudOrganizationTickers.bind(this.data);
-  getCloudTickerChangesBatch = this.data.getCloudTickerChangesBatch.bind(this.data);
-  getCloudIssuerListings = this.data.getCloudIssuerListings.bind(this.data);
-  searchInstrumentsBatch = this.data.searchInstrumentsBatch.bind(this.data);
-  getCloudHistory = this.data.getCloudHistory.bind(this.data);
-  getCloudExchangeRate = this.data.getCloudExchangeRate.bind(this.data);
-  getCloudEconomicCalendar = this.data.getCloudEconomicCalendar.bind(this.data);
-  getCloudEconomicCalendarFrom = this.data.getCloudEconomicCalendarFrom.bind(this.data);
-  getCloudMacroReleaseDays = this.data.getCloudMacroReleaseDays.bind(this.data);
-  getCloudShortRates = this.data.getCloudShortRates.bind(this.data);
-  getCloudEquityDiagnostic = this.data.getCloudEquityDiagnostic.bind(this.data);
-  getCloudEarningsCalendar = this.data.getCloudEarningsCalendar.bind(this.data);
-  getCloudEarningsHistory = this.data.getCloudEarningsHistory.bind(this.data);
-  getCloudFredSeries = this.data.getCloudFredSeries.bind(this.data);
-  getCloudFredSeriesCatalog = this.data.getCloudFredSeriesCatalog.bind(this.data);
-  getCloudCryptoMarkets = this.data.getCloudCryptoMarkets.bind(this.data);
-  getCloudStablecoinSupply = this.data.getCloudStablecoinSupply.bind(this.data);
-  getCloudStablecoinSupplyHistory = this.data.getCloudStablecoinSupplyHistory.bind(this.data);
-  getCloudDefiTvl = this.data.getCloudDefiTvl.bind(this.data);
-  getCloudBitcoinNetwork = this.data.getCloudBitcoinNetwork.bind(this.data);
-  getCloudCentralBankRates = this.data.getCloudCentralBankRates.bind(this.data);
-  getCloudFxInterventions = this.data.getCloudFxInterventions.bind(this.data);
-  getCloudHkTenders = this.data.getCloudHkTenders.bind(this.data);
-  getMobileAlertHistory = this.data.getMobileAlertHistory.bind(this.data);
-  getScannerFlowHistory = this.data.getScannerFlowHistory.bind(this.data);
-  getScannerFlowSession = this.data.getScannerFlowSession.bind(this.data);
-  getLiveScan = this.data.getLiveScan.bind(this.data);
-  getCloudEstimateRevisions = this.data.getCloudEstimateRevisions.bind(this.data);
-  getCloudMoneyMarkets = this.data.getCloudMoneyMarkets.bind(this.data);
-  getCloudHongKongMoneyMarkets = this.data.getCloudHongKongMoneyMarkets.bind(this.data);
-  equityScreener = this.data.equityScreener.bind(this.data);
-  getMemberFunds = this.data.getMemberFunds.bind(this.data);
-  getFundMembers = this.data.getFundMembers.bind(this.data);
-  getStockFunds = this.data.getStockFunds.bind(this.data);
-  getFundBreadth = this.data.getFundBreadth.bind(this.data);
-  getFundChanges = this.data.getFundChanges.bind(this.data);
-  getFundFacts = this.data.getFundFacts.bind(this.data);
-  getOwnershipDisclosures = this.data.getOwnershipDisclosures.bind(this.data);
-  getCloudExchangeAnnouncements = this.data.getCloudExchangeAnnouncements.bind(this.data);
-  getCloudThemes = this.data.getCloudThemes.bind(this.data);
-  getCloudThemeMembers = this.data.getCloudThemeMembers.bind(this.data);
-  impliedVolatility = this.data.impliedVolatility.bind(this.data);
-  optionsPositioning = this.data.optionsPositioning.bind(this.data);
-  getCloudBankFigures = this.data.getCloudBankFigures.bind(this.data);
-  getCloudDebtMaturities = this.data.getCloudDebtMaturities.bind(this.data);
-  getCloudStoredBond = this.data.getCloudStoredBond.bind(this.data);
-  getCloudStoredIssuerBonds = this.data.getCloudStoredIssuerBonds.bind(this.data);
-  getCloudIssuerBondIssues = this.data.getCloudIssuerBondIssues.bind(this.data);
-  getCloudRevenueBreakdown = this.data.getCloudRevenueBreakdown.bind(this.data);
-  getCloudMnaDeals = this.data.getCloudMnaDeals.bind(this.data);
-  getCloudMnaDeal = this.data.getCloudMnaDeal.bind(this.data);
-  getPublicDistressFilings = this.data.getPublicDistressFilings.bind(this.data);
-  getPublicGoingConcern = this.data.getPublicGoingConcern.bind(this.data);
-  getPublicDistressDesignations = this.data.getPublicDistressDesignations.bind(this.data);
-  getPublicInsolvencyNotices = this.data.getPublicInsolvencyNotices.bind(this.data);
-  getPublicLetters = this.data.getPublicLetters.bind(this.data);
-  getCloudIpoCalendar = this.data.getCloudIpoCalendar.bind(this.data);
-  getCloudFailsToDeliver = this.data.getCloudFailsToDeliver.bind(this.data);
-  getCloudOtcVolume = this.data.getCloudOtcVolume.bind(this.data);
-  getCloudShortVolume = this.data.getCloudShortVolume.bind(this.data);
-  getCloudCryptoEtfFlows = this.data.getCloudCryptoEtfFlows.bind(this.data);
-  getCloudSocialMentions = this.data.getCloudSocialMentions.bind(this.data);
-  getCloudSocialMentionPosts = this.data.getCloudSocialMentionPosts.bind(this.data);
-  getCloudSocialOutliers = this.data.getCloudSocialOutliers.bind(this.data);
-  getCloudFuturesCurve = this.data.getCloudFuturesCurve.bind(this.data);
-  getCloudFuturesCurveAsOf = this.data.getCloudFuturesCurveAsOf.bind(this.data);
-  getCloudFuturesContract = this.data.getCloudFuturesContract.bind(this.data);
-  getCloudFuturesContracts = this.data.getCloudFuturesContracts.bind(this.data);
-  batchesReads = this.data.batchesReads.bind(this.data);
-  getCloudRatePath = this.data.getCloudRatePath.bind(this.data);
-  getCloudShiller = this.data.getCloudShiller.bind(this.data);
-  getCloudCotBoard = this.data.getCloudCotBoard.bind(this.data);
-  getCloudCotContract = this.data.getCloudCotContract.bind(this.data);
-  creditDocuments = this.data.creditDocuments.bind(this.data);
-  geo = this.data.geo.bind(this.data);
-  getCloudHiring = this.data.getCloudHiring.bind(this.data);
-  getCloudHiringMoves = this.data.getCloudHiringMoves.bind(this.data);
-  getCloudHiringSignals = this.data.getCloudHiringSignals.bind(this.data);
-  getCloudHiringCompanySignals = this.data.getCloudHiringCompanySignals.bind(this.data);
-  getCloudHiringBuilding = this.data.getCloudHiringBuilding.bind(this.data);
-  getCloudHiringCompanyBuilding = this.data.getCloudHiringCompanyBuilding.bind(this.data);
-  getCloudAppRankHistory = this.data.getCloudAppRankHistory.bind(this.data);
-  getCloudAppAttention = this.data.getCloudAppAttention.bind(this.data);
-  getCloudCatalystChanges = this.data.getCloudCatalystChanges.bind(this.data);
-  getCloudCatalysts = this.data.getCloudCatalysts.bind(this.data);
-  getCloudCatalystEvent = this.data.getCloudCatalystEvent.bind(this.data);
-  getCloudCatalystStatus = this.data.getCloudCatalystStatus.bind(this.data);
-  getCloudCompanyKpis = this.data.getCloudCompanyKpis.bind(this.data);
-  getCloudCompanyGuidance = this.data.getCloudCompanyGuidance.bind(this.data);
-  getCloudPerpsBoard = this.data.getCloudPerpsBoard.bind(this.data);
-  getCloudPerpsHistory = this.data.getCloudPerpsHistory.bind(this.data);
-  getCloudPerpsRankings = this.data.getCloudPerpsRankings.bind(this.data);
-  getCloudPerpsCompare = this.data.getCloudPerpsCompare.bind(this.data);
-  getCloudPerpsLiquidations = this.data.getCloudPerpsLiquidations.bind(this.data);
-  getCloudPerpsDepth = this.data.getCloudPerpsDepth.bind(this.data);
-  getCloudPerpsEquity = this.data.getCloudPerpsEquity.bind(this.data);
-  getCloudPerpsEquities = this.data.getCloudPerpsEquities.bind(this.data);
-  getCloudPerpsMarket = this.data.getCloudPerpsMarket.bind(this.data);
-  analyzeCloudExposure = this.data.analyzeCloudExposure.bind(this.data);
-  getCloudExposureScenarios = this.data.getCloudExposureScenarios.bind(this.data);
-  getCloudSupplyGraph = this.data.getCloudSupplyGraph.bind(this.data);
-  getCloudSupplyChains = this.data.getCloudSupplyChains.bind(this.data);
-  getCloudSupplyGraphs = this.data.getCloudSupplyGraphs.bind(this.data);
-  getCloudSupplyPaths = this.data.getCloudSupplyPaths.bind(this.data);
-  getCloudSupplyChain = this.data.getCloudSupplyChain.bind(this.data);
-  getCloudAwards = this.data.getCloudAwards.bind(this.data);
-  getCloudAward = this.data.getCloudAward.bind(this.data);
-  getCloudDoeBoard = this.data.getCloudDoeBoard.bind(this.data);
-  getCloudDoePrices = this.data.getCloudDoePrices.bind(this.data);
-  getCloudJodiBoard = this.data.getCloudJodiBoard.bind(this.data);
-  getCloudPsdBoard = this.data.getCloudPsdBoard.bind(this.data);
-  getCloudAttention = this.data.getCloudAttention.bind(this.data);
-  getCloudPowerBoard = this.data.getCloudPowerBoard.bind(this.data);
-  getCloudPowerHistory = this.data.getCloudPowerHistory.bind(this.data);
-  getCloudPowerProject = this.data.getCloudPowerProject.bind(this.data);
-  getCloudEuropePower = this.data.getCloudEuropePower.bind(this.data);
-  getCloudEuropePowerHistory = this.data.getCloudEuropePowerHistory.bind(this.data);
-  getCloudEuropeCarbon = this.data.getCloudEuropeCarbon.bind(this.data);
-  getCloudEuropeCarbonHistory = this.data.getCloudEuropeCarbonHistory.bind(this.data);
-  getCloudEuropeGas = this.data.getCloudEuropeGas.bind(this.data);
-  getCloudEuropeGasHistory = this.data.getCloudEuropeGasHistory.bind(this.data);
-  getCloudEuropeGasSeasonal = this.data.getCloudEuropeGasSeasonal.bind(this.data);
-  getCloudGpuBoard = this.data.getCloudGpuBoard.bind(this.data);
-  getCloudGpuHistory = this.data.getCloudGpuHistory.bind(this.data);
-  getCloudGpuEvents = this.data.getCloudGpuEvents.bind(this.data);
-  getCloudCpiBoard = this.data.getCloudCpiBoard.bind(this.data);
-  getCloudTape = this.data.getCloudTape.bind(this.data);
-  getCloudYieldCurve = this.data.getCloudYieldCurve.bind(this.data);
-  getCloudCurve = this.data.getCloudCurve.bind(this.data);
-  getCloudSwapCurve = this.data.getCloudSwapCurve.bind(this.data);
-  getCloudCurveHistory = this.data.getCloudCurveHistory.bind(this.data);
-  getCloudWorldCurves = this.data.getCloudWorldCurves.bind(this.data);
-  getCloudCds = this.data.getCloudCds.bind(this.data);
-  getCloudCdsHistory = this.data.getCloudCdsHistory.bind(this.data);
-  getCloudCdsLevels = this.data.getCloudCdsLevels.bind(this.data);
-  getCloudCdxBoard = this.data.getCloudCdxBoard.bind(this.data);
-  getCloudSovrBoard = this.data.getCloudSovrBoard.bind(this.data);
-  getCloudCongressHouse = this.data.getCloudCongressHouse.bind(this.data);
-  getCloudJobs = this.data.getCloudJobs.bind(this.data);
-  getCloudJobsPostings = this.data.getCloudJobsPostings.bind(this.data);
-  getCloudJobsPosting = this.data.getCloudJobsPosting.bind(this.data);
-  getCloudJobsMovers = this.data.getCloudJobsMovers.bind(this.data);
-  getCloudEarningsCalls = this.data.getCloudEarningsCalls.bind(this.data);
-  getCloudEarningsTranscript = this.data.getCloudEarningsTranscript.bind(this.data);
-  getCloudEarningsCallAudio = this.data.getCloudEarningsCallAudio.bind(this.data);
-  getProxyStatements = this.data.getProxyStatements.bind(this.data);
-  getProxyStatement = this.data.getProxyStatement.bind(this.data);
-  getFilingEvents = this.data.getFilingEvents.bind(this.data);
-  getRiskReports = this.data.getRiskReports.bind(this.data);
-  getRiskReport = this.data.getRiskReport.bind(this.data);
-  getCloudSecFilings = this.data.getCloudSecFilings.bind(this.data);
-  getCloudSecBeneficialOwners = this.data.getCloudSecBeneficialOwners.bind(this.data);
-  getCloudSecInsiderSignals = this.data.getCloudSecInsiderSignals.bind(this.data);
-  getCloudSecFilingDocuments = this.data.getCloudSecFilingDocuments.bind(this.data);
-  getCloudSecFilingContent = this.data.getCloudSecFilingContent.bind(this.data);
-  getCloudSec13F = this.data.getCloudSec13F.bind(this.data);
-  searchCloudDocuments = this.data.searchCloudDocuments.bind(this.data);
-  getCloudSearchDocument = this.data.getCloudSearchDocument.bind(this.data);
-  getCloudSavedSearches = this.data.getCloudSavedSearches.bind(this.data);
-  createCloudSavedSearch = this.data.createCloudSavedSearch.bind(this.data);
-  updateCloudSavedSearch = this.data.updateCloudSavedSearch.bind(this.data);
-  deleteCloudSavedSearch = this.data.deleteCloudSavedSearch.bind(this.data);
-  getCloudNews = this.data.getCloudNews.bind(this.data);
-  searchCloudNews = this.data.searchCloudNews.bind(this.data);
-  getCloudNewsStory = this.data.getCloudNewsStory.bind(this.data);
-  getCloudInsiderFilingStories = this.data.getCloudInsiderFilingStories.bind(this.data);
-  getCloudTickerTweets = this.data.getCloudTickerTweets.bind(this.data);
-  searchCloudTweets = this.data.searchCloudTweets.bind(this.data);
+  static {
+    const proto = GloomApiClient.prototype as unknown as Record<string, unknown>;
+    const bind = (get: (client: GloomApiClient) => object, targetKey: string, sourceKey: string) => {
+      if (targetKey in proto) return;
+      proto[targetKey] = function (this: GloomApiClient | undefined, ...args: unknown[]) {
+        return (get(this ?? apiClient) as Record<string, (...a: unknown[]) => unknown>)[sourceKey]!(...args);
+      };
+    };
+    const forward = (get: (client: GloomApiClient) => object, ctor: { prototype: object }) => {
+      const sourceProto = ctor.prototype as Record<string, unknown>;
+      for (const key of Object.getOwnPropertyNames(sourceProto)) {
+        if (key !== "constructor" && typeof sourceProto[key] === "function") bind(get, key, key);
+      }
+    };
+    const forwardMap = (get: (client: GloomApiClient) => object, aliases: Record<string, string>) => {
+      for (const [targetKey, sourceKey] of Object.entries(aliases)) bind(get, targetKey, sourceKey);
+    };
+    forward((c) => c.auth, CloudAuthApi);
+    forward((c) => c.data, CloudDataApi);
+    forward((c) => c.teams, CloudTeamsApi);
+    forward((c) => c.theses, CloudThesesApi);
+    forward((c) => c.collections, CloudCollectionsApi);
+    forward((c) => c.views, CloudViewsApi);
+    forward((c) => c.feedback, CloudFeedbackApi);
+    forward((c) => c.roadmap, CloudRoadmapApi);
+    forward((c) => c.waitlist, CloudWaitlistApi);
+    forward((c) => c.heardFrom, CloudHeardFromApi);
+    forward((c) => c.telemetry, CloudTelemetryApi);
+    forwardMap((c) => c.chat, CHAT_METHOD_MAP);
+    forwardMap((c) => c.socket, SOCKET_METHOD_MAP);
+    forwardMap((c) => c.notes, NOTES_METHOD_MAP);
+  }
 }
 
 export const apiClient = new GloomApiClient();

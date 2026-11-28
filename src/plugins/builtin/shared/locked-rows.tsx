@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { Box, Text, useUiCapabilities } from "../../../ui";
-import { Icon } from "../../../components";
+import { Icon, type DataTableCell } from "../../../components";
 import { useThemeColors } from "../../../theme/theme-context";
 
 /**
@@ -11,7 +11,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 
 export function Blurred({ children }: { children: ReactNode }) {
   return (
-    <Box flexDirection="row" style={{ filter: "blur(5px)", userSelect: "none", WebkitUserSelect: "none" }}>
+    <Box flexDirection="row" data-gloom-report-ignore="true" aria-hidden="true" style={{ filter: "blur(5px)", userSelect: "none", WebkitUserSelect: "none" }}>
       {children}
     </Box>
   );
@@ -55,4 +55,51 @@ export function LockedOverlay({ rows, text, onPress, role }: { rows: number; tex
       </Box>
     </Box>
   );
+}
+
+/** Shared locked placeholder cell for Pro-preview tables (desktop blurred sample, terminal UpgradeLabel / shade). */
+export function lockedTableCell({
+  desktop,
+  isLabelCell,
+  upgradeText,
+  labelText = upgradeText,
+  blurText = "Hidden",
+  shadeText = "░░░░",
+  onUpgrade,
+  role,
+  dimColor,
+  onMouseDown,
+}: {
+  desktop: boolean;
+  isLabelCell: boolean;
+  upgradeText: string;
+  labelText?: string;
+  blurText?: string;
+  shadeText?: string;
+  onUpgrade: () => void;
+  role?: string;
+  dimColor: string;
+  onMouseDown?: () => void;
+}): DataTableCell {
+  if (!desktop && isLabelCell) {
+    return {
+      text: labelText,
+      content: <UpgradeLabel text={upgradeText} onPress={onUpgrade} role={role} />,
+      ...(onMouseDown ? { onMouseDown } : {}),
+    };
+  }
+  return desktop
+    ? { text: "", content: <Blurred><Text fg={dimColor}>{blurText}</Text></Blurred> }
+    : { text: shadeText, color: dimColor };
+}
+
+/** Convenience builder for `DataTableView` `bodyAfter` when a Pro preview has hidden rows on desktop. */
+export function lockedTableOverlay(
+  rows: number,
+  desktop: boolean,
+  text: string,
+  onPress: () => void,
+  role?: string,
+): ReactNode {
+  return rows > 0 && desktop ? <LockedOverlay rows={rows} text={text} onPress={onPress} role={role} /> : undefined;
 }

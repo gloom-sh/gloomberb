@@ -62,7 +62,7 @@ function reaches(values: readonly DatedValue[], end: number, days: number): bool
  * from the series' own points. A window short of its days (`COVERED_DAYS`),
  * now or a year before, is null, and so is the change it would give.
  */
-export function trailingAverages(
+function trailingAverages(
   points: readonly { date: string | number | Date; value?: number | null }[],
   yearAgo?: readonly { date: string | number | Date; value?: number | null }[],
 ): HeadlessSeriesTrailing | null {

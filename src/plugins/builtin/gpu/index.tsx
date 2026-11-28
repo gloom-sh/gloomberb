@@ -14,6 +14,5 @@ export const gpuModule: PluginModule = {
       argOptions: () => GPU_MODELS.map((value) => ({ value, label: value })) }, headless: gpuHeadless,
     createInstance: (_context, options) => ({ placement: "floating", params: { gpuModel: gpuArgument(options?.arg) } }) }],
   series: GPU_SERIES,
-  setup(ctx) { for (const cache of [gpuBoardCache, gpuHistoryCache, gpuEventsCache]) cache.attach(ctx.persistence); },
-  dispose() { for (const cache of [gpuBoardCache, gpuHistoryCache, gpuEventsCache]) cache.reset(); },
+  caches: [gpuBoardCache, gpuHistoryCache, gpuEventsCache],
 };

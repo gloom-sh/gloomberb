@@ -37,7 +37,7 @@ function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
     { title: "Cross-asset volatility", columns: [
       { key: "label", header: "Index" }, { key: "symbol", header: "Symbol" },
       { key: "value", header: "Level", align: "right", format: formattedValue },
-      { key: "date", header: "As of" },
+      { key: "date", header: "As of", omitWhenSame: true },
       { key: "change1d", header: "1D points", align: "right", format: formattedValue },
       { key: "change1dPercent", header: "1D %", align: "right", format: formattedValue },
       { key: "percentile1y", header: "1Y percentile", align: "right", format: formattedPercentile },
@@ -45,14 +45,14 @@ function projectVolatilityHeadless(data: VolatilityData): HeadlessBundleResult {
     ], rows: data.board.filter((row) => row.value != null).map((row) => ({ ...row })) },
   ] };
 }
-export interface VolatilityHeadlessDependencies {
+interface VolatilityHeadlessDependencies {
   load(args: HeadlessPaneLoadArgs, context: HeadlessPaneContext): Promise<VolatilityLoadResult>;
 }
 const defaultDependencies: VolatilityHeadlessDependencies = {
   load: (_args, context) => loadVolatilityData(context.refresh === true, createVolatilityDependencies(context.marketData, context.apiClient),
     { signal: context.signal }),
 };
-export function createVolatilityHeadless(dependencies: VolatilityHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"bundle"> {
+function createVolatilityHeadless(dependencies: VolatilityHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"bundle"> {
   return { shape: "bundle", argument: { kind: "none" }, options: [], describe: "VIX curve and volatility board",
     discovery: { screenshotReadiness: "live-dom", limitations: [
       "Daily histories may contain isolated index observations; sparse coverage has no daily change or annual percentile.",

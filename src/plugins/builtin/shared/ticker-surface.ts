@@ -90,6 +90,24 @@ function resolveViewKey(
   return typeof viewKey === "function" ? viewKey(symbol, context, options) : viewKey;
 }
 
+function tickerPublicShare(titlePrefix: string) {
+  return {
+    serialize: ({ pane }: { pane: { binding?: { kind: string; symbol?: string }; title?: string } }) => (
+      pane.binding?.kind === "fixed" && publicTickerBindingSymbol(pane.binding as Parameters<typeof publicTickerBindingSymbol>[0])
+        ? {
+          title: pane.title?.trim() || `${titlePrefix} ${pane.binding.symbol}`,
+          data: { symbol: publicTickerBindingSymbol(pane.binding as Parameters<typeof publicTickerBindingSymbol>[0])! },
+        }
+        : null
+    ),
+    restore: (data: Record<string, unknown>) => {
+      if (Object.keys(data).length !== 1 || typeof data.symbol !== "string") return null;
+      const symbol = data.symbol.trim().toUpperCase();
+      return symbol ? { symbol, instrument: null } : null;
+    },
+  };
+}
+
 export function createTickerSurfacePaneTemplate(
   templateOptions: TickerSurfacePaneTemplateOptions,
 ): PaneTemplateDef {
@@ -130,20 +148,91 @@ export function createTickerSurfacePaneTemplate(
         resolveViewKey(templateOptions.viewKey, symbol, context, createOptions),
       );
     },
-    ...(templateOptions.publicShare ? {
-      publicShare: {
-        serialize: ({ pane }) => pane.binding?.kind === "fixed" && publicTickerBindingSymbol(pane.binding)
-          ? {
-            title: pane.title?.trim() || `${titlePrefix} ${pane.binding.symbol}`,
-            data: { symbol: publicTickerBindingSymbol(pane.binding)! },
-          }
-          : null,
-        restore: (data) => {
-          if (Object.keys(data).length !== 1 || typeof data.symbol !== "string") return null;
-          const symbol = data.symbol.trim().toUpperCase();
-          return symbol ? { symbol, instrument: null } : null;
-        },
-      },
-    } : {}),
+    ...(templateOptions.publicShare ? { publicShare: tickerPublicShare(titlePrefix) } : {}),
+  };
+}
+
+export interface QueryPaneTemplateOptions {
+  id: string;
+  paneId: string;
+  label: string;
+  description: string;
+  keywords: string[];
+  shortcut: string;
+  argPlaceholder: string;
+  instancePrefix: string;
+  defaultTitle: string;
+  titlePrefix: string;
+  includeSymbol?: boolean;
+  extraSettings?: (options?: PaneTemplateCreateOptions) => Record<string, unknown>;
+}
+
+/** Floating search pane opened with an optional free-text query (`CLTR`, `FDA`, `TRIAL`). */
+export function createQueryPaneTemplate(options: QueryPaneTemplateOptions): PaneTemplateDef {
+  return {
+    id: options.id,
+    paneId: options.paneId,
+    label: options.label,
+    description: options.description,
+    keywords: options.keywords,
+    shortcut: {
+      prefix: options.shortcut,
+      argPlaceholder: options.argPlaceholder,
+      argKind: "text",
+      argOnlySelects: true,
+      argOptional: true,
+    },
+    createInstance: (_context, createOptions) => {
+      const raw = options.includeSymbol
+        ? (createOptions?.arg ?? createOptions?.symbol ?? createOptions?.values?.query ?? "")
+        : (createOptions?.arg ?? createOptions?.values?.query ?? "");
+      const query = String(raw).trim();
+      const encoded = encodeURIComponent(query).replace(/%/g, "~");
+      return {
+        instanceId: query ? `${options.instancePrefix}:${encoded}` : `${options.instancePrefix}:latest`,
+        title: query ? `${options.titlePrefix} ${query}` : options.defaultTitle,
+        placement: "floating",
+        binding: { kind: "none" },
+        settings: { query, ...options.extraSettings?.(createOptions) },
+      };
+    },
+  };
+}
+
+export interface OptionalTickerPaneTemplateOptions {
+  id: string;
+  paneId: string;
+  label: string;
+  description: string;
+  keywords: string[];
+  shortcut: string;
+  instancePrefix?: string;
+  emptyInstance?: PaneTemplateInstanceConfig;
+  headless?: PaneTemplateDef["headless"];
+  publicShare?: boolean;
+}
+
+/** Floating pane where an explicit ticker opens a fixed window, and bare invocation opens the market/home view. */
+export function createOptionalTickerPaneTemplate(options: OptionalTickerPaneTemplateOptions): PaneTemplateDef {
+  const prefix = options.instancePrefix ?? options.paneId;
+  return {
+    id: options.id,
+    paneId: options.paneId,
+    label: options.label,
+    description: options.description,
+    keywords: options.keywords,
+    shortcut: { prefix: options.shortcut, argPlaceholder: "ticker", argKind: "ticker", argOptional: true },
+    ...(options.headless ? { headless: options.headless } : {}),
+    createInstance: (_context, createOptions) => {
+      const symbol = (createOptions?.symbol ?? createOptions?.arg ?? "").trim().toUpperCase();
+      if (!symbol) return options.emptyInstance ?? { placement: "floating" };
+      return {
+        instanceId: `${prefix}:${encodeURIComponent(symbol).replace(/%/g, "~")}`,
+        title: `${options.shortcut} ${symbol}`,
+        binding: { kind: "fixed", symbol },
+        placement: "floating",
+      };
+    },
+    ...(options.publicShare ? { publicShare: tickerPublicShare(options.shortcut) } : {}),
   };
 }

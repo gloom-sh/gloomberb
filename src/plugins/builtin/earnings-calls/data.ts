@@ -540,7 +540,7 @@ export function loadCallAudio(
   return loadCallAudioWithClient(apiClient, callId, options);
 }
 
-export async function loadCallAudioWithClient(
+async function loadCallAudioWithClient(
   client: CallAudioClient,
   callId: string,
   options: { force?: boolean; now?: number } = {},

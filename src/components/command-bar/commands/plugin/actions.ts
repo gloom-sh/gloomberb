@@ -1,8 +1,8 @@
 import { useCallback } from "react";
-import type { AppState } from "../../../../state/app/context";
 import type { PluginRegistry } from "../../../../plugins/registry";
 import type { CommandDef, CommandResultDef } from "../../../../types/plugin";
 import type { OpenInlineConfirm } from "../../routing/confirm";
+import type { CommandBarEnvironment } from "../../surface/environment";
 import { looksDestructiveCommand } from "../../helpers";
 import type { ResultItem } from "../../list/model";
 import {
@@ -13,30 +13,24 @@ import {
 } from "./items";
 import type { FormModalRequest } from "../../../form-modal";
 
-type CloseAllFn = (options?: { revertThemePreview?: boolean }) => void;
-type NotifyFn = (body: string, options?: { type?: "info" | "success" | "error" }) => void;
-
 interface UseCommandBarPluginCommandActionsOptions {
-  activeCollectionId: string | null;
-  activeTickerSymbol: string | null;
-  closeAll: CloseAllFn;
-  config: AppState["config"];
-  notify: NotifyFn;
+  env: CommandBarEnvironment;
+  closeAll: (options?: { revertThemePreview?: boolean }) => void;
+  notify: (body: string, options?: { type?: "info" | "success" | "error" }) => void;
   openForm: (request: FormModalRequest) => void;
   openInlineConfirm: OpenInlineConfirm;
   pluginRegistry: PluginRegistry;
 }
 
 export function useCommandBarPluginCommandActions({
-  activeCollectionId,
-  activeTickerSymbol,
+  env,
   closeAll,
-  config,
   notify,
   openForm,
   openInlineConfirm,
   pluginRegistry,
 }: UseCommandBarPluginCommandActionsOptions) {
+  const { activeCollectionId, activeTickerSymbol, state: { config } } = env;
   const resolvePluginCommandConfirm = useCallback((command: CommandDef) => {
     const context = {
       config,

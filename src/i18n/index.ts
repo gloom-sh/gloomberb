@@ -74,10 +74,21 @@ function detectLanguage(): AppLanguage {
 let currentLanguage: AppLanguage = detectLanguage();
 const languageListeners = new Set<() => void>();
 
+let translationRevision = 0;
+
+function notifyLanguageListeners(): void {
+  translationRevision += 1;
+  for (const listener of languageListeners) listener();
+}
+
+export function getTranslationRevision(): number {
+  return translationRevision;
+}
+
 function updateLanguage(language: AppLanguage): void {
   if (currentLanguage === language) return;
   currentLanguage = language;
-  for (const listener of languageListeners) listener();
+  notifyLanguageListeners();
 }
 
 export function getLanguage(): AppLanguage {
@@ -124,6 +135,66 @@ export function applyLanguagePreference(preference: LanguagePreference): void {
   );
 }
 
+type TranslatedLanguage = keyof typeof DICTIONARIES;
+const pluginTranslations = new Map<string, Map<TranslatedLanguage, Map<string, string>[]>>();
+let disabledTranslationPlugins = new Set<string>();
+
+export function setDisabledTranslationPlugins(pluginIds: readonly string[]): void {
+  const next = new Set(pluginIds);
+  const language = currentLanguage;
+  const changed = language !== "en" && [...pluginTranslations].some(([pluginId, languages]) =>
+    languages.has(language) && next.has(pluginId) !== disabledTranslationPlugins.has(pluginId));
+  disabledTranslationPlugins = next;
+  if (changed) notifyLanguageListeners();
+}
+
+/**
+ * Registers a plugin's own keys for one language. The latest entry for a key
+ * in this plugin and language wins until its disposer is called.
+ */
+export function registerTranslations(
+  pluginId: string,
+  language: TranslatedLanguage,
+  entries: Readonly<Record<string, string>>,
+): () => void {
+  if (!Object.hasOwn(DICTIONARIES, language)) {
+    throw new Error(`Cannot register translations for unsupported language "${language}".`);
+  }
+  const table = new Map(Object.entries(entries));
+  const languages = pluginTranslations.get(pluginId) ?? new Map<TranslatedLanguage, Map<string, string>[]>();
+  const tables = languages.get(language) ?? [];
+  tables.push(table);
+  languages.set(language, tables);
+  pluginTranslations.set(pluginId, languages);
+  if (currentLanguage === language && !disabledTranslationPlugins.has(pluginId)) notifyLanguageListeners();
+  return () => {
+    const index = tables.indexOf(table);
+    if (index < 0) return;
+    tables.splice(index, 1);
+    if (!tables.length) languages.delete(language);
+    if (!languages.size) pluginTranslations.delete(pluginId);
+    if (currentLanguage === language && !disabledTranslationPlugins.has(pluginId)) notifyLanguageListeners();
+  };
+}
+
+/** Looks up only the specified plugin's key, falling back to the supplied text. */
+export function tPlugin(pluginId: string, key: string, fallback: string): string {
+  if (currentLanguage === "en" || disabledTranslationPlugins.has(pluginId)) return fallback;
+  const tables = pluginTranslations.get(pluginId)?.get(currentLanguage);
+  if (tables) {
+    for (let index = tables.length - 1; index >= 0; index -= 1) {
+      const value = tables[index]!.get(key);
+      if (value !== undefined) return value;
+    }
+  }
+  return fallback;
+}
+
+function lookup(language: TranslatedLanguage, key: string): string | undefined {
+  const dictionary = DICTIONARIES[language];
+  return Object.hasOwn(dictionary, key) ? dictionary[key] : undefined;
+}
+
 /**
  * Translates a user-visible string. Keys are the original English text;
  * anything missing from the active dictionary falls back to English, so
@@ -131,7 +202,7 @@ export function applyLanguagePreference(preference: LanguagePreference): void {
  */
 export function t(text: string): string {
   if (currentLanguage === "en") return text;
-  return DICTIONARIES[currentLanguage][text] ?? text;
+  return lookup(currentLanguage, text) ?? text;
 }
 
 /**
@@ -142,8 +213,7 @@ export function t(text: string): string {
  */
 export function tc(context: string, text: string): string {
   if (currentLanguage === "en") return text;
-  const dictionary = DICTIONARIES[currentLanguage];
-  return dictionary[`${context}${text}`] ?? dictionary[text] ?? text;
+  return lookup(currentLanguage, `${context}${text}`) ?? lookup(currentLanguage, text) ?? text;
 }
 
 /**

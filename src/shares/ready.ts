@@ -1,12 +1,9 @@
 import { requestAuthDialog } from "../account/auth-dialog";
 import { apiClient } from "../api-client";
 import type { AppNotificationRequest } from "../types/plugin";
+import { errorMessage } from "../utils/errors";
 
 type Notify = (notification: AppNotificationRequest) => unknown;
-
-function errorText(error: unknown, fallback: string): string {
-  return error instanceof Error && error.message ? error.message : fallback;
-}
 
 /**
  * Whether the account can make a share link or post to chat now. When it
@@ -32,7 +29,7 @@ export function readyToShare(notify: Notify, retry: () => void, purpose: string)
         onClick: () => {
           void apiClient.sendVerification()
             .then(() => notify({ body: "Verification link sent.", type: "success" }))
-            .catch((error) => notify({ body: errorText(error, "Couldn't send the email. Try again."), type: "error" }));
+            .catch((error) => notify({ body: errorMessage(error, "Couldn't send the email. Try again."), type: "error" }));
         },
       },
     });

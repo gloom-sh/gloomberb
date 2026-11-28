@@ -20,3 +20,7 @@ export function discoveryOpening(
   if (!wanted) return null;
   return discovery?.opens?.find((opening) => opening.words.some((entry) => normalizeLookupToken(entry) === wanted)) ?? null;
 }
+
+export function discoveryOpeningKeywords(discovery: HeadlessPaneDefinition["discovery"]): readonly string[] {
+  return discovery?.opens?.flatMap((opening) => opening.label ? [] : opening.words) ?? [];
+}

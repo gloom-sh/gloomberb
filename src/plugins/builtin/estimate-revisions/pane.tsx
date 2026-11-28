@@ -1,30 +1,35 @@
 import { useCompanyDisclosureLinks } from "../company-kpis/related";
-import { useCallback, useEffect, useMemo, useRef } from "react";
-import { Box, ScrollBox, type ScrollBoxRenderable } from "../../../ui";
+import { useCallback, useEffect, useMemo } from "react";
+import { Box, ScrollBox, Text } from "../../../ui";
 import {
   useAssetData,
-  useAsyncResource,
-  useAutoRefresh,
   usePaneSettingValue,
   usePluginPaneState,
 } from "../../../public/react";
 import {
+  buildSectionedRows,
   ChartTableHeader,
   DataTableStackView,
   DataTableView,
+  EMPTY_TABLE_CELL,
   EmptyState,
+  isSectionedItemRow,
   KeyValueRow,
   PaneStatusBody,
   Prose,
+  renderSectionedRowHeader,
   spanAxisFormatter,
   useChartTableSelection,
   usePaneNoticeFooter,
   usePaneStatusLinkFooter,
   usePaneTabs,
+  type ChartTableChart,
+  type DataTableCell,
   type DataTableColumn,
-  type DataTableKeyEvent,
+  type SectionedRow,
   type StatItem,
 } from "../../../components";
+import { fitChartTableColumns } from "../../../components/chart-table";
 import { isAccessDenied } from "../../../api-client/errors";
 import { listingIdentity } from "../shared/ticker-request";
 import type {
@@ -34,11 +39,14 @@ import type {
 } from "../../../api-client/estimate-revisions";
 import { staticSeries } from "../../../components/chart/static/series";
 import { useThemeColors } from "../../../theme/theme-context";
+import type { ThemeColors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
-import { MISSING_VALUE, formatPercentileRank } from "../../../utils/format";
+import { MISSING_VALUE, formatCompact, formatPercentileRank, formatPercentRaw } from "../../../utils/format";
+import { formatDetailDate } from "../../../utils/datetime-format";
 import { canonicalExchange } from "../../../utils/exchanges";
-import { isPlainKey } from "../../../utils/keyboard";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { isNotMeaningful, NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
+import { usePaneResource } from "../shared/pane-resource";
+import { beatMissSeries, slotAxis } from "../shared/beat-miss-chart";
 import { SignInWall } from "../cloud/auth-actions";
 import {
   isCloudSessionRequired,
@@ -46,16 +54,22 @@ import {
 } from "../shared/research-cloud-session";
 import { cachedEstimates, loadEstimates } from "./client";
 import {
+  estimateCount as count,
   estimateCurrent,
+  estimateEps as eps,
   estimateHistory,
-  estimateNumber as number,
   estimatePercent as percent,
+  estimatePercentile,
   estimatePoints,
+  estimateDifference,
+  estimateSurprise,
   NO_ESTIMATE_PERIODS_TITLE,
-  PERIOD_COLUMNS,
-  periodLabel,
+  periodColumns,
+  periodTitle,
+  estimateDay,
   pinnedEstimatePeriods,
   revisionNotices,
+  sharedPeriodCurrency,
   sortPeriods,
 } from "./model";
 
@@ -63,7 +77,6 @@ import {
   nextEstimateSort,
   sortEstimateHistory,
   sortEstimateSurprises,
-  sortGuidanceSources,
   type EstimateSort,
 } from "./sorting";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
@@ -76,12 +89,6 @@ const TABS = [
   { value: "surprises", label: "Surprises" },
   { value: "guidance", label: "Guidance" },
 ];
-const GUIDANCE_COLUMNS: DataTableColumn[] = [
-  ...PERIOD_COLUMNS.filter((column) =>
-    ["period", "currency", "eps", "percentile", "asOf"].includes(column.id),
-  ),
-  { id: "source", label: "SOURCE", width: 12, align: "left" },
-];
 const HISTORY: DataTableColumn[] = [
   { id: "date", label: "OBSERVED", width: 12, align: "left" },
   { id: "average", label: "EPS", width: 11, align: "right" },
@@ -90,15 +97,48 @@ const HISTORY: DataTableColumn[] = [
   { id: "analysts", label: "ANALYSTS", width: 10, align: "right" },
   { id: "source", label: "SOURCE", width: 20, align: "left", flexGrow: 1 },
 ];
-const SURPRISE: DataTableColumn[] = [
-  { id: "date", label: "DATE", width: 12, align: "left" },
-  { id: "dateType", label: "DATE TYPE", width: 18, align: "left" },
-  { id: "currency", label: "CCY", width: 5, align: "left" },
-  { id: "estimate", label: "EST EPS", width: 10, align: "right" },
-  { id: "actual", label: "ACT EPS", width: 10, align: "right" },
-  { id: "percent", label: "SURPRISE %", width: 12, align: "right" },
-  { id: "percentile", label: "PCTL 1Y", width: 9, align: "right" },
-];
+/** The reports the Surprises chart draws, the latest: as many as EVT's Earnings view. */
+const SURPRISE_BARS = 12;
+const SURPRISE_PANELS = [{ id: "main" }];
+const surpriseId = (row: EstimateSurprise) => `${row.date}:${row.dateType}`;
+const surpriseDate = (row: EstimateSurprise) => new Date(`${row.date}T00:00:00Z`);
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+/** A report's day on the chart's axis, `Nov '26`. */
+const reportMonth = (date: string) => `${MONTHS[Number(date.slice(5, 7)) - 1] ?? ""} '${date.slice(2, 4)}`;
+
+/**
+ * Surprises' columns: the report's date, its estimate and actual with the
+ * surprise. The currency heads the EPS columns when every report shares it,
+ * the date's kind shows only when it varies, and a 1Y percentile only where
+ * the source gives one.
+ */
+function surpriseColumns(rows: readonly EstimateSurprise[], width: number): DataTableColumn[] {
+  const currencies = new Set(rows.map((row) => row.currency));
+  const [only] = currencies;
+  const unit = currencies.size === 1 && only ? ` ${only}` : "";
+  return fitChartTableColumns<DataTableColumn>([
+    { id: "date", label: "DATE", width: 11, align: "left" },
+    ...(new Set(rows.map((row) => row.dateType)).size > 1 ? [{ id: "dateType", label: "DATE TYPE", width: 18, align: "left" as const }] : []),
+    ...(currencies.size > 1 ? [{ id: "currency", label: "CCY", width: 4, align: "left" as const }] : []),
+    { id: "estimate", label: `EST EPS${unit}`, width: Math.max(8, 7 + unit.length), align: "right" },
+    { id: "actual", label: `ACT EPS${unit}`, width: Math.max(8, 7 + unit.length), align: "right" },
+    { id: "percent", label: "SURPRISE", width: 9, align: "right" },
+    { id: "percentile", label: "PCTL 1Y", width: 8, align: "right", omitWhenEmpty: true },
+    // The beat or miss in EPS, as EVT's detail says it; it takes the width the figures leave, so they sit together.
+    { id: "difference", label: "VS EST", width: 8, align: "left", flexGrow: 1 },
+  ], width, ["dateType", "percentile", "difference"]);
+}
+
+/** The consensus over time, recorded and as lookbacks reported it, as the Revisions chart and a period's detail draw it. */
+function consensusSeries(period: EstimatePeriod, colors: ThemeColors) {
+  return [
+    staticSeries(estimatePoints(period.recorded), { id: "recorded", label: "Recorded", color: colors.positive, calendarSpaced: true }),
+    staticSeries(estimatePoints(period.lookbacks), { id: "lookbacks", label: "Reported lookback", color: colors.warning, calendarSpaced: true }),
+  ];
+}
+const consensusPoints = (period: EstimatePeriod) => estimateHistory(period).filter((row) => row.average != null).length;
+
+type PeriodItem = SectionedRow<EstimatePeriod>;
 const historyId = (row: EstimateObservation) => `${row.source}:${row.date}`;
 const historyDate = (row: EstimateObservation) => new Date(`${row.date}T00:00:00Z`);
 const historySource = (row: EstimateObservation) => row.source === "gloom" ? "Recorded" : "Reported lookback";
@@ -137,23 +177,7 @@ function EstimateDetail({
   );
   const selectedId = rows.some((row) => historyId(row) === selected) ? selected : rows[0] ? historyId(rows[0]) : null;
   // The legend names each line as the SOURCE column does.
-  const series = useMemo(
-    () => [
-      staticSeries(estimatePoints(period.recorded), {
-        id: "recorded",
-        label: "Recorded",
-        color: colors.positive,
-        calendarSpaced: true,
-      }),
-      staticSeries(estimatePoints(period.lookbacks), {
-        id: "lookbacks",
-        label: "Reported lookback",
-        color: colors.warning,
-        calendarSpaced: true,
-      }),
-    ],
-    [period, colors],
-  );
+  const series = useMemo(() => consensusSeries(period, colors), [period, colors]);
   const link = useChartTableSelection({
     rows, getId: historyId, getDate: historyDate, selectedId, onSelect: setSelected, focused,
   });
@@ -161,32 +185,32 @@ function EstimateDetail({
   const asOf = current?.date;
   // The latest observation date is said once, on the consensus; the other
   // figures name a date only when theirs differs.
-  const otherDate = (date: string | null | undefined) => date && date !== asOf ? date : undefined;
+  const otherDate = (date: string | null | undefined) => date && date !== asOf ? estimateDay(date) : undefined;
   const pctl = period.percentile.percentile;
   const figures: StatItem[] = [
     {
       id: "eps",
       label: "EPS",
-      value: `${number(current?.average)}${period.currency ? ` ${period.currency}` : ""}`,
-      detail: [pctl == null ? null : formatPercentileRank(pctl), asOf].filter(Boolean).join(" · ") || undefined,
+      value: `${eps(current?.average)}${period.currency ? ` ${period.currency}` : ""}`,
+      detail: [pctl == null ? null : formatPercentileRank(pctl), asOf ? estimateDay(asOf) : null].filter(Boolean).join(" · ") || undefined,
     },
     {
       id: "change",
       label: "Change",
       value: percent(period.change.percent),
       tone: period.change.percent == null || period.change.percent === 0 ? "neutral" : period.change.percent > 0 ? "positive" : "negative",
-      detail: `${period.change.fromDate ?? MISSING_VALUE} to ${period.change.toDate ?? MISSING_VALUE}`,
+      detail: `${estimateDay(period.change.fromDate)} to ${estimateDay(period.change.toDate)}`,
     },
     {
       id: "range",
       label: "Range",
-      value: `${number(current?.low)} to ${number(current?.high)}`,
-      detail: current?.analysts == null ? undefined : `${number(current.analysts)} analysts`,
+      value: `${eps(current?.low)} to ${eps(current?.high)}`,
+      detail: current?.analysts == null ? undefined : `${count(current.analysts)} analysts`,
     },
     {
       id: "breadth",
       label: "Up/down 30D",
-      value: `${number(breadth?.up)} / ${number(breadth?.down)}`,
+      value: `${count(breadth?.up)} / ${count(breadth?.down)}`,
       detail: [
         breadth?.ratio == null ? null : `breadth ${percent(breadth.ratio * 100)}`,
         otherDate(breadth?.asOf),
@@ -195,7 +219,7 @@ function EstimateDetail({
     ...(period.revenue ? [{
       id: "revenue",
       label: "Revenue",
-      value: `${number(period.revenue.average)}${period.revenue.currency ? ` ${period.revenue.currency}` : ""}`,
+      value: `${formatCompact(period.revenue.average ?? undefined)}${period.revenue.currency ? ` ${period.revenue.currency}` : ""}`,
       detail: otherDate(period.revenue.asOf),
     }] : []),
   ];
@@ -209,7 +233,7 @@ function EstimateDetail({
       rootHeight={height}
       rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} figures={figures}
         chart={hasHistory ? {
-          series, formatValue: number, formatAxisValue: formatEpsAxis, remoteKind: "estimate-revision-history", ...link,
+          series, formatValue: eps, formatAxisValue: formatEpsAxis, remoteKind: "estimate-revision-history", ...link,
         } : null} />}
       selection={{
         kind: "id",
@@ -227,12 +251,12 @@ function EstimateDetail({
       renderCell={(row, column, _index, state) => ({
         text:
           column.id === "date"
-            ? row.date
+            ? estimateDay(row.date)
             : column.id === "source"
               ? historySource(row)
-              : number(
-                  row[column.id as "average" | "low" | "high" | "analysts"],
-                ),
+              : column.id === "analysts"
+                ? count(row.analysts)
+                : eps(row[column.id as "average" | "low" | "high"]),
         color: state.selected ? colors.selectedText : row.source === "gloom" ? colors.text : colors.warning,
       })}
       emptyStateTitle="No stored observations."
@@ -252,7 +276,8 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     (force: boolean) => loadEstimates(symbol!, exchange, force, marketData ?? undefined),
     [symbol, exchange, marketData, session.requestKey],
   );
-  const resource = useAsyncResource(symbol ? loader : null, {
+  const resource = usePaneResource(symbol ? loader : null, {
+    focused,
     initialData: () => (symbol ? cachedEstimates(symbol, exchange) : null),
     clearOnError: clearDeniedEstimates,
   });
@@ -288,34 +313,97 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     () => (data ? sortPeriods(data.periods, sort.column, sort.direction) : []),
     [data, sort],
   );
-  const guidanceRows = useMemo(
-    () =>
-      sortGuidanceSources(
-        rows.filter((row) => estimateCurrent(row) !== null),
-        sort,
-      ),
-    [rows, sort],
-  );
+  // The quarters and the years each in a section of their own, in the order the header sorts.
+  const periodItems = useMemo(() => buildSectionedRows<EstimatePeriod>([
+    { label: "Quarters", items: rows.filter((row) => row.frequency === "quarterly") },
+    { label: "Years", items: rows.filter((row) => row.frequency === "annual") },
+  ], (row) => row.id), [rows]);
+  const periodCurrency = useMemo(() => sharedPeriodCurrency(rows), [rows]);
+  const columns = useMemo(() => periodColumns(periodCurrency), [periodCurrency]);
   const selectedPeriod = rows.find((row) => row.id === open);
-  // The period detail only covers the Revisions tab; elsewhere a remembered
-  // open period must not take the tab keys away.
   const detailOpen = tab === "revisions" && !!selectedPeriod;
-  const guidanceScrollRef = useRef<ScrollBoxRenderable | null>(null);
-  // PageUp/PageDown read the cited guidance above the sources table first,
-  // and fall through to the table once the text is at that end.
-  const pageGuidance = useCallback((event: DataTableKeyEvent) => {
-    if (!isPlainKey(event, "pageup", "pagedown")) return false;
-    const prose = guidanceScrollRef.current;
-    const viewportHeight = prose?.viewport?.height ?? 0;
-    const max = Math.max(0, (prose?.scrollHeight ?? 0) - viewportHeight);
-    if (!prose || max <= 0) return false;
-    const delta = Math.max(1, viewportHeight - 1) * (event.name === "pageup" ? -1 : 1);
-    const next = Math.max(0, Math.min(max, prose.scrollTop + delta));
-    if (next === prose.scrollTop) return false;
-    prose.scrollTo(next);
-    event.stopPropagation?.();
-    return true;
-  }, []);
+  // Until one is picked, the first period analysts still estimate, else the first listed.
+  const listed = periodItems.filter(isSectionedItemRow).map((item) => item.item);
+  const chartedPeriod = rows.find((row) => row.id === selected) ?? listed.find((row) => row.current) ?? listed[0] ?? null;
+  // The chart follows the selected period: its consensus over time, as recorded and as lookbacks reported it.
+  const revisionsChart = useMemo<ChartTableChart | null>(() => {
+    if (!rows.some((row) => consensusPoints(row) >= 2)) return null;
+    const label = chartedPeriod ? periodTitle(chartedPeriod) : "";
+    return {
+      series: chartedPeriod && consensusPoints(chartedPeriod) >= 2 ? consensusSeries(chartedPeriod, colors) : [],
+      empty: `No consensus history for ${label}`,
+      formatValue: eps, formatAxisValue: formatEpsAxis, remoteKind: "estimate-revisions-consensus",
+      legendAccessory: <Text fg={colors.textMuted}>{label}</Text>, legendAccessoryWidth: label.length,
+    };
+  }, [chartedPeriod, colors, rows]);
+  const renderPeriodCell = useCallback((item: PeriodItem, column: DataTableColumn): DataTableCell => {
+    if (!isSectionedItemRow(item)) return EMPTY_TABLE_CELL;
+    const row = item.item;
+    const current = estimateCurrent(row);
+    const breadth = row.breadth.find((entry) => entry.days === 30);
+    switch (column.id) {
+      case "period": return { text: estimateDay(row.periodEnd), value: row.periodEnd, color: colors.textBright };
+      case "currency": return { text: row.currency ?? MISSING_VALUE, color: colors.textDim };
+      case "eps": return { text: eps(current?.average), value: current?.average ?? null, color: colors.text };
+      case "percentile": return { text: estimatePercentile(row.percentile.percentile), value: row.percentile.percentile, color: colors.textDim };
+      case "change": {
+        const change = row.change.percent;
+        return { text: percent(change), value: change, color: change == null || change === 0 ? colors.textDim : change > 0 ? colors.positive : colors.negative };
+      }
+      case "breadth":
+        return { text: breadth?.up == null && breadth?.down == null ? MISSING_VALUE : `${count(breadth?.up)}/${count(breadth?.down)}`, color: colors.textDim };
+      case "range": return { text: eps(current?.range), value: current?.range ?? null, color: colors.textDim };
+      default: return { text: estimateDay(current?.date), value: current?.date ?? null, color: colors.textDim };
+    }
+  }, [colors]);
+
+  // Surprises: the latest reports' estimate against the actual, as EVT's Earnings view charts them, over every report.
+  const surpriseCols = useMemo(() => surpriseColumns(data?.surprises ?? [], width), [data, width]);
+  const surpriseUnit = useMemo(() => {
+    const currencies = new Set((data?.surprises ?? []).map((row) => row.currency));
+    const [only] = currencies;
+    return currencies.size === 1 && only ? only : "";
+  }, [data]);
+  const bars = useMemo(() => (data?.surprises ?? [])
+    .filter((row) => row.actual != null || row.estimate != null)
+    .toSorted((left, right) => left.date.localeCompare(right.date))
+    .slice(-SURPRISE_BARS), [data]);
+  const charted = useMemo(() => new Set(bars.map(surpriseId)), [bars]);
+  const selectedSurprise = surpriseRows.find((row) => surpriseId(row) === surprise) ?? surpriseRows[0] ?? null;
+  const chartDate = useCallback((row: EstimateSurprise) => (charted.has(surpriseId(row)) ? surpriseDate(row) : null), [charted]);
+  const surpriseLink = useChartTableSelection({
+    rows: surpriseRows, getId: surpriseId, getDate: chartDate, selectedId: selectedSurprise ? surpriseId(selectedSurprise) : null,
+    onSelect: setSurprise, focused: focused && tab === "surprises",
+  });
+  const surpriseChart = useMemo<ChartTableChart | null>(() => {
+    const series = beatMissSeries(bars, { actual: (row) => row.actual, estimate: (row) => row.estimate }, surpriseUnit);
+    return series.length ? {
+      series, panels: SURPRISE_PANELS, xAxis: slotAxis(bars, (row) => reportMonth(row.date), (row) => estimateDay(row.date)),
+      remoteKind: "estimate-surprises", ...surpriseLink, formatValue: eps, formatAxisValue: formatEpsAxis,
+    } : null;
+  }, [bars, surpriseLink, surpriseUnit]);
+  const renderSurpriseCell = useCallback((row: EstimateSurprise, column: DataTableColumn): DataTableCell => {
+    switch (column.id) {
+      case "date": return { text: estimateDay(row.date), value: row.date, color: colors.textDim };
+      case "dateType": return { text: row.dateType, color: colors.textDim };
+      case "currency": return { text: row.currency ?? MISSING_VALUE, color: colors.textDim };
+      case "estimate": return { text: eps(row.estimate), value: row.estimate, color: colors.textDim };
+      case "actual": return { text: eps(row.actual), value: row.actual, color: colors.text };
+      case "percent": {
+        const rate = estimateSurprise(row);
+        if (isNotMeaningful(rate)) return { text: NOT_MEANINGFUL_TEXT, color: colors.textDim };
+        if (rate == null) return { text: MISSING_VALUE, color: colors.textDim };
+        const value = rate * 100;
+        return { text: formatPercentRaw(value), value, color: value > 0 ? colors.positive : value < 0 ? colors.negative : colors.textDim };
+      }
+      case "difference": {
+        const difference = estimateDifference(row);
+        return difference == null ? { text: MISSING_VALUE, color: colors.textDim }
+          : { text: `${difference > 0 ? "+" : ""}${eps(difference)}`, value: difference, color: colors.textDim };
+      }
+      default: return { text: estimatePercentile(row.percentile), value: row.percentile, color: colors.textDim };
+    }
+  }, [colors]);
   const pinnedTarget = useMemo(() => {
     if (!pinnedPeriod || !data) return { id: null, notice: null };
     try {
@@ -345,8 +433,6 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
     pinnedTarget.id,
     pinnedTarget.notice,
   ]);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "estimates:notices",
     focused,
@@ -397,10 +483,10 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
       />
     );
   const bodyHeight = Math.max(3, height - tabRows);
-  const guidanceTableHeight = Math.min(
-    Math.max(2, guidanceRows.length + 1),
-    Math.max(2, bodyHeight - 3),
-  );
+  const sortBy = (column: string) => setSort((old) => ({
+    column,
+    direction: old.column === column && old.direction === "desc" ? "asc" : "desc",
+  }));
   return (
     <Box width={width} height={height} flexDirection="column">
       {tabStrip}
@@ -410,24 +496,29 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
         subject="estimate revisions"
       >
         {data && tab === "revisions" ? (
-          <DataTableStackView<EstimatePeriod>
-            columns={PERIOD_COLUMNS}
-            items={rows}
+          <DataTableStackView<PeriodItem>
+            columns={columns}
+            items={periodItems}
             focused={focused}
             rootWidth={width}
             rootHeight={bodyHeight}
+            rootBefore={revisionsChart ? (
+              <ChartTableHeader width={width} height={bodyHeight} tableRows={periodItems.length} tableColumns={columns} chart={revisionsChart} />
+            ) : undefined}
             selection={{
               kind: "id",
-              selectedId: selected,
-              getId: (row) => row.id,
-              onChange: setSelected,
+              selectedId: chartedPeriod?.id ?? null,
+              getId: (item) => item.key,
+              onChange: (id) => setSelected(String(id)),
             }}
-            getItemKey={(row) => row.id}
-            onActivate={(row) => setOpen(row.id)}
+            getItemKey={(item) => item.key}
+            isNavigable={isSectionedItemRow}
+            renderSectionHeader={renderSectionedRowHeader}
+            onActivate={(item) => { if (isSectionedItemRow(item)) setOpen(item.item.id); }}
             detailOpen={!!selectedPeriod}
             onBack={() => setOpen(null)}
             detailTitle={
-              selectedPeriod ? periodLabel(selectedPeriod) : undefined
+              selectedPeriod ? periodTitle(selectedPeriod) : undefined
             }
             detailContent={
               selectedPeriod ? (
@@ -441,160 +532,69 @@ export function EstimateRevisionsPane({ width, height, focused }: PaneProps) {
             }
             sortColumnId={sort.column}
             sortDirection={sort.direction}
-            onHeaderClick={(column) =>
-              setSort((old) => ({
-                column,
-                direction:
-                  old.column === column && old.direction === "desc"
-                    ? "asc"
-                    : "desc",
-              }))
-            }
-            renderCell={(row, column) => {
-              const current = estimateCurrent(row),
-                breadth = row.breadth.find((r) => r.days === 30);
-              return {
-                text:
-                  column.id === "period"
-                    ? periodLabel(row)
-                    : column.id === "currency"
-                      ? (row.currency ?? MISSING_VALUE)
-                      : column.id === "eps"
-                        ? number(current?.average)
-                        : column.id === "percentile"
-                          ? number(row.percentile.percentile)
-                          : column.id === "change"
-                            ? percent(row.change.percent)
-                            : column.id === "range"
-                              ? number(current?.range)
-                              : column.id === "breadth"
-                                ? `${number(breadth?.up)}/${number(breadth?.down)}`
-                                : (current?.date ?? MISSING_VALUE),
-                color: colors.text,
-              };
-            }}
+            onHeaderClick={sortBy}
+            renderCell={renderPeriodCell}
+            selectedTextOverridesCellColor
+            getExportMetadata={() => (periodCurrency ? [["Currency", periodCurrency]] : [])}
             emptyStateTitle={NO_ESTIMATE_PERIODS_TITLE}
           />
         ) : null}
         {data && tab === "surprises" ? (
           <DataTableView<EstimateSurprise>
-            columns={SURPRISE}
+            columns={surpriseCols}
             items={surpriseRows}
             focused={focused}
             rootWidth={width}
             rootHeight={bodyHeight}
+            rootBefore={surpriseChart ? (
+              <ChartTableHeader width={width} height={bodyHeight} tableRows={surpriseRows.length} tableColumns={surpriseCols} chart={surpriseChart} />
+            ) : undefined}
             selection={{
               kind: "id",
-              selectedId: surprise,
-              getId: (row) => `${row.date}:${row.dateType}`,
+              selectedId: selectedSurprise ? surpriseId(selectedSurprise) : null,
+              getId: surpriseId,
               onChange: setSurprise,
             }}
-            getItemKey={(row) => `${row.date}:${row.dateType}`}
-            onActivate={(row) => setSurprise(`${row.date}:${row.dateType}`)}
+            getItemKey={surpriseId}
+            onActivate={(row) => setSurprise(surpriseId(row))}
             sortColumnId={surpriseSort.column}
             sortDirection={surpriseSort.direction}
             onHeaderClick={(column) =>
               setSurpriseSort((old) => nextEstimateSort(old, column))
             }
-            renderCell={(row, column) => ({
-              text:
-                column.id === "date"
-                  ? row.date
-                  : column.id === "dateType"
-                    ? row.dateType
-                    : column.id === "currency"
-                      ? (row.currency ?? MISSING_VALUE)
-                      : column.id === "percent"
-                        ? percent(row.percent)
-                        : number(
-                            row[
-                              column.id as "actual" | "estimate" | "percentile"
-                            ],
-                          ),
-            })}
+            renderCell={renderSurpriseCell}
+            selectedTextOverridesCellColor
+            getExportMetadata={() => (surpriseUnit ? [["Currency", surpriseUnit]] : [])}
             emptyStateTitle="No comparable reported earnings."
           />
         ) : null}
         {data && tab === "guidance" ? (
-          <Box width={width} height={bodyHeight} flexDirection="column">
-            <ScrollBox
-              ref={guidanceScrollRef}
-              flexGrow={1}
-              flexBasis={0}
-              minHeight={3}
-              width={width}
-              scrollY
-              focusable={false}
-              paddingX={1}
-            >
-              {data.guidance ? (
-                <>
-                  <KeyValueRow
-                    labelWidth={16}
-                    label="Call"
-                    value={data.guidance.callDate?.slice(0, 10) ?? MISSING_VALUE}
-                    detail={`FY${data.guidance.fiscalYear} Q${data.guidance.fiscalQuarter} · summary ${data.guidance.publishedAt.replace("T", " ").slice(0, 16)}`}
-                  />
-                  <Prose
-                    text={data.guidance.text}
-                    width={Math.max(1, width - 2)}
-                    figures={false}
-                  />
-                </>
-              ) : (
-                <EmptyState title="No cited guidance available." />
-              )}
-            </ScrollBox>
-            <Box height={guidanceTableHeight} flexShrink={0} width={width}>
-              <DataTableView<EstimatePeriod>
-                columns={GUIDANCE_COLUMNS}
-                items={guidanceRows}
-                focused={focused}
-                rootWidth={width}
-                rootHeight={guidanceTableHeight}
-                selection={{
-                  kind: "id",
-                  selectedId: selected,
-                  getId: (row) => row.id,
-                  onChange: setSelected,
-                }}
-                getItemKey={(row) => row.id}
-                onActivate={(row) => {
-                  setOpen(row.id);
-                  setTab("revisions");
-                }}
-                onRootKeyDown={pageGuidance}
-                sortColumnId={sort.column}
-                sortDirection={sort.direction}
-                onHeaderClick={(column) =>
-                  setSort((old) => ({
-                    column,
-                    direction:
-                      old.column === column && old.direction === "desc"
-                        ? "asc"
-                        : "desc",
-                  }))
-                }
-                renderCell={(row, column) => ({
-                  text:
-                    column.id === "period"
-                      ? periodLabel(row)
-                      : column.id === "currency"
-                        ? (row.currency ?? MISSING_VALUE)
-                        : column.id === "eps"
-                          ? number(estimateCurrent(row)?.average)
-                          : column.id === "percentile"
-                            ? number(row.percentile.percentile)
-                            : column.id === "source"
-                              ? row.current
-                                ? "Current"
-                                : "Collected"
-                              : (estimateCurrent(row)?.date ?? MISSING_VALUE),
-                })}
-                emptyStateTitle="No observed fiscal-period consensus."
-              />
-            </Box>
-          </Box>
+          // The guidance alone: the periods' consensus is the Revisions tab's.
+          <ScrollBox
+            width={width}
+            height={bodyHeight}
+            scrollY
+            focusable={false}
+            paddingX={1}
+          >
+            {data.guidance ? (
+              <>
+                <KeyValueRow
+                  labelWidth={16}
+                  label="Call"
+                  value={estimateDay(data.guidance.callDate?.slice(0, 10))}
+                  detail={`FY${data.guidance.fiscalYear} Q${data.guidance.fiscalQuarter} · summary ${formatDetailDate(data.guidance.publishedAt)}`}
+                />
+                <Prose
+                  text={data.guidance.text}
+                  width={Math.max(1, width - 2)}
+                  figures={false}
+                />
+              </>
+            ) : (
+              <EmptyState title="No cited guidance available." />
+            )}
+          </ScrollBox>
         ) : null}
       </PaneStatusBody>
     </Box>

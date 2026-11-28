@@ -7,7 +7,7 @@ import { formatHedgePrice } from "./hedge";
 import { exportPercent } from "./model";
 import { scenarioQuoteTimesLabel, type ScenarioQuoteTimes } from "./freshness";
 import {
-  CSP_SCREEN_DEFAULTS, CSP_SCREEN_LIMIT, cspEarningsText, cspScreenCriteriaText, loadCspScreen, readCspScreenCriteria,
+  CSP_SCREEN_DEFAULTS, CSP_SCREEN_LIMIT, cspEarningsCell, cspEarningsText, cspScreenCriteriaText, loadCspScreen, readCspScreenCriteria,
   type CspScreen, type CspScreenRow,
 } from "./csp-screen";
 import {
@@ -66,7 +66,7 @@ const COLUMNS: HeadlessPaneColumn[] = [
   { key: "midYield", header: "Mid yield/yr", align: "right", format: percentCell(2) },
   { key: "bidYield", header: "Bid yield/yr", align: "right", format: percentCell(2) },
   { key: "ivRank", header: "IVR", align: "right", format: (value) => typeof value === "number" ? value.toFixed(0) : MISSING_VALUE },
-  { key: "earnings", header: "Earnings" },
+  { key: "earnings", header: "Earnings", textFormat: (_value, row) => cspEarningsCell(row) },
 ];
 const NOTE: HeadlessPaneColumn = { key: "note", header: "Note", underRow: true };
 const EXPORT_ONLY: HeadlessPaneColumn[] = [

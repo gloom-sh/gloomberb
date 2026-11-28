@@ -447,7 +447,7 @@ function isCenterCandidate(
 }
 
 export function findMetricTreemapNeighbor<T>(
-  tiles: Array<MetricTreemapTile<T> | FloatMetricTreemapTile<T>>,
+  tiles: ReadonlyArray<MetricTreemapTile<T> | FloatMetricTreemapTile<T>>,
   selectedId: string | null,
   direction: MetricTreemapDirection,
 ): MetricTreemapTile<T> | FloatMetricTreemapTile<T> | null {

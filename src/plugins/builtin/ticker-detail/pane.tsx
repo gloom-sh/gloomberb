@@ -1,4 +1,3 @@
-import { logFailure } from "../../../utils/log-failure";
 import { matchOptionChoice, optionChoiceNames } from "../../../utils/option-choice";
 import { Box } from "../../../ui";
 import { getCurrentPluginTarget } from "../../current-target";
@@ -21,9 +20,10 @@ import {
 } from "../../../state/app/context";
 import { useQuoteUpdates } from "../../../state/hooks/quote-streaming";
 import { getSharedRegistry } from "../../registry";
-import { ChoiceDialog, EmptyState, NestedPaneTabs, PaneFooterScope, PaneStatusBody, usePaneFooter, usePaneMenuItems, usePaneTabs } from "../../../components";
+import { EmptyState, NestedPaneTabs, PaneFooterScope, PaneStatusBody, usePaneFooter, usePaneMenuItems, usePaneTabs } from "../../../components";
+import { choiceDialog } from "../../../components/ui";
 import { useTickerPaneOpening } from "../../../state/opening-ticker-panes";
-import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
+import { useOptionalDialog } from "../../../ui/dialog";
 import { useThrottledCommitValue } from "../../../react/use-throttled-commit-value";
 import { resolveOptionsTarget } from "../../../utils/options";
 import {
@@ -32,7 +32,7 @@ import {
   resolveLockedTabId,
 } from "./settings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
-import { findTickerResearchGroup, groupTickerResearchTabs, tickerResearchGroupView } from "./research-groups";
+import { findTickerResearchGroup, FORMER_VIEW_NAMES, groupTickerResearchTabs, tickerResearchGroupView } from "./research-groups";
 import { isRecord } from "../../../utils/guards";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useCloudAccessFooter } from "../shared/cloud-upgrade";
@@ -49,6 +49,7 @@ import { useUtcDay } from "../../../react/auto-refresh";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { ResearchTradeWorkspace } from "../broker-trading/dock";
+import { tickerAlertMenuItems } from "./alert-menu";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 /** A tab counts as viewed once it stays open this long, not when h/l passes over it. */
@@ -232,9 +233,11 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   const tabItemsKey = allTabs.map((tab) => `${tab.id}:${tab.name}:${tab.order}`).join("\0");
   const groups = useMemo(() => groupTickerResearchTabs(allTabs), [tabItemsKey]);
   const tabChoices = useMemo(() => [
-    ...allTabs.map((tab) => ({ value: tab.id, label: t(tab.name), viewId: tab.id })),
+    ...allTabs.map((tab) => ({ value: tab.id, label: t(tab.name), aliases: FORMER_VIEW_NAMES[tab.id], viewId: tab.id })),
     ...groups.filter((group) => !group.id.startsWith("tab:") && !allTabs.some((tab) => tab.id === group.id))
       .map((group) => ({ value: group.id, label: t(group.name), viewId: tickerResearchGroupView(group, undefined) })),
+    ...(!allTabs.some((tab) => tab.id === "event-dividends") && allTabs.some((tab) => tab.id === "dividend-yield")
+      ? [{ value: "Dividends", label: t("Dividends"), viewId: "dividend-yield" }] : []),
   ], [groups]);
   const savedTabId = matchOptionChoice(tabChoices, activeTabId)?.viewId ?? allTabs[0]?.id ?? "overview";
   const proOnlyTabIds = useMemo(
@@ -254,7 +257,7 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
   // `gloom fn DES ARCC --tab x` opens on a tab the ticker has, or fails naming the ones it has: an id no tab has at
   // once, a tab this ticker does not show (financials of a fund without statements) once its data is in.
   const missingTab = !paneSettings.hideTabs && !!ticker && !matchOptionChoice(tabChoices, committedActiveTabId)
-    && (financials != null || !matchOptionChoice(tickerResearchTabs.map((tab) => ({ value: tab.id, label: t(tab.name) })), committedActiveTabId));
+    && (financials != null || !matchOptionChoice(tickerResearchTabs.map((tab) => ({ value: tab.id, label: t(tab.name), aliases: FORMER_VIEW_NAMES[tab.id] })), committedActiveTabId));
   useRemoteUiNode(missingTab ? {
     role: "report-failure",
     label: "No such tab",
@@ -394,14 +397,14 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
     ));
     if (!choices.length) return null;
     return [{ id: "company-research", label: t("Company Research…"), onSelect: () => {
-      void dialog.prompt<string>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<string>) => <ChoiceDialog {...context}
-          title={tf("Research {symbol}", { symbol: companySymbol })}
-          choices={choices.map((item) => ({ ...item, label: t(item.label) }))} />,
+      void choiceDialog(dialog, {
+        title: tf("Research {symbol}", { symbol: companySymbol }),
+        choices: choices.map((item) => ({ ...item, label: t(item.label) })),
+        logSource: "ticker-detail.pane",
+        logMessage: "Open company research choices failed",
       }).then((templateId) => {
         if (templateId && choices.some((item) => item.id === templateId)) createPaneFromTemplate(templateId, { symbol: companySymbol });
-      }).catch(logFailure("ticker-detail.pane", "Open company research choices failed"));
+      });
     } }];
   }, [companySymbol, createPaneFromTemplate, dialog, disabledPlugins, registry, tickerResearchTabsSnapshot]);
   usePaneMenuItems("ticker-research:go-to-tab", () => {
@@ -410,22 +413,22 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       id: "go-to-tab",
       label: t("Go to Tab…"),
       onSelect: () => {
-        void dialog.prompt<string>({
-          closeOnClickOutside: true,
-          content: (context: PromptContext<string>) => (
-            <ChoiceDialog
-              {...context}
-              title={t("Go to Tab")}
-              selectedChoiceId={resolvedTabId}
-              choices={groups.flatMap((group) => group.views.map((view) => ({ id: view.id, label: t(view.name), group: t(group.name) })))}
-            />
-          ),
+        void choiceDialog(dialog, {
+          title: t("Go to Tab"),
+          selectedChoiceId: resolvedTabId,
+          choices: groups.flatMap((group) => group.views.map((view) => ({ id: view.id, label: t(view.name), group: t(group.name) }))),
+          logSource: "ticker-detail.pane",
+          logMessage: "Open research tab choices failed",
         }).then((tabId) => {
           if (tabId) selectResearchTab(tabId);
-        }).catch(logFailure("ticker-detail.pane", "Open research tab choices failed"));
+        });
       },
     }];
   }, [allTabs.length, dialog, groups, resolvedTabId, selectResearchTab, showTabs]);
+  // A reminder on the listing on screen, pinned or linked: SA's and Add Event Alert's forms, filled in.
+  usePaneMenuItems("ticker-research:set-alert", () => (
+    ticker ? tickerAlertMenuItems({ ticker, financials, registry, disabledPlugins }) : null
+  ), [disabledPlugins, financials, registry, ticker]);
   // Which tabs people stay on. A pane pinned to one tab has no strip; opening
   // it is a function open, counted with those.
   useEffect(() => {

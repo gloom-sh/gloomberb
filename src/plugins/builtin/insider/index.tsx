@@ -9,24 +9,27 @@ import { resolveTickerOpenTarget, tickerOpenFailureMessage } from "../../../tick
 import { offerTickerListings, publishTickerOpenTarget } from "../../../app/pane-runtime/ticker-open-target";
 import { getSharedRegistry } from "../../registry";
 import {
+  useChartQueries,
   useResolvedEntryValue,
   useSecFilingsQuery,
 } from "../../../market-data/hooks";
-import { instrumentFromTicker } from "../../../market-data/request-types";
+import { instrumentFromTicker, type ChartRequest } from "../../../market-data/request-types";
+import { buildChartKey } from "../../../market-data/selectors";
 import { Box, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import {
-  ChoiceDialog,
+  ChartTableHeader,
   DataTableStackView,
   EmptyState,
   PaneLinkMenu,
   QueryBar,
   Spinner,
-  StatGrid,
   sortStackItems,
+  useChartTableSelection,
   useExternalLinkFooter,
   usePaneFooter,
   usePaneNoticeFooter,
   useTableLoadMore,
+  type ChartTableChart,
   type QueryBarView,
   type StackSortPreference,
   type StatItem,
@@ -69,11 +72,13 @@ import {
   type InsiderColumnId,
   type InsiderTableRow,
 } from "./table-model";
-import { renderInsiderCell } from "./table";
+import { insiderToneColor, renderInsiderCell } from "./table";
+import { insiderActivitySeries, insiderAxisValue, insiderChartValue, insiderPlanShare, insiderWeeklyActivity } from "./activity-chart";
+import { useThemeColors } from "../../../theme/theme-context";
 import { InsiderDetail, insiderDetailTitle } from "./detail";
 import { useFilingStories, type FilingStory } from "./filing-stories";
-import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
-import { logFailure } from "../../../utils/log-failure";
+import { choiceDialog } from "../../../components/ui";
+import { useOptionalDialog } from "../../../ui/dialog";
 import { InsiderActivityView, type InsiderViewControl } from "./insiders";
 import { InsiderSignalsView, type InsiderOpenedCompany } from "./signals";
 import { InsiderTickersView } from "./tickers";
@@ -134,7 +139,7 @@ function windowDay(day: string, now = Date.now()): string {
  * dim and say so. With `currency` the dollars read with its code (1.2M USD),
  * as the table's CCY column names them.
  */
-function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFilter, currency?: string): StatItem[] {
+function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFilter, currency?: string, plans: readonly PlanFigure[] = []): StatItem[] {
   const securities = new Set(figures.totals.map((total) => total.security));
   const hidden = typeFilter === "other";
   const since = windowDay(figures.window.from);
@@ -158,6 +163,16 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
       });
     }
   }
+  // Rule 10b5-1 trades, said once here instead of on every row: what share of a side's shares was under a plan.
+  for (const plan of plans) {
+    items.push({
+      id: `plan:${plan.side}`,
+      label: plan.side === "buy" ? "90d plan buys" : "90d plan sales",
+      value: `${Math.round((plan.shares / plan.total) * 100)}%`,
+      detail: `of shares ${plan.side === "buy" ? "bought" : "sold"}, 10b5-1`,
+      tone: hidden ? "muted" : undefined,
+    });
+  }
   // Once, after the last figure: the trade dates counted, and that they are the loaded filings' trades.
   const last = items.at(-1);
   if (last) {
@@ -169,6 +184,13 @@ function summaryItems(figures: InsiderSummaryFigures, typeFilter: InsiderTypeFil
     items[items.length - 1] = { ...last, detail: join(detail, coverage), detailVariants: [join(detail, window), join(detail, `since ${since}`), detail] };
   }
   return items;
+}
+
+/** A side's open-market shares in the 90 days traded under a Rule 10b5-1 plan, of all its shares. */
+interface PlanFigure {
+  side: "buy" | "sell";
+  shares: number;
+  total: number;
 }
 
 type Setter<T> = (value: SetStateAction<T>) => void;
@@ -246,9 +268,13 @@ function useInsiderTradesState(tickerKey: string, stacked: boolean, insider: str
   };
 }
 
+const insiderRowId = (row: InsiderTableRow) => row.id;
+const insiderRowDate = (row: InsiderTableRow) => row.date;
+
 /**
- * INS on a ticker, its trades as filed: the 90-day totals, the Insider and
- * Type filters, and Enter opening a transaction.
+ * INS on a ticker, its trades as filed: the 90-day totals, a chart of each
+ * week's buys and sales against the price, the Insider and Type filters, and
+ * Enter opening a transaction.
  */
 function InsiderTradesView({ ticker, viewBar, state, width, height, focused, stackTitle, onDetailChange }: {
   ticker: TickerRecord;
@@ -350,10 +376,7 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
     [parsed, typeFilter],
   );
   const rows = useMemo(() => buildInsiderTableRows(shown), [shown]);
-  const sortedRows = useMemo(() => {
-    const order = new Map(rows.map((row, index) => [row.id, index]));
-    return sortStackItems(rows, sort, compareInsiderRows, (a, b) => order.get(a.id)! - order.get(b.id)!);
-  }, [rows, sort]);
+  const sortedRows = useMemo(() => sortStackItems(rows, sort, compareInsiderRows), [rows, sort]);
   // Form 4 amounts are dollars: a reader whose base currency is another one gets them named, as PF names a holding's.
   const baseCurrency = useAppSelector((state) => state.config.baseCurrency);
   const amountCurrency = baseCurrency.trim().toUpperCase() === FORM4_CURRENCY ? undefined : FORM4_CURRENCY;
@@ -378,7 +401,16 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
   const lastSummaryRef = useRef<{ scope: string; figures: InsiderSummaryFigures } | null>(null);
   if (summary) lastSummaryRef.current = { scope: summaryScope, figures: summary };
   const shownSummary = summary ?? (lastSummaryRef.current?.scope === summaryScope ? lastSummaryRef.current.figures : null);
-  const statItems = useMemo(() => shownSummary ? summaryItems(shownSummary, typeFilter, amountCurrency) : [], [amountCurrency, shownSummary, typeFilter]);
+  // The weeks of open-market trades the chart draws, and the 90 days' plan share the figures state once.
+  const weeks = useMemo(() => insiderWeeklyActivity(parsed), [parsed]);
+  const plans = useMemo<PlanFigure[]>(() => {
+    const recent = insiderWeeklyActivity(parsed, insiderSummaryCutoff());
+    return (["buy", "sell"] as const).flatMap((side) => {
+      const { plan, total } = insiderPlanShare(recent, side);
+      return plan > 0 ? [{ side, shares: plan, total }] : [];
+    });
+  }, [parsed]);
+  const statItems = useMemo(() => shownSummary ? summaryItems(shownSummary, typeFilter, amountCurrency, plans) : [], [amountCurrency, plans, shownSummary, typeFilter]);
   // The totals miss window filings only when the window passes the cap.
   const windowPartial = shownCount < windowCount;
   const insiderOptions = useMemo(() => {
@@ -410,6 +442,27 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
   }, [onDetailChange, transactionOpen]);
   useEffect(() => () => onDetailChange?.(false), [onDetailChange]);
   const loadMore = useTableLoadMore(scrollRef, shownCount < form4Filings.length && !openRow, loadNextPage);
+
+  // The daily close the weekly trades are set against.
+  const priceRequest = useMemo<ChartRequest | null>(() => (instrument ? { instrument, bufferRange: "1Y", granularity: "resolution", resolution: "1d" } : null), [instrument]);
+  const priceEntries = useChartQueries(priceRequest ? [priceRequest] : []);
+  const prices = useResolvedEntryValue(priceRequest ? priceEntries.get(buildChartKey(priceRequest)) ?? null : null);
+  const colors = useThemeColors();
+  const series = useMemo(() => insiderActivitySeries(weeks, prices ?? null, {
+    buy: insiderToneColor("buy"), planBuy: insiderToneColor("buy", true),
+    sell: insiderToneColor("sell"), planSell: insiderToneColor("sell", true), price: colors.text,
+  }), [colors, prices, weeks]);
+  const link = useChartTableSelection({
+    rows: sortedRows,
+    getId: insiderRowId,
+    getDate: insiderRowDate,
+    selectedId: selectedRow?.id ?? null,
+    onSelect: setSelectedId,
+    focused: focused && !openRow,
+  });
+  const chart = useMemo<ChartTableChart | null>(() => (series.length ? {
+    series, formatValue: insiderChartValue, formatAxisValue: insiderAxisValue, remoteKind: "insider-trades-by-week", ...link,
+  } : null), [link, series]);
 
   const toggleNameFilter = useCallback((reportedName: string) => {
     setNameFilter((current) => current === reportedName ? null : reportedName);
@@ -450,19 +503,15 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
       return;
     }
     if (!dialog || openStories.length === 0) return;
-    void dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog
-          {...ctx}
-          title="Stories"
-          choices={openStories.map((story, index) => ({ id: String(index), label: story.headline, detail: story.publisher }))}
-        />
-      ),
+    void choiceDialog(dialog, {
+      title: "Stories",
+      choices: openStories.map((story, index) => ({ id: String(index), label: story.headline, detail: story.publisher })),
+      logSource: "insider.detail",
+      logMessage: "Choose a story reporting the filing failed",
     }).then((choice) => {
       const story = choice ? openStories[Number(choice)] : undefined;
       if (story) openStory(story);
-    }).catch(logFailure("insider.detail", "Choose a story reporting the filing failed"));
+    });
   }, [dialog, openStories, openStory]);
 
   // Reading on: the next or previous row opens in place, and the cursor
@@ -572,8 +621,14 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
         setSelectedId(row.id);
         setOpenItemId(row.id);
       }}
-      rootBefore={<>
-        <QueryBar
+      rootBefore={<ChartTableHeader
+        width={width}
+        height={height}
+        tableRows={sortedRows.length}
+        tableColumns={columns}
+        figures={statItems}
+        chart={chart}
+        query={<QueryBar
           width={width}
           filters={[
             {
@@ -596,9 +651,8 @@ function InsiderTradesView({ ticker, viewBar, state, width, height, focused, sta
             },
           ]}
           view={viewBar}
-        />
-        <StatGrid items={statItems} width={width} />
-      </>}
+        />}
+      />}
       rootWidth={width}
       rootHeight={height}
       columns={columns}
@@ -852,8 +906,8 @@ export const insiderModule: PluginModule = {
     },
   ],
 
+  caches: [insiderSignalsCache],
   setup(ctx) {
-    insiderSignalsCache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({
       id: "insider",
       name: "Insider",
@@ -862,9 +916,5 @@ export const insiderModule: PluginModule = {
       instruments: ["equity"],
       isVisible: ({ ticker }) => mayBeUsEquityTicker(ticker),
     });
-  },
-
-  dispose() {
-    insiderSignalsCache.reset();
   },
 };

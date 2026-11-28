@@ -3,7 +3,7 @@ import type { PluginModule } from "../plugin-module";
 import type { SecFilingDocument, SecFilingItem } from "../../../types/data-provider";
 import { apiClient } from "../../../api-client";
 import { useAsyncResource } from "../../../public/react";
-import { localFilingListing, localFilingRows } from "./exchange-filings";
+import { emptyOwnershipArchive, exchangeFilingForms, exchangeFilingHistoryLimit, localFilingListing, localFilingRows, PRESENTATIONS_FORM, RECENT_EXCHANGE_FILING_LIMIT } from "./exchange-filings";
 import { useResolvedEntryValue, useSecFilingDocuments, useSecFilingsQuery, useTickerFinancials } from "../../../market-data/hooks";
 import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator";
 import { useShortcut } from "../../../react/input";
@@ -19,6 +19,7 @@ import { EmptyState, ExternalLinkText, FeedDataTableStackView, PaneLinkMenu, Que
 import { useCompanyDataFooter } from "../../../components/layout/pane/status-footer";
 import { displayWidth } from "../../../utils/format";
 import { formatFilingDate } from "../../../utils/datetime-format";
+import { formatDaysInText, isoDaysInText } from "../../../utils/day-format";
 import type { DetailFact } from "../../../components/reader/detail-reader";
 import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -75,7 +76,6 @@ import { ownerNames, rowSummary, rowSummaryTarget } from "./row-summaries";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { createSecFilingSearchProvider, resetSecFilingFocusRequests, useSecFilingFocusRequest } from "./command-bar-search";
 
-export { secHeadless } from "./headless";
 
 const SEC_FILING_PAGE_SIZE = 50;
 /** Each row is dated by the day EDGAR filed it, as every filing list reads. */
@@ -252,12 +252,16 @@ function toFeedItems(
         : []),
     ];
 
+    // A ticker shared by several filers names the filer on each row. A period end or fund year reads day first
+    // and exports as its ISO day.
+    const title = formatDaysInText(showIssuer && filing.companyName ? `${filing.companyName}: ${summary}` : summary);
+    const titleValue = isoDaysInText(title);
     return {
       id: filing.accessionNumber,
       eyebrow: filing.form,
       eyebrowColor: toneColor(filingTone(filing, direction), colors),
-      // A ticker shared by several filers names the filer on each row.
-      title: showIssuer && filing.companyName ? `${filing.companyName}: ${summary}` : summary,
+      title,
+      ...(titleValue !== title ? { titleValue } : {}),
       timestamp: filing.filingDate,
       detailTitle: enrichedTitle,
       detailFacts: facts,
@@ -345,16 +349,25 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   );
   // The fund view (ETF) has its own groups; each view keeps its own choice.
   const groups = forms ? FUND_FORM_GROUPS : COMPANY_FORM_GROUPS;
+  const local = ticker && !forms && eligibleTicker ? localFilingListing(ticker.metadata.ticker, ticker.metadata.exchange) : null;
+  const localSymbol = local?.symbol;
+  const localVenue = local?.exchange;
+  const localForms = exchangeFilingForms(localVenue);
+  const hasLocalForms = localForms.length > 0;
   const [storedGroup, setFormGroup] = usePluginPaneState<string>(forms ? "fundFormGroup" : "formGroup", ALL_FORMS);
-  const formGroup = groups.some((group) => group.value === storedGroup) ? storedGroup : ALL_FORMS;
+  const localForm = localForms.find(form => form.value === storedGroup);
+  const localKind = localForm?.kind;
+  const presentations = localKind === PRESENTATIONS_FORM;
+  const formGroup = localKind || groups.some((group) => group.value === storedGroup) ? storedGroup : ALL_FORMS;
   // A ticker can map to more than one filer (CIK); each can be listed alone.
   const issuers = useMemo(() => secFilingIssuers(formFilings), [formFilings]);
   const [storedIssuer, setIssuer] = usePluginPaneState<string>("issuerCik", ALL_FORMS);
   const issuerCik = issuers.some((issuer) => issuer.cik === storedIssuer) ? storedIssuer : ALL_FORMS;
   const scopedFilings = useMemo(() => {
+    if (localKind) return NO_FILINGS;
     const grouped = filterFilingsByGroup(formFilings, groups, formGroup);
     return issuerCik === ALL_FORMS ? grouped : grouped.filter((filing) => filing.cik === issuerCik);
-  }, [formFilings, formGroup, groups, issuerCik]);
+  }, [formFilings, formGroup, groups, issuerCik, localKind]);
   // A bank files a pricing supplement for each note it sells, hundreds a week, which bury its
   // reports; they stay out until asked for, counted among the filings the other filters keep.
   const [showSupplements, setShowSupplements] = usePluginPaneState<boolean>("pricingSupplements", false);
@@ -366,13 +379,43 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     [isSupplement, scopedFilings, showSupplements, supplementCount],
   );
   const host = useRendererHost();
-  const local = ticker && !forms && eligibleTicker ? localFilingListing(ticker.metadata.ticker, ticker.metadata.exchange) : null;
-  const localSymbol = local?.symbol;
-  const localVenue = local?.exchange;
-  const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({ symbol: localSymbol!, exchange: localVenue!, limit: 50 }), [localSymbol, localVenue]);
+  const readLocal = useCallback(() => apiClient.getCloudExchangeAnnouncements({
+    symbol: localSymbol!,
+    exchange: localVenue!,
+    limit: localVenue === "HOSE" && !localKind
+      ? RECENT_EXCHANGE_FILING_LIMIT : exchangeFilingHistoryLimit(localVenue, localKind),
+    ...(localKind ? { kind: localKind } : {}),
+  }), [localSymbol, localVenue, localKind]);
   const localFeed = useAsyncResource(localSymbol && localVenue ? readLocal : null);
-  const localRows = useMemo(() => localFeed.data && localVenue && formGroup === ALL_FORMS && issuerCik === ALL_FORMS
-    ? localFilingRows(localFeed.data, showSupplements) : [], [localFeed.data, localSymbol, localVenue, formGroup, issuerCik, showSupplements]);
+  const [archiveSymbol, setArchiveSymbol] = useState<string | undefined>();
+  const showLocalFilings = !!localKind || (formGroup === ALL_FORMS && issuerCik === ALL_FORMS);
+  const hasOlderLocalFilings = showLocalFilings && localVenue === "HOSE" && localFeed.data !== null
+    && (localFeed.data.total ?? 0) > localFeed.data.announcements.length;
+  // HOSE's longer read can be slow. Keep the recent notices while it loads,
+  // including when opening a saved link to an older filing.
+  const openOlderFiling = openItemId?.startsWith("exchange:") &&
+    !localFeed.data?.announcements.some(item => `exchange:${item.url}` === openItemId);
+  const readOlderFilings = hasOlderLocalFilings && (archiveSymbol === localSymbol || openOlderFiling);
+  useEffect(() => {
+    if (hasOlderLocalFilings && openOlderFiling) setArchiveSymbol(localSymbol);
+  }, [hasOlderLocalFilings, openOlderFiling, localSymbol]);
+  const readArchive = useCallback(() => apiClient.getCloudExchangeAnnouncements({
+    symbol: localSymbol!,
+    exchange: localVenue!,
+    limit: exchangeFilingHistoryLimit(localVenue),
+  }), [localSymbol, localVenue]);
+  const archiveFeed = useAsyncResource(readOlderFilings ? readArchive : null);
+  const localData = archiveFeed.data ?? localFeed.data;
+  const localLoading = localFeed.loading || archiveFeed.loading;
+  const localError = archiveFeed.error ?? localFeed.error;
+  const localRows = useMemo(() => {
+    if (!localData || !showLocalFilings) return [];
+    const rows = localFilingRows(localData, showSupplements);
+    if (!archiveFeed.data?.stale || !localFeed.data) return rows;
+    const recent = localFilingRows(localFeed.data, showSupplements);
+    const known = new Set(recent.map(row => row.documentKey));
+    return [...recent, ...rows.filter(row => !known.has(row.documentKey))];
+  }, [localData, localFeed.data, archiveFeed.data, showLocalFilings, showSupplements]);
 
   const openLocal = localRows.find(row => `exchange:${row.url}` === openItemId);
   const timeline = useMemo(() => {
@@ -388,13 +431,20 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   const scrollRef = useRef<ScrollBoxRenderable | null>(null);
   const loadMore = useTableLoadMore(
     scrollRef,
-    visibleCount < timeline.length,
-    () => setVisibleCount((current) => Math.min(timeline.length, current + SEC_FILING_PAGE_SIZE)),
+    visibleCount < timeline.length || (hasOlderLocalFilings && !readOlderFilings),
+    () => {
+      if (visibleCount < timeline.length) {
+        setVisibleCount((current) => Math.min(timeline.length, current + SEC_FILING_PAGE_SIZE));
+      } else {
+        setArchiveSymbol(localSymbol);
+        setVisibleCount((current) => current + SEC_FILING_PAGE_SIZE);
+      }
+    },
   );
   useEffect(() => {
     setVisibleCount(SEC_FILING_PAGE_SIZE);
   }, [ticker?.metadata.ticker, ticker?.metadata.exchange, formsSetting, formGroup, issuerCik, showSupplements]);
-  const loading = filingsEntry?.phase === "loading" || filingsEntry?.phase === "refreshing";
+  const loading = !localKind && (filingsEntry?.phase === "loading" || filingsEntry?.phase === "refreshing");
   // A restored or shared open filing can sit past the first page, or be gone
   // from the feed entirely.
   useEffect(() => {
@@ -404,17 +454,17 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       // A pricing supplement opened from the command bar shows the supplements rather than closing.
       const supplement = !showSupplements && scopedFilings.some((filing) => filing.accessionNumber === openItemId && isSupplement(filing));
       if (supplement) setShowSupplements(true);
-      else if (!loading && !localFeed.loading) setOpenItemId(null);
+      else if (!loading && !localLoading && !archiveFeed.error) setOpenItemId(null);
       return;
     }
     if (index >= visibleCount) {
       setVisibleCount(Math.ceil((index + 1) / SEC_FILING_PAGE_SIZE) * SEC_FILING_PAGE_SIZE);
     }
-  }, [timeline, isSupplement, loading, localFeed.loading, openItemId, scopedFilings, setOpenItemId, setShowSupplements, showSupplements, visibleCount]);
-  const error = filingsEntry?.error && filingsEntry.error.reasonCode !== "NO_DATA" ? filingsEntry.error.message : null;
+  }, [timeline, isSupplement, loading, localLoading, archiveFeed.error, openItemId, scopedFilings, setOpenItemId, setShowSupplements, showSupplements, visibleCount]);
+  const error = !localKind && filingsEntry?.error && filingsEntry.error.reasonCode !== "NO_DATA" ? filingsEntry.error.message : null;
   // Hosted, the only filings source is Gloom Cloud, which needs an account.
   const cloudSession = useResearchCloudSession();
-  const authWall = !localFeed.loading && !localRows.length && formFilings.length === 0 && (isCloudSessionRequired(error) || isCloudSessionRequired(localFeed.error));
+  const authWall = !localLoading && !localRows.length && (!!localKind || formFilings.length === 0) && (isCloudSessionRequired(error) || isCloudSessionRequired(localError));
 
   const openFiling = openItemId
     ? filings.find((filing) => filing.accessionNumber === openItemId) ?? null
@@ -500,7 +550,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   useShortcut((event) => {
     if (!isPlainKey(event, "r")) return;
     refresh();
-    if (localVenue) localFeed.reload();
+    if (localVenue) (readOlderFilings ? archiveFeed : localFeed).reload();
     if (forms && eligibleTicker) reloadFacts();
   }, { enabled: focused, scope: "sec" });
   // Signing in must retry the request the wall was shown for.
@@ -531,13 +581,15 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     registrationId: "sec",
     focused,
     // A current report links its press release, where its figures are, when its index names one.
-    url: openLocal ? openLocal.url : openFiling ? openFiling.pressReleaseUrl ?? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements?.url,
+    url: openLocal ? openLocal.url : openFiling ? openFiling.pressReleaseUrl ?? openFiling.filingUrl
+      : factsUrl ?? abroadPage ?? (localKind ? localData?.page : null) ?? announcements?.url,
     source: openLocal ? openLocal.source : openFiling ? openFiling.form : facts?.covered ? listNames(fundFactPublishers(facts)) : facts?.note ? facts.note.filing.form : announcements?.name ?? null,
     label: openLocal ? "filing" : openFiling ? openFiling.pressReleaseUrl ? "press release" : "filing"
       : factsUrl ? "source" : abroadPage ? "issuer page" : announcements ? "announcements" : "filing",
     // Rows read in the background for their insiders do not hold up the pane.
-    loading: loading || localFeed.loading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
-    error: authWall ? null : error ?? detailError ?? localFeed.error,
+    loading: loading || localLoading || loadingDocuments || (!!loadingKey && viewedTargets.some((target) => target.accessionNumber === loadingKey)),
+    error: authWall ? null : error ?? detailError ?? localError,
+    stale: (!!localKind || !!archiveFeed.data) && localData?.stale === true,
     hints,
     showOpenHint: !!openLocal || !!(openFiling ? openFiling.filingUrl : factsUrl ?? abroadPage ?? announcements),
   });
@@ -546,12 +598,12 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
   useCompanyDataFooter(issuerFilings[0]?.companyFrom, !openFiling);
   usePaneNoticeFooter({
     registrationId: "sec:form-filter",
-    notices: localRows.length && localFeed.data?.coverage ? [localFeed.data.coverage] : filterHistoryCapped
+    notices: (localRows.length || localKind) && localData?.coverage ? [localData.coverage] : filterHistoryCapped
       ? [`Only the ${SEC_FILING_FETCH_LIMIT.toLocaleString("en-US")} most recent filings of this issuer were searched; older fund filings are not listed.`]
       : [],
     focused,
     enabled: !openFiling,
-    title: "Fund filings",
+    title: localKind ? localForm?.label : "Fund filings",
   });
 
   const queryFilters = useMemo<QueryBarFilter[]>(() => [
@@ -560,10 +612,14 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       label: "Form",
       value: formGroup,
       defaultValue: ALL_FORMS,
-      options: [{ value: ALL_FORMS, label: forms ? "All fund forms" : "All forms" }, ...groups.map((group) => ({ value: group.value, label: group.label }))],
+      options: [
+        { value: ALL_FORMS, label: forms ? "All fund forms" : "All forms" },
+        ...localForms.map(({ value, label }) => ({ value, label })),
+        ...groups.map((group) => ({ value: group.value, label: group.label })),
+      ],
       onChange: (value: string) => { setFormGroup(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
     },
-    ...(issuers.length > 1 ? [{
+    ...(!localKind && issuers.length > 1 ? [{
       id: "issuer",
       label: "Filer",
       value: issuerCik,
@@ -580,9 +636,9 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       defaultValue: false,
       onChange: (value: boolean) => { setShowSupplements(value); setSelectedIdx(0, { immediate: true }); setOpenItemId(null); },
     }] : []),
-  ], [formGroup, forms, groups, issuerCik, issuers, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx, setShowSupplements, showSupplements, supplementCount]);
+  ], [formGroup, forms, groups, issuerCik, issuers, localForms, localKind, setFormGroup, setIssuer, setOpenItemId, setSelectedIdx, setShowSupplements, showSupplements, supplementCount]);
   // The ticker and the filer once, beside the filters: every row is their filing.
-  const issuerMeta = issuers.length === 1 ? secIssuerLabel(issuers[0]!).replace(/CIK 0+/, "CIK ") : undefined;
+  const issuerMeta = !localKind && issuers.length === 1 ? secIssuerLabel(issuers[0]!).replace(/CIK 0+/, "CIK ") : undefined;
   const queryBar = (
     <QueryBar
       width={width}
@@ -630,11 +686,11 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     )
     : body;
   if (authWall) return withFacts(<SignInWall placement="sec-signin" action="view SEC filings" needsVerification={cloudSession.needsVerification} />);
-  if ((loading || localFeed.loading) && filings.length === 0 && !localRows.length) return withFacts(<Spinner label="Loading SEC filings..." />);
+  if (!hasLocalForms && (loading || localLoading) && filings.length === 0 && !localRows.length) return withFacts(<Spinner label="Loading SEC filings..." />);
   // The fund view keeps its facts and query bar over an empty or failed filings list, which says why in the table.
-  const feedError = localFeed.error ?? error;
-  if (!forms && feedError && formFilings.length === 0 && !localRows.length) return <EmptyState title="Filings unavailable." message={feedError} />;
-  if (!forms && formFilings.length === 0 && !localRows.length) {
+  const feedError = localError ?? error;
+  if (!forms && !hasLocalForms && feedError && formFilings.length === 0 && !localRows.length) return <EmptyState title="Filings unavailable." message={feedError} />;
+  if (!forms && !hasLocalForms && formFilings.length === 0 && !localRows.length) {
     // A company from abroad that files nothing with the SEC says so and links its exchange's announcements, as `filings` does.
     if (equityAbroad) {
       const listing = { symbol: parsePublicTickerKey(ticker.metadata.ticker).symbol, exchange: equityAbroad, name: ticker.metadata.name ?? null };
@@ -679,7 +735,7 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
     for (const row of localRows) {
       const id = `exchange:${row.url}`;
       byId.set(id, { id, title: row.filing, timestamp: row.filedAt, eyebrow: row.source,
-        detailFacts: [{ label: "Filed", value: formatFilingDate(row.filedAt) },
+        detailFacts: [{ label: row.dateBasis === "catalogue" ? "Catalogue date" : "Filed", value: formatFilingDate(row.filedAt) },
           { label: "Document", value: row.source, link: { label: "Open filing", onOpen: () => host.openExternal(row.url).catch(logFailure("sec.pane", "Open exchange filing failed")) } }],
         detailMeta: [row.form, formatFilingDate(row.filedAt)],
       });
@@ -700,11 +756,22 @@ function SecView({ width, height, focused, paneType }: { width: number; height: 
       rootBefore={factsSummary ? <Box flexDirection="column" flexShrink={0}>{queryBar}{factsSummary}</Box> : queryBar}
       sourceLabel={localRows.length ? "Source / form" : "Form"}
       titleLabel="Filing"
-      timeColumn={FILED_COLUMN}
-      emptyStateTitle={forms && formFilings.length === 0 ? fundEmptyTitle
+      timeColumn={localRows.some(row => row.dateBasis === "catalogue") ? { ...FILED_COLUMN, label: "Date" } : FILED_COLUMN}
+      emptyStateTitle={presentations
+        ? localLoading ? "Loading presentations..."
+          : localError || localData?.stale ? "Presentation archive unavailable or incomplete."
+            : "No investor conference presentations in the past year."
+        : hasLocalForms && (loading || localLoading) ? "Loading filings..."
+        : hasLocalForms && feedError ? "Filings unavailable."
+        : localKind === "ownership" ? emptyOwnershipArchive(localData?.stale)
+        : localKind === "results" ? localFeed.data?.stale
+          ? "Results archive unavailable or incomplete."
+          : "No results or presentations in the exchange archive."
+        : forms && formFilings.length === 0 ? fundEmptyTitle
         : supplementCount > 0 && !showSupplements ? "Only pricing supplements."
         : formGroup === ALL_FORMS ? "No SEC filings." : "No filings of these forms."}
-      emptyStateHint={forms && formFilings.length === 0 ? fundEmptyHint
+      emptyStateHint={hasLocalForms && feedError ? feedError
+        : forms && formFilings.length === 0 ? fundEmptyHint
         : supplementCount > 0 && !showSupplements ? "Turn on Pricing supplements to list them." : undefined}
       scrollRef={scrollRef}
       onBodyScrollActivity={trackScroll}
@@ -759,8 +826,8 @@ export const secModule: PluginModule = {
     },
   ],
 
+  caches: [fundFactsCache],
   setup(ctx) {
-    fundFactsCache.attach(ctx.persistence);
     ctx.registerCommandBarSearchProvider(createSecFilingSearchProvider(ctx));
     ctx.registerTickerResearchTab({
       id: "sec",
@@ -773,7 +840,6 @@ export const secModule: PluginModule = {
     });
   },
   dispose() {
-    fundFactsCache.reset();
     resetSecFilingFocusRequests();
   },
 };

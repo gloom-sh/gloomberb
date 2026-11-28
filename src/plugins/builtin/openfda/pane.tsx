@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, type ReactNode } from "react";
 import {
@@ -15,8 +16,6 @@ import {
   useQueryBarSearch,
   useTableLoadMore,
   type DataTableCell,
-  type DataTableKeyEvent,
-  type DataTableRootKeyContext,
   type PageRequest,
   type PaneFooterSegment,
   type PaneHint,
@@ -34,8 +33,7 @@ import type { ThemeColors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, type ScrollBoxRenderable } from "../../../ui";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { toneColor, withoutQuietColumns } from "../shared/research-cells";
 import { looksLikeTicker, useTickerCompanySearch } from "../shared/ticker-company";
 import { OpenFdaClient, parseOpenFdaDate } from "./client";
@@ -76,7 +74,7 @@ const MAX_FILL_PAGES = 4;
 /** Products FDA's product data does not cover (most vaccines) have no labeler on any row. */
 const QUIET_COLUMNS = { labeler: [MISSING_VALUE] } as const;
 
-const formatDate = (date: Date | null): string => (date ? date.toISOString().slice(0, 10) : MISSING_VALUE);
+const formatDate = (date: Date | null): string => (date ? formatDay(date) : MISSING_VALUE);
 
 const capitalize = (text: string): string => text.charAt(0).toUpperCase() + text.slice(1);
 
@@ -96,17 +94,40 @@ function labelerText(record: DrugReport): string | null {
   return record.labelers > 1 ? `${record.labelers} labelers` : null;
 }
 
-function cellFor(record: OpenFdaRecord, column: ColumnId, colors: ThemeColors): DataTableCell {
+/** What a drug search names, when it is a product's name: the product, and the labeler every loaded report of it names, if one. */
+interface SearchedDrug { product: string; labeler: string | null }
+
+const isSearchedDrug = (record: OpenFdaRecord, searched: SearchedDrug | null): boolean =>
+  !!searched && record.dataset === "drug" && record.product.trim().toUpperCase() === searched.product;
+
+/**
+ * The drug a search names (`FDA ozempic`): its reports' Drug cells would all
+ * repeat the search, and its labeler is the product's, so the table says
+ * neither on those rows and the labeler goes once above it. A report of
+ * another product (a pen's own name) still names it and its labeler.
+ */
+function searchedDrug(rows: readonly OpenFdaRecord[], term: string): SearchedDrug | null {
+  const product = term.trim().toUpperCase();
+  if (!product) return null;
+  const searched = { product, labeler: null };
+  const labelers = new Set(rows.filter((row) => isSearchedDrug(row, searched)).map((row) => labelerText(row as DrugReport)));
+  const labeler = labelers.size === 1 ? [...labelers][0] ?? null : null;
+  return { product, labeler };
+}
+
+function cellFor(record: OpenFdaRecord, column: ColumnId, colors: ThemeColors, searched: SearchedDrug | null = null): DataTableCell {
   const missing: DataTableCell = { text: MISSING_VALUE, color: colors.textMuted };
   const toned = (text: string | null): DataTableCell => (text
     ? { text, color: toneColor(recordTone(column, text), colors) }
     : missing);
+  // The instant stays the value, so an export and a rendered-view report keep it as before.
   if (column === "date") return { text: formatDate(record.date), value: record.date, color: colors.textMuted };
   switch (record.dataset) {
     case "drug":
-      if (column === "product") return { text: record.product, color: colors.textBright };
+      if (column === "product") return { text: isSearchedDrug(record, searched) ? "" : record.product, value: record.product, color: colors.textBright };
       if (column === "labeler") {
         const text = labelerText(record);
+        if (text && isSearchedDrug(record, searched) && text === searched?.labeler) return { text: "", value: text };
         return text ? { text, color: record.manufacturer ? colors.text : colors.textMuted } : missing;
       }
       if (column === "role") return toned(record.role ? capitalize(record.role) : null);
@@ -260,9 +281,11 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
   const firstPage = records.pages[0] ?? null;
   const windowLimited = records.pages[records.pages.length - 1]?.windowLimited ?? false;
   const loadMore = useTableLoadMore(scrollRef, records.hasMore && !openItemId, records.loadMore);
+  const searched = useMemo(() => dataset === "drug" ? searchedDrug(rows, term) : null, [dataset, rows, term]);
   const columns = useMemo(
-    () => withoutQuietColumns(recordColumns(dataset, width), rows, (row, id) => cellFor(row, id as ColumnId, colors).text, QUIET_COLUMNS) as RecordColumn[],
-    [colors, dataset, rows, width],
+    () => (withoutQuietColumns(recordColumns(dataset, width), rows, (row, id) => cellFor(row, id as ColumnId, colors, searched).text, QUIET_COLUMNS) as RecordColumn[])
+      .map((column) => searched && (column.id === "product" || column.id === "labeler") ? { ...column, omitWhenEmpty: true } : column),
+    [colors, dataset, rows, searched, width],
   );
   const datasetLabel = DATASETS.find((entry) => entry.value === dataset)!.label;
 
@@ -348,31 +371,25 @@ export function OpenFdaPane({ width, height, focused }: PaneProps) {
     title: "FDA reports",
   });
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((event: DataTableKeyEvent, context: DataTableRootKeyContext) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
-  const renderCell = useCallback((record: OpenFdaRecord, column: RecordColumn) => cellFor(record, column.id, colors), [colors]);
+  const renderCell = useCallback((record: OpenFdaRecord, column: RecordColumn) => cellFor(record, column.id, colors, searched), [colors, searched]);
 
   const lastUpdated = parseOpenFdaDate(firstPage?.lastUpdated ?? undefined);
   const figures = useMemo<StatItem[]>(() => {
     if (!firstPage || firstPage.matched <= 0 || error) return [];
     const asOf = lastUpdated ? formatDate(lastUpdated) : null;
+    // The searched drug's labeler, which its rows leave out.
+    const labeler: StatItem[] = searched?.labeler ? [{ id: "labeler", label: "Labeler", value: searched.labeler }] : [];
     // A role checked row by row leaves the dataset's count too high to show.
-    if (!firstPage.matchedExact) return asOf ? [{ id: "updated", label: "Data as of", value: asOf }] : [];
+    if (!firstPage.matchedExact) return [...(asOf ? [{ id: "updated", label: "Data as of", value: asOf }] : []), ...labeler];
     return [{
       id: "matched",
       label: dataset === "recall" ? "Recalls" : "Reports",
       value: firstPage.matched.toLocaleString("en-US"),
       detail: asOf ? `data as of ${asOf}` : undefined,
-    }];
-  }, [dataset, error, firstPage, lastUpdated]);
+    }, ...labeler];
+  }, [dataset, error, firstPage, lastUpdated, searched]);
 
   const header = (
     <Box flexDirection="column">

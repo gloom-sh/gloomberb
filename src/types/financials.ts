@@ -38,8 +38,8 @@ export interface QuoteProvenance {
 
 /**
  * A US listing that no longer trades, as Gloom Cloud states it: TWTR, last
- * traded 2022-10-27 and removed from NYSE the next day. Its daily history is
- * still served, ending on that session. Dates are New York trading dates.
+ * traded 2022-10-27. Its daily history ends on that session; the last trade
+ * date is not the effective delisting date. Dates are New York trading dates.
  */
 export interface ListingDelisting {
   /** "delisted": the exchange's removal of the listing is on record; "inactive": only its last trade is known. */
@@ -205,6 +205,10 @@ export interface Quote extends DepositaryReceiptFacts {
   regularChangePercent?: number;
   /** Provider's exchange-local session date for the daily quote reference. */
   changeSessionDate?: string;
+  /** Range from the listing's settled regular-session daily bar. */
+  dayRangeBasis?: "daily-bar";
+  /** Date belonging to both range endpoints, not to the last price; null after reconciliation if unknown. */
+  dayRangeSessionDate?: string | null;
   high52w?: number;
   low52w?: number;
   /**
@@ -499,6 +503,7 @@ export interface Fundamentals extends DepositaryReceiptFacts {
   marketCapUnavailable?: "receipt-priced-as-ordinary";
   operatingCashFlow?: number;
   freeCashFlow?: number;
+  freeCashFlowCurrency?: string | null;
   dividendYield?: number;
   dividendYieldBasis?: "forward" | "trailing";
   dividendYieldSource?: "gloom";
@@ -530,6 +535,7 @@ export interface Fundamentals extends DepositaryReceiptFacts {
    */
   trailingEpsSource?: "filed-quarters" | "served";
   trailingEpsPeriodEnd?: string;
+  scopedEarnings?: { eps: number; currency: string; periodEnd: string; epsAvailableAt: string; priced: boolean } | null;
   /**
    * Why a multiple is withdrawn though its figures are numbers (utils/share-multiples): a warrant's price over its
    * company's EPS, a receipt's with no ratio on record, an EPS that is not net income over the shares. The multiple
@@ -688,17 +694,20 @@ export interface AnalystResearchData {
   revenueEstimates: AnalystEstimateRecord[];
 }
 
+export interface DividendNoticeSource {
+  publisher: string;
+  url: string;
+  /** Original timetable when the final cash amount was published separately. */
+  scheduleUrl?: string;
+}
+
 export interface DividendAction {
   exDate: string;
   amount: number;
   payDate?: string;
   recordDate?: string;
-  /**
-   * Who published the row when it is not the listing's own history: a fund's
-   * sponsor, for a distribution the history lacks (iShares, SPDR, J.P. Morgan,
-   * VanEck), and the page it is published on. Absent elsewhere and from older servers.
-   */
-  source?: { publisher: string; url: string };
+  /** Original notice or sponsor page, when it supplies facts for this row. */
+  source?: DividendNoticeSource;
   /**
    * The dividends the row holds by the issuer's own dividend announcement
    * forms (an HKEX listing's): each in the row's currency, summing to its
@@ -721,6 +730,7 @@ export interface DeclaredDividendAction {
   declarationDate?: string;
   recordDate?: string;
   payDate?: string;
+  source?: DividendNoticeSource;
   /** A one-off beside the regular payments (AIOK's $3.50), as the server marks it. */
   special?: true;
 }
@@ -757,12 +767,18 @@ export interface SplitHistory {
  * quarter's diluted EPS as the statements report it; `adjusted` is the
  * consensus-basis figure, which leaves out items the statements include.
  */
-export type EarningsEpsBasis = "gaap" | "adjusted";
+export type EarningsEpsBasis = "gaap" | "adjusted" | "company-adjusted";
+
+export interface FilingEpsDetails {
+  gaapEps?: number;
+  streetEps?: { actual: number; estimate: number | null; analysts: number | null; actualBasis: "including-stock-compensation" };
+}
 
 /** A report that is out, a date the company announced, or a date projected from its past reports. */
 export type EarningsDateStatus = "reported" | "confirmed" | "projected";
 
-export interface EarningsAction {
+export interface EarningsAction extends FilingEpsDetails {
+  reportedRevenue?: { amount: number; currency: string; source: "press-release"; periodKind: "quarter"; fiscalPeriod: string };
   date: string;
   /** Known release/acceptance timestamp, when the calendar has one. */
   reportedAt?: string;
@@ -781,7 +797,7 @@ export interface EarningsAction {
   epsBasis?: EarningsEpsBasis | null;
   dateStatus?: EarningsDateStatus;
   /** `press-release` when `epsActual` is the company's release's, provisional until the calendar has the quarter. */
-  epsActualSource?: "press-release";
+  epsActualSource?: "press-release" | "filing";
 }
 
 export interface CorporateActionsData {
@@ -914,14 +930,24 @@ export type ResultsFillField =
 
 export type StatementFilingKind = "annual_results" | "interim_results" | "quarterly_results" | "annual_report" | "interim_report";
 
-/** A results announcement or report on HKEXnews or SGXNet, with when it was published and read. */
+/** An issuer's results announcement or report, with when it was published and read. */
 export interface StatementFilingDocument {
-  source: "hkex" | "sgx" | "lse" | "cninfo" | "ir";
+  source: "hkex" | "sgx" | "lse" | "cninfo" | "idx" | "ir" | "mops" | "jpx" | "dart" | "nse";
   kind: StatementFilingKind;
   title: string;
+  accountingScope?: "consolidated" | "individual";
   url: string;
   publishedAt: string;
+  firstObserved?: true;
   fetchedAt: string;
+  dateBasis?: "catalogue";
+  dataUrl?: string;
+}
+
+/** The original report for a fiscal period, independent of the source of each normalized figure. */
+export interface StatementPeriodFiling extends StatementFilingDocument {
+  periodEnd: string;
+  periodMonths: number;
 }
 
 /** A row's lines read from the company's results announcement or report, for a period the statements source lags on. */
@@ -931,8 +957,15 @@ export interface ResultsStatementFill {
   fields: ResultsFillField[];
   /** The documents, the one each line was read from first: the row is dated by the earliest publication. */
   documents: StatementFilingDocument[];
-  /** Per line, its document (an index into `documents`) and page. */
-  lines: Partial<Record<ResultsFillField, { document: number; page: number | null }>>;
+  /** Per line, its document index and location in the original document. */
+  lines: Partial<Record<ResultsFillField, {
+    document: number;
+    page: number | null;
+    subtract?: { document: number; page: number | null };
+    xbrl?: { concept: string; context: string };
+    subtractDocument?: number;
+    location?: { sheet: string; cell: string };
+  }>>;
   /** The months the row's flows cover where the list's usual is another: 6 for a half in the quarterly list. */
   periodMonths?: number;
   /** A quarter derived as the difference of two year-to-date periods ("6 months to 2026-06-30 − 3 months to 2026-03-31"). */
@@ -942,6 +975,15 @@ export interface ResultsStatementFill {
    * earlier: the document restates that period's figure as the source has it.
    */
   comparable?: ResultsFillField[];
+  /** Reported figures whose definitions differ from the statements provider. */
+  definitions?: Array<{
+    field: ResultsFillField;
+    periodEnd: string;
+    months: number;
+    currency: string;
+    announcements: number;
+    source: number;
+  }>;
   /**
    * A quarter's lines left blank because the announcements count them otherwise than the statements
    * source (HSBC's revenue): set beside the source's quarters around it, the change would measure that.
@@ -1052,7 +1094,15 @@ export interface ReportedEarningsCohort {
 /** @deprecated No longer populated. */
 export interface EarningsResultProvenance { version: 1; reported: ReportedEarningsCohort }
 
+export interface StatementScope {
+  registrant: string;
+  entity?: string;
+  basis: "predecessor" | "carve-out" | "standalone";
+  label: string;
+}
+
 export interface FinancialStatement {
+  statementScope?: StatementScope;
   /** The basis of this row's share counts and per-share earnings; absent when unproven. */
   shareBasis?: ShareBasis;
   /** @deprecated No longer populated. */
@@ -1361,7 +1411,18 @@ export interface EpsEstimateHistory {
   snapshots: ConsensusEpsSnapshot[];
 }
 
+export interface TaiwanExchangeStatement {
+  kind: "income" | "balance";
+  periodEnd: string;
+  months: number;
+  currency: "TWD";
+  figures: { label: string; sourceLabel: string; value: number; perShare?: true }[];
+  source: { venue: "TWSE" | "TPEX"; url: string; snapshotDate: string; observedAt: string };
+}
+
 export interface TickerFinancials {
+  statementScope?: StatementScope;
+  statementReview?: { status: "reviewed" | "pending" | "index-unavailable"; reviewedThrough: string };
   /** Reported earnings-release events retained with daily valuation snapshots. */
   earningsReleases?: EarningsAction[];
   statementHistory?: StatementHistoryAttempt;
@@ -1378,6 +1439,9 @@ export interface TickerFinancials {
   nextEarnings?: NextEarnings;
   annualStatements: FinancialStatement[];
   quarterlyStatements: FinancialStatement[];
+  periodFilings?: StatementPeriodFiling[];
+  /** Exchange summaries have their own reporting basis and do not enter the normalized statements. */
+  taiwanExchangeStatements?: TaiwanExchangeStatement[];
   /** Twelve months to the latest half or quarter where the quarters do not give them (a half-yearly reporter). */
   trailingStatement?: FinancialStatement & { trailing: StatementTrailing };
   priceHistory: PricePoint[];
@@ -1432,6 +1496,13 @@ export interface OptionContract {
    * implied volatility, greek or surface point is read from it.
    */
   quoteStale?: boolean;
+  /**
+   * The source's bid was above its ask, which no one can trade. After a
+   * stock's options close at 16:00 New York some exchanges keep quoting while
+   * the others' closing quotes stand, and a move after the close crosses the
+   * two. Gloom Cloud serves such a quote with bid and ask 0, `quoteStale` set.
+   */
+  quoteCrossed?: boolean;
   /**
    * A contract adjusted for a corporate action (root ETHA1 beside ETHA): it
    * prices another deliverable, so a chain lists it only when asked to, with

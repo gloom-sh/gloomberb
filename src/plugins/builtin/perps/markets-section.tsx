@@ -1,7 +1,6 @@
 import { useCallback, useMemo, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
 import { usePlanAccess } from "../../../api-client/plan-access";
-import type { PerpBoardRow } from "../../../api-client/perps";
 import { ActionRow, ColumnGrid, SectionHeading, type ColumnGridCell, type ColumnGridColumn } from "../../../components";
 import { hiddenTableColumnText, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { t, tf } from "../../../i18n";
@@ -13,16 +12,16 @@ import { premiumToUnderlying } from "../../../market-data/perpetual-premium";
 import type { Quote } from "../../../types/financials";
 import { Box, Text } from "../../../ui";
 import { isRoundTheClockCoin } from "../../../utils/crypto-pair";
-import { displayWidth } from "../../../utils/format";
+import { displayWidth, MISSING_VALUE } from "../../../utils/format";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { useResearchCloudSession } from "../shared/research-cloud-session";
 import { loadPerpsCompare, loadPerpsEquity } from "./client";
 import { perpEquityIdentity } from "./equity-identity";
 import { useLivePerpRows } from "./live-rows";
-import { compact, perpCell, percent, price, venueName } from "./model";
+import { compact, perpCell, percent, perpMarkText, stockPerpPremiumText, venueName } from "./model";
 import { openPerpLabel, useOpenPerpMarket } from "./open-market";
 import { freshnessLine } from "./status-line";
-import { contractText, foldSmallMarkets, mergeVenueMarkets, venueMarketsFreshness, withPrimaryReading, type PerpVenueMarket } from "./venue-markets";
+import { contractText, foldSmallMarkets, mergeVenueMarkets, venueMarketsFreshness, withPrimaryReading } from "./venue-markets";
 
 const STOCK_TYPES = new Set(["STK", "EQUITY", "STOCK", "COMMON STOCK"]);
 const COIN_PAIR = /^([A-Z0-9]{1,15})[-/](?:USD|USDT|USDC)$/;
@@ -63,8 +62,8 @@ const DROP_ORDER: readonly Column["id"][] = ["volume", "contract", "premium", "o
 const GAP = 2;
 const span = (columns: readonly Column[]) => columns.reduce((sum, column) => sum + column.width, 0) + GAP * (columns.length - 1);
 
-function fitColumns(width: number, venueWidth: number): Column[] {
-  const original = COLUMNS.map((column) => column.id === "venue" ? { ...column, width: venueWidth } : column);
+function fitColumns(width: number, contentWidths: Partial<Record<Column["id"], number>>): Column[] {
+  const original = COLUMNS.map((column) => ({ ...column, width: Math.max(column.width, contentWidths[column.id] ?? 0) }));
   let columns = original;
   for (const id of DROP_ORDER) {
     if (span(columns) <= width) break;
@@ -112,12 +111,18 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
   // A streamed reading moves the venue's whole row: its mark, and the open interest and volume counted with it.
   const rows = visible.map((market, index) => {
     const row = live.rows[index] ?? market.primary;
-    return { market: withPrimaryReading(market, row), row };
+    const mark = perpMarkText(row.markPrice ?? row.lastPrice, row.quoteCurrency);
+    const premium = asset?.kind === "stock" ? premiumToUnderlying(row, quote) : row.premium;
+    const premiumText = asset?.kind === "stock" ? stockPerpPremiumText(row, premium) : percent(premium, 2);
+    return { market: withPrimaryReading(market, row), row, mark, premium: premiumText ? premium : null, premiumText };
   });
-  const premiumLabel = asset?.kind === "stock" ? "vs last" : "Premium";
   // The venue column fits the longest venue name shown.
   const venueWidth = Math.min(VENUE_MAX_WIDTH, Math.max(VENUE_MIN_WIDTH, ...visible.map((market) => displayWidth(venueName(market.venue)))));
-  const columns = fitColumns(width, venueWidth);
+  const columns = fitColumns(width, {
+    venue: venueWidth,
+    mark: Math.max(...rows.map(({ mark }) => displayWidth(mark))),
+    premium: Math.max(...rows.map(({ premiumText }) => displayWidth(premiumText ?? ""))),
+  });
   const fixed = span(columns);
   // The last text column takes what the figures leave, on the desktop too, so a venue keeps its contract beside it.
   const growing = columns.some((column) => column.id === "contract") ? "contract" : "venue";
@@ -127,17 +132,16 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
     gapBefore: index > 0 ? GAP : 0,
     ...(column.id === growing ? { growFrom: column.width } : {}),
   }));
-  const header: ColumnGridCell[] = columns.map((column) => ({ text: t(column.id === "premium" ? premiumLabel : column.label), color: colors.textDim }));
-  const cell = (column: Column, market: PerpVenueMarket, row: PerpBoardRow): ColumnGridCell => {
+  const header: ColumnGridCell[] = columns.map((column) => ({ text: t(column.label), color: colors.textDim }));
+  const cell = (column: Column, { market, row, mark, premium, premiumText }: typeof rows[number]): ColumnGridCell => {
     if (column.id === "venue") {
       return { text: venueName(market.venue), color: row.stale ? colors.textDim : colors.textBright,
         link: { label: openPerpLabel(row), onOpen: () => openMarket(row.marketId) } };
     }
     if (column.id === "contract") return { text: contractText(market), color: colors.textMuted };
-    if (column.id === "mark") return { text: price(row.markPrice ?? row.lastPrice), color: colors.text };
+    if (column.id === "mark") return { text: mark, color: colors.text };
     if (column.id === "premium") {
-      const value = asset?.kind === "stock" ? premiumToUnderlying(row, quote) : row.premium;
-      return { text: percent(value, 2), color: value == null || value === 0 ? colors.textMuted : value > 0 ? colors.positive : colors.negative };
+      return { text: premiumText ?? MISSING_VALUE, color: premium == null || premium === 0 ? colors.textMuted : premium > 0 ? colors.positive : colors.negative };
     }
     if (column.id === "funding") {
       const { text, color } = perpCell(row, "fundingRate8h", colors);
@@ -146,7 +150,7 @@ export function PerpMarketsSection({ symbol, exchange, instrumentType, quote, wi
     // A venue's open interest and volume are its contracts' together.
     return { text: compact(column.id === "oi" ? market.openInterestUsd : market.volume24hUsd), color: colors.text };
   };
-  const body = rows.map(({ market, row }) => columns.map((column) => cell(column, market, row)));
+  const body = rows.map((entry) => columns.map((column) => cell(column, entry)));
   // Each venue's own time, as PERP's footer gives it: the first form that fits.
   const status = freshnessLine(venueMarketsFreshness(rows.map(({ market }) => market), { now, streaming: live.liveMarkets, refreshFailed: !!resource.data?.stale }), now);
   const statusText = status.variants.find((variant) => displayWidth(variant) <= width) ?? status.variants.at(-1);

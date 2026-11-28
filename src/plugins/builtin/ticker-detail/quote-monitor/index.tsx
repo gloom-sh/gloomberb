@@ -33,7 +33,7 @@ import { getSharedRegistry } from "../../../registry";
  * US listing, an index or a pair as its symbol. A board of Tokyo names read
  * "8058" on one card and "8031:JPX" on the rest (9 Nov 2026).
  */
-export function quoteMonitorLabel(symbol: string, ticker: TickerRecord | null): string {
+function quoteMonitorLabel(symbol: string, ticker: TickerRecord | null): string {
   // By the venue's own code (9992:HKEX), as titles and the CLI name it; the card stays bound to the key as saved.
   if (parsePublicTickerKey(symbol).exchange) return displayTickerKey(symbol);
   if (/^\^|=|-USD$/i.test(symbol)) return symbol;
@@ -283,6 +283,27 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
       instrumentType={quote?.instrumentType ?? financials?.quoteMetadata?.instrumentType ?? entry.ticker?.metadata.assetCategory} />;
   };
 
+  const renderCard = (
+    entry: BoardEntry,
+    cardProps: { width: number; height: number; showRightDivider: boolean; showBottomDivider: boolean; selected: boolean },
+  ) => (
+    <QuoteMonitorCard
+      key={entry.symbol}
+      symbol={entry.symbol}
+      label={entry.label}
+      ticker={entry.ticker}
+      cachedFinancials={cachedFinancials(entry)}
+      quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
+      chartEntry={entry.chartRequest ? chartEntries.get(buildChartKey(entry.chartRequest)) ?? null : null}
+      chartPeriod={settings.chartPeriod}
+      valueFlashingEnabled={valueFlashingEnabled}
+      onSelect={setCursorSymbol}
+      onOpen={openTicker}
+      perpetuals={perpetuals(entry)}
+      {...cardProps}
+    />
+  );
+
   if (nativePaneChrome) {
     const desktopColumns = gridColumns;
     return (
@@ -303,27 +324,13 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
           height: "100%",
         }}
       >
-        {boardEntries.map((entry, index) => (
-          <QuoteMonitorCard
-            key={entry.symbol}
-            symbol={entry.symbol}
-            label={entry.label}
-            ticker={entry.ticker}
-            cachedFinancials={cachedFinancials(entry)}
-            quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
-            chartEntry={entry.chartRequest ? chartEntries.get(buildChartKey(entry.chartRequest)) ?? null : null}
-            width={Math.floor(width / desktopColumns)}
-            height={Math.floor(height / Math.ceil(symbols.length / desktopColumns))}
-            showRightDivider={false}
-            showBottomDivider
-            chartPeriod={settings.chartPeriod}
-            valueFlashingEnabled={valueFlashingEnabled}
-            selected={showCursor && index === cursorIndex}
-            onSelect={setCursorSymbol}
-            onOpen={openTicker}
-            perpetuals={perpetuals(entry)}
-          />
-        ))}
+        {boardEntries.map((entry, index) => renderCard(entry, {
+          width: Math.floor(width / desktopColumns),
+          height: Math.floor(height / Math.ceil(symbols.length / desktopColumns)),
+          showRightDivider: false,
+          showBottomDivider: true,
+          selected: showCursor && index === cursorIndex,
+        }))}
       </Box>
     );
   }
@@ -339,27 +346,13 @@ export function QuoteMonitorPane({ paneId, focused, width, height }: PaneProps) 
     >
       {rows.map((row, rowIndex) => (
         <Box key={`${rowIndex}:${row.map((entry) => entry.symbol).join(",")}`} flexDirection="row" height={cardHeight}>
-          {row.map((entry, columnIndex) => (
-            <QuoteMonitorCard
-              key={entry.symbol}
-              symbol={entry.symbol}
-              label={entry.label}
-              ticker={entry.ticker}
-              cachedFinancials={cachedFinancials(entry)}
-              quoteEntry={entry.quoteKey ? quoteEntries.get(entry.quoteKey) ?? null : null}
-              chartEntry={entry.chartRequest ? chartEntries.get(buildChartKey(entry.chartRequest)) ?? null : null}
-              width={cardWidth}
-              height={cardHeight}
-              showRightDivider={columnIndex < row.length - 1}
-              showBottomDivider={rowIndex < rows.length - 1}
-              chartPeriod={settings.chartPeriod}
-              valueFlashingEnabled={valueFlashingEnabled}
-              selected={showCursor && rowIndex * columns + columnIndex === cursorIndex}
-              onSelect={setCursorSymbol}
-              onOpen={openTicker}
-              perpetuals={perpetuals(entry)}
-            />
-          ))}
+          {row.map((entry, columnIndex) => renderCard(entry, {
+            width: cardWidth,
+            height: cardHeight,
+            showRightDivider: columnIndex < row.length - 1,
+            showBottomDivider: rowIndex < rows.length - 1,
+            selected: showCursor && rowIndex * columns + columnIndex === cursorIndex,
+          }))}
         </Box>
       ))}
     </Box>

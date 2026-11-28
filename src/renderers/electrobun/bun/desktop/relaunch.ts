@@ -63,7 +63,7 @@ function currentProcess(): RelaunchContext {
  * rename to the app's new name takes away, and a spawn into a folder that is
  * gone fails as if the shell were missing (`ENOENT, posix_spawn 'sh'`).
  */
-export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string): RelaunchCommand {
+function desktopRelaunchCommand(context: RelaunchContext, bundle?: string): RelaunchCommand {
   const pathEnv = context.pathEnv ? `${context.pathEnv}:${SYSTEM_PATH}` : SYSTEM_PATH;
   const waitForExit = `while kill -0 ${context.pid} 2>/dev/null; do sleep 0.25; done`;
   const macAppBundle = context.platform === "darwin" ? bundle ?? findMacAppBundle(context.execPath) : null;
@@ -84,7 +84,7 @@ export function desktopRelaunchCommand(context: RelaunchContext, bundle?: string
   };
 }
 
-export interface WindowsRelaunch {
+interface WindowsRelaunch {
   /** The app's process, which the script waits out. */
   pid: number;
   /** `bin\launcher.exe` beside the runtime: what the Start menu opens. */
@@ -103,7 +103,7 @@ export interface WindowsRelaunch {
  * closing one and crashes), then opens the launcher. An app that stopped
  * waiting for it writes `cancel` and stays open, so the script opens nothing.
  */
-export function windowsRelaunchScript({ pid, launcher, log, cancel, taskName, home }: WindowsRelaunch): string {
+function windowsRelaunchScript({ pid, launcher, log, cancel, taskName, home }: WindowsRelaunch): string {
   return [
     "$ErrorActionPreference = 'Stop'",
     `$OldPid = ${pid}`,

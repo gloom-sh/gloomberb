@@ -39,30 +39,31 @@ const READ = ["GET", "HEAD"] as const;
  * What a caller without a confirmed session may send, host by host: the
  * reads the plugins that work signed out make, and nothing else. The Origin
  * check is no barrier to a script, so anonymous use stays a read-only proxy
- * to those endpoints (a POST carries a search, as FINRA's tape and Pascal's
- * market search do), never to the rest of an exchange's API. Every proxied
- * host is listed, with no routes when it needs a sign-in; a test holds the
- * two lists together.
+ * to those endpoints (a POST carries a search, as FINRA's tape does), never
+ * to the rest of an exchange's API. Every proxied host is listed, with no
+ * routes when it needs a sign-in; a test holds the two lists together.
  */
 export const SIGNED_OUT_ROUTES: Readonly<Record<string, readonly SignedOutRoute[]>> = {
   "api.crypto.com": [{ methods: READ, path: "/dcm/v1/public/" }],
-  "api.elections.kalshi.com": [{ methods: READ, path: "/trade-api/v2/" }],
+  "api.elections.kalshi.com": [
+    { methods: READ, path: "/trade-api/v2/" },
+    { methods: READ, path: "/v1/search/series" },
+  ],
   "api.fda.gov": [{ methods: READ, path: "/" }],
   "api.gemini.com": [{ methods: READ, path: "/v1/prediction-markets/" }],
   "api.limitless.exchange": [{ methods: READ, path: "/markets/" }],
   "api.votehub.com": [{ methods: READ, path: "/polls" }],
   "clinicaltrials.gov": [{ methods: READ, path: "/api/v2/" }],
-  "data.pascal.trade": [
-    { methods: READ, path: "/api/v1/markets" },
-    { methods: ["POST"], path: "/api/v1/markets/text-search" },
-  ],
   "efts.sec.gov": [{ methods: READ, path: "/LATEST/search-index" }],
   "forms13f.com": [{ methods: READ, path: "/api/v1/" }],
   "gateway.polymarket.us": [{ methods: READ, path: "/v1/markets" }],
   "markets.newyorkfed.org": [{ methods: READ, path: "/api/" }],
   "nasdaqtrader.com": [{ methods: READ, path: "/rss.aspx" }],
   "production.dataviz.cnn.io": [{ methods: READ, path: "/index/fearandgreed/" }],
-  "services-dynarep.ddwa.finra.org": [{ methods: ["POST"], path: "/public/reporting/v2/data/group/" }],
+  // GET opens FINRA's XSRF-TOKEN cookie session; POST submits the search query.
+  "services-dynarep.ddwa.finra.org": [
+    { methods: ["GET", "POST"], path: "/public/reporting/v2/data/group/FixedIncomeMarket/name/corporateAndAgencySecurities" },
+  ],
   "www.treasurydirect.gov": [{ methods: READ, path: "/TA_WS/securities/search" }],
 };
 

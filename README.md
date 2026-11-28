@@ -17,6 +17,8 @@
 <a href="README.zh-CN.md">简体中文</a>
 &nbsp;&middot;&nbsp;
 <a href="README.ja.md">日本語</a>
+&nbsp;&middot;&nbsp;
+<a href="README.tr.md">Türkçe</a>
 
 <br />
 <br />

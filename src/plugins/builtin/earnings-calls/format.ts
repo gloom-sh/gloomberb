@@ -82,6 +82,8 @@ const SHORT_EVENT_LABELS: Record<string, string> = {
   "business update": "Update",
   "trial results": "Trial",
   "shareholder call": "Holders",
+  // A second call after the results call, for analysts (Micron's "post earnings analyst call").
+  "analyst call": "Analyst",
 };
 
 /** The period column: "FQ4 26", or a short event label ("M&A", "Inv day"). */
@@ -89,6 +91,38 @@ export function callPeriod(call: Omit<NamedCall, "ticker">): string {
   const label = eventLabelOf(call);
   if (label) return SHORT_EVENT_LABELS[label] ?? label;
   return formatPeriod(call.fiscalYear, call.fiscalQuarter, call.fiscalHalf);
+}
+
+/**
+ * Whether a call's PERIOD is blank with no period missing: an event that is
+ * not an earnings call (`eventKind: "other"`) has no fiscal period. Where it
+ * has a label it reads by it ("Analyst", "Inv day"), which names the event and
+ * is no period: the mark stands with the label or without, so a capture leaves
+ * the row out and the label fills nothing for the earnings calls beside it.
+ *
+ * An earnings call owes its period, and so does a call whose kind is unclear
+ * (`eventKind` null, or an older server that sends none): the list cannot tell
+ * such a call from an earnings call whose period was lost, so a capture whose
+ * every such row has none fails on the column.
+ */
+export function callPeriodMayBeBlank(call: Pick<CloudEarningsCallPayload, "eventKind">): boolean {
+  return call.eventKind === "other";
+}
+
+/**
+ * Whether a call's LENGTH is blank with nothing missing: a call with no
+ * transcript has no recording to time yet (it is still to come, or not yet
+ * produced).
+ *
+ * A transcribed call owes one. A transcript read from a document has no
+ * recording either, which the list cannot tell from a recording whose length
+ * was lost (both a null `durationSeconds` on a transcribed call). The list
+ * drops the column while no call states a length (`omitWhenEmpty`), so a
+ * capture fails on it only where it stays: a call with no transcript shows
+ * one, and every transcribed row has none.
+ */
+export function callLengthMayBeBlank(call: Pick<CloudEarningsCallPayload, "hasTranscript">): boolean {
+  return !call.hasTranscript;
 }
 
 /** Title for the detail stack: names the call so the body need not repeat it. */

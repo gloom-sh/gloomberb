@@ -12,14 +12,20 @@ import { useOptionalPaneInstanceId } from "../../../state/app/context";
 import { registerPaneTableExporter } from "../../../state/pane-table-export-registry";
 import { createDataTableCsv } from "../../data-table/export";
 import { headerCase } from "../header-case";
+import { tPlugin } from "../../../i18n";
+import { useTranslationRevision } from "../../../i18n/react";
 import { figureColumnCells } from "./render-cell";
+import { mutedRowCells } from "./muted-row";
 import { useDataTableColumnOrder } from "./use-column-order";
 import { dataTableDisplayColumns } from "./display-columns";
 import { sameVisibleRange } from "./visible-range";
+import { useDataTableColumnFit } from "./column-fit";
+import { isAsOfColumn, markHiddenTableColumns } from "../table-layout";
 
 export type {
   DataTableCell,
   DataTableColumn,
+  DataTableColumnFit,
   DataTableColumnReorder,
   DataTableProps,
   DataTableRowSource,
@@ -31,7 +37,10 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
   ownProps: DataTableProps<T, C>,
 ) {
   // Every renderer, report and export reads the cells through this, so a column of figures lines up everywhere.
-  const drawnCell = useMemo(() => figureColumnCells(ownProps.renderCell), [ownProps.renderCell]);
+  const drawnCell = useMemo(
+    () => mutedRowCells(figureColumnCells(ownProps.renderCell), ownProps.isRowMuted),
+    [ownProps.isRowMuted, ownProps.renderCell],
+  );
   // A row source's reports and exports read each row's current data; a row on screen is drawn from it already.
   const renderCell = useMemo((): DataTableProps<T, C>["renderCell"] => {
     const source = ownProps.rowSource;
@@ -51,6 +60,8 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     exportIdentity,
     // Exports and reports read the columns in the order the reader sees them.
     columns: order.columns,
+    // A pane's own export gets the same order to put on the columns it writes (`DataTableView` passes its own).
+    exportCsv: ownProps.exportCsv && (() => ownProps.exportCsv!(order.order)),
     onColumnMove: ownProps.onColumnMove ?? order.onColumnMove,
     anchoredColumns: ownProps.onColumnMove ? ownProps.anchoredColumns : order.anchoredColumns,
   };
@@ -61,15 +72,47 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     if (range.end > range.start) setVisibleRange((previous) => previous && sameVisibleRange(previous, range) ? previous : range);
     ownProps.onVisibleRangeChange?.(range);
   }, [ownProps.onVisibleRangeChange]);
-  const displayColumns = useMemo(() => dataTableDisplayColumns(props, visibleRange),
+  const shownColumns = useMemo(() => dataTableDisplayColumns(props, visibleRange),
     [props.columns, props.items, props.renderCell, props.renderSectionHeader, props.isSelected, visibleRange]);
+  // Only the drawn headers use translated labels. Exports and automation keep the raw columns.
+  const translationRevision = useTranslationRevision(shownColumns.some((column) => column.labelTranslation));
+  // The columns as their headers read: translated where a column opted in, in the table's one case. A header wider
+  // than its column widens it, so the fit below measures these and not the raw labels.
+  const headerColumns = useMemo(() => shownColumns.map((column) => {
+    const translation = column.labelTranslation;
+    const label = headerCase(translation ? tPlugin(translation.pluginId, translation.key, column.label) : column.label);
+    return label === column.label ? column : { ...column, label };
+  }), [shownColumns, translationRevision]);
+  // The fit narrows a column into a copy of it and the header's label is one too: from here on a column is known
+  // by its id, never by being the same object.
+  const shownIds = useMemo(() => new Set(shownColumns.map((column) => column.id)), [shownColumns]);
+  // Where the renderer cuts a column at its edge, the columns that fit its width: whole columns leave, least needed first.
+  const columnFit = useDataTableColumnFit(headerColumns, {
+    anchoredColumns: props.columns.slice(0, props.anchoredColumns ?? 1).filter((column) => shownIds.has(column.id)).length,
+    sortColumnId: props.sortColumnId,
+    scrollsSideways: props.showHorizontalScrollbar !== false,
+    dropOrder: props.columnDropOrder,
+    asOfColumnIds: useMemo(() => shownColumns.filter(isAsOfColumn).map((column) => column.id), [shownColumns]),
+    columnGap: props.columnGap,
+    horizontalPadding: props.horizontalPadding,
+  });
+  const columnFitRef = ownProps.columnFitRef;
+  if (columnFitRef) columnFitRef.current = columnFit.fit;
+  useEffect(() => () => { if (columnFitRef) columnFitRef.current = null; }, [columnFitRef]);
+  // The columns on screen as the pane gave them, raw label and set width, for what reads the table and not its picture.
+  const displayColumns = useMemo(() => {
+    const fitted = columnFit.fitted;
+    return fitted ? shownColumns.filter((column) => fitted.ids.has(column.id)) : shownColumns;
+  }, [columnFit.fitted, shownColumns]);
+  const displayIds = useMemo(() => new Set(displayColumns.map((column) => column.id)), [displayColumns]);
   const reportProps = {
     ...props,
     columns: displayColumns,
+    // Every column not on screen, once: a report reads each id in one cell a row.
     reportColumns: useMemo(() => [
-      ...props.columns.filter((column) => !displayColumns.includes(column)),
+      ...props.columns.filter((column) => !displayIds.has(column.id)),
       ...props.reportColumns ?? [],
-    ], [props.columns, displayColumns, props.reportColumns]),
+    ], [props.columns, displayIds, props.reportColumns]),
   };
   const paneId = useOptionalPaneInstanceId();
   const renderer = useRendererHost();
@@ -147,15 +190,15 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     // Read for this table alone: a confirmation names the row a call would open.
     getDetail: () => ({ rows: ownProps.rowSource ? reportedRows(reportProps) : cachedReportedRows(reportProps, reportedRowsRef) }),
   });
-  // Header labels read the same in every table whatever case a pane wrote
-  // them in. Exports and automation keep the pane's own labels.
-  const columns = useMemo(
-    () => displayColumns.map((column) => {
-      const label = headerCase(column.label);
-      return label === column.label ? column : { ...column, label };
-    }),
-    [displayColumns],
-  );
+  // What the renderer draws: the headers as they read, the fit's columns at the widths it narrowed them to, and the
+  // ones it left out named above the header as their headers would read, for its More to draw again.
+  const columns = useMemo(() => {
+    const fitted = columnFit.fitted;
+    if (!fitted) return headerColumns;
+    const drawn = headerColumns.filter((column) => fitted.ids.has(column.id))
+      .map((column) => fitted.widths.has(column.id) ? { ...column, width: fitted.widths.get(column.id)! } : column);
+    return markHiddenTableColumns(headerColumns, drawn, { restorable: true });
+  }, [columnFit.fitted, headerColumns]);
   const HostDataTable = useUiHost().DataTable as
     | ComponentType<DataTableProps<T, C>>
     | undefined;
@@ -164,13 +207,18 @@ export function DataTable<T, C extends DataTableColumn = DataTableColumn>(
     renderCell: drawnCell,
     columns,
     anchoredColumns: props.anchoredColumns == null ? undefined
-      : props.columns.slice(0, props.anchoredColumns).filter((column) => displayColumns.includes(column)).length,
+      : props.columns.slice(0, props.anchoredColumns).filter((column) => displayIds.has(column.id)).length,
+    // A drag lands on a drawn column, which may be a narrowed copy: it is found among the table's own by id.
     onColumnMove: props.onColumnMove ? (columnId: string, toIndex: number) => {
-      const target = displayColumns[toIndex];
-      if (target) props.onColumnMove?.(columnId, props.columns.indexOf(target));
+      const target = columns[toIndex];
+      const index = target ? props.columns.findIndex((column) => column.id === target.id) : -1;
+      if (index >= 0) props.onColumnMove?.(columnId, index);
     } : undefined,
     onVisibleRangeChange: props.columns.some((column) => column.omitWhenEmpty === "visible")
       ? onVisibleRangeChange : props.onVisibleRangeChange,
+    onViewportWidthChange: columnFit.onViewportWidthChange,
+    onShowAllColumns: columnFit.fit.hidden > 0 ? columnFit.fit.showAll : undefined,
+    scrollToColumn: columnFit.scrollToColumn,
   };
   if (HostDataTable) {
     return <HostDataTable {...displayProps} />;
@@ -213,6 +261,7 @@ function reportedRows<T, C extends DataTableColumn>(props: DataTableProps<T, C>)
           text: normalize(cell.text),
           ...(cell.value instanceof Date && Number.isFinite(cell.value.getTime()) ? { instant: cell.value.toISOString() } : {}),
           ...(typeof cell.value === "number" && Number.isFinite(cell.value) ? { value: cell.value } : {}),
+          ...(cell.reportValueUnit ? { unit: cell.reportValueUnit, ...cell.value == null ? { value: null } : {} } : {}),
           // Read by the JSON and CSV, never drawn or printed as text.
           ...(columnIndex >= props.columns.length ? { reportOnly: true } : {}),
         };

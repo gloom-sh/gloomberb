@@ -59,7 +59,8 @@ import {
   insiderStakeValue,
   insiderUsualRatio,
 } from "./signals-model";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, intOption, limitOption } from "../shared/headless-options";
+import { dayCell, numCol, textCell, underRowCol } from "../shared/headless-columns";
 import { mapWithConcurrency } from "../../../utils/concurrency";
 import { describeCollections, findNamedCollection, readWatchlistArgument, watchlistMemberSymbol } from "../../../portfolio/collection-name";
 import type { FxHistoryClient } from "../../../market-data/fx-closes";
@@ -68,52 +69,26 @@ import { filingStoryNote, loadFilingStories, type FilingStory } from "./filing-s
 
 const INSIDER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "form", header: "Form" },
-  {
-    key: "filingDate",
-    header: "Filed",
-    format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE,
-  },
-  {
-    key: "transactionDate",
-    header: "Tx",
-    format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE,
-  },
-  {
-    key: "insider",
-    header: "Insider",
-    format: (value) => typeof value === "string" ? formatInsiderName(value) : MISSING_VALUE,
-  },
+  { key: "filingDate", header: "Filed", format: dayCell() },
+  { key: "transactionDate", header: "Tx", format: dayCell() },
+  { key: "insider", header: "Insider", format: (value) => typeof value === "string" ? formatInsiderName(value) : MISSING_VALUE },
   { key: "title", header: "Title" },
   { key: "security", header: "Security" },
   {
     key: "side",
     header: "Side",
     // A filing without transaction lines, matching the pane's "Form 4 disclosure" row. An open-market
-    // trade on a form with the Rule 10b5-1 box checked is marked as the pane marks it: BUY 10b5-1.
+    // trade on a form with the Rule 10b5-1 box checked is marked in words, as the pane's export writes
+    // it (BUY 10b5-1): text has no plan tone for a chart legend to name.
     format: (value, row) => typeof value === "string"
       ? `${value}${row.rule10b51 === true && isOpenMarketTrade(typeof row.transactionCode === "string" ? row.transactionCode : null) ? " 10b5-1" : ""}`
       : row.status === "disclosure" ? "DISCLOSURE" : MISSING_VALUE,
   },
-  {
-    key: "shares",
-    header: "Shares",
-    align: "right",
-    format: (value) => value == null ? MISSING_VALUE : formatCompact(Number(value)),
-  },
-  {
-    key: "pricePerShare",
-    header: "Price",
-    align: "right",
-    format: (value) => value == null ? MISSING_VALUE : formatCurrency(Number(value)),
-  },
-  {
-    key: "totalValue",
-    header: "Value",
-    align: "right",
-    format: (value) => value == null ? MISSING_VALUE : `$${formatCompact(Number(value))}`,
-  },
+  numCol("shares", "Shares", (value) => value == null ? MISSING_VALUE : formatCompact(Number(value))),
+  numCol("pricePerShare", "Price", (value) => value == null ? MISSING_VALUE : formatCurrency(Number(value))),
+  numCol("totalValue", "Value", (value) => value == null ? MISSING_VALUE : `$${formatCompact(Number(value))}`),
   // An amendment's original date, remarks and footnotes, under the amendment's own row.
-  { key: "note", header: "Note", underRow: true, format: (value) => typeof value === "string" ? value : "" },
+  underRowCol("note", "Note", textCell("")),
 ];
 
 /** With a base currency other than USD, the dollar columns say they are in USD ("Bought (USD)"), as $ alone is several currencies' sign. */
@@ -144,6 +119,21 @@ const figureOrDash = (value: unknown) => (typeof value === "number" ? value : nu
 /** A ranking's dollars beside the side's own; none is a dash. */
 const signalAmount = (value: unknown) => (typeof value === "number" && value > 0 ? formatSignalValue(value) : MISSING_VALUE);
 
+const signalValueCell = (value: unknown) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE;
+const signalDayCell = (value: unknown) => typeof value === "string" ? formatSignalDay(value) : MISSING_VALUE;
+
+function insiderContextColumns(nthPriority: number, vsUsualPriority: number): HeadlessPaneColumn[] {
+  return [
+    { key: "role", header: "Role", shrink: false },
+    numCol("nth", "Nth", (value) => formatInsiderNth(figureOrDash(value)), { stackPriority: nthPriority }),
+    numCol("vsUsual", "Vs Usual", (value) => formatInsiderUsual(figureOrDash(value)), { stackPriority: vsUsualPriority }),
+    numCol("stake", "Stake", (value, row) => formatInsiderStake(
+      typeof value === "number" || value === "NEW" || value === "EXITED" ? value : null,
+      row.stakeBothWays === true,
+    ), { shrink: false }),
+  ];
+}
+
 /**
  * The ranking without a ticker: the pane's columns in the side's words, why
  * as the lead insider's role, nth trade, size against usual and stake. On a
@@ -159,54 +149,27 @@ function signalColumns(side: InsiderSignalSide): HeadlessPaneColumn[] {
     { key: "ticker", header: "Ticker" },
     // The company is cut to 12 at the least, as the pane cuts it, and then moves under the row.
     { key: "company", header: "Company", minWidth: 12, stackPriority: 2 },
-    { key: "score", header: "Score", align: "right" },
-    { key: "role", header: "Role", shrink: false },
-    { key: "nth", header: "Nth", align: "right", stackPriority: 3, format: (value) => formatInsiderNth(figureOrDash(value)) },
-    { key: "vsUsual", header: "Vs Usual", align: "right", stackPriority: 4, format: (value) => formatInsiderUsual(figureOrDash(value)) },
-    {
-      key: "stake",
-      header: "Stake",
-      align: "right",
-      shrink: false,
-      format: (value, row) => formatInsiderStake(
-        typeof value === "number" || value === "NEW" || value === "EXITED" ? value : null,
-        row.stakeBothWays === true,
-      ),
-    },
-    { key: "insiders", header: words.insiders, align: "right" },
-    { key: "value", header: words.traded, align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE },
+    numCol("score", "Score"),
+    ...insiderContextColumns(3, 4),
+    numCol("insiders", words.insiders),
+    numCol("value", words.traded, signalValueCell),
     // Buying is read beside what the score leaves out: purchases under a Rule 10b5-1 plan, and the sales of the same days.
-    ...side === "buy" ? [
-      { key: "planValue", header: "Plan Buys", align: "right" as const, format: signalAmount },
-      { key: "soldValue", header: "Sold", align: "right" as const, format: signalAmount },
-    ] : [],
-    { key: "lastBuy", header: words.last, format: (value) => typeof value === "string" ? formatSignalDay(value) : MISSING_VALUE },
-    { key: "filingDate", header: "Filed", stackPriority: 1, format: (value) => typeof value === "string" ? value : MISSING_VALUE },
-    { key: "buyers", header: "Insiders", underRow: true, format: (value) => typeof value === "string" ? value : "" },
+    ...side === "buy" ? [numCol("planValue", "Plan Buys", signalAmount), numCol("soldValue", "Sold", signalAmount)] : [],
+    { key: "lastBuy", header: words.last, format: signalDayCell },
+    { key: "filingDate", header: "Filed", stackPriority: 1, format: textCell() },
+    underRowCol("buyers", "Insiders", textCell("")),
   ];
 }
 
 /** INS on a ticker, its insiders: one row each, in the ranking's columns, the dollars on the side their trades net to. */
 const INSIDERS_COLUMNS: HeadlessPaneColumn[] = [
   { key: "insider", header: "Insider" },
-  { key: "role", header: "Role", shrink: false },
-  { key: "nth", header: "Nth", align: "right", stackPriority: 2, format: (value) => formatInsiderNth(figureOrDash(value)) },
-  { key: "vsUsual", header: "Vs Usual", align: "right", stackPriority: 3, format: (value) => formatInsiderUsual(figureOrDash(value)) },
-  {
-    key: "stake",
-    header: "Stake",
-    align: "right",
-    shrink: false,
-    format: (value, row) => formatInsiderStake(
-      typeof value === "number" || value === "NEW" || value === "EXITED" ? value : null,
-      row.stakeBothWays === true,
-    ),
-  },
-  { key: "bought", header: "Bought", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE },
+  ...insiderContextColumns(2, 3),
+  numCol("bought", "Bought", signalValueCell),
   // Of Bought, the dollars under a Rule 10b5-1 plan: a company asked for by its ticker counts them, the ranking does not.
-  { key: "planBought", header: "Plan Buys", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE },
-  { key: "sold", header: "Sold", align: "right", format: (value) => typeof value === "number" ? formatSignalValue(value) : MISSING_VALUE },
-  { key: "last", header: "Last", stackPriority: 1, format: (value) => typeof value === "string" ? formatSignalDay(value) : MISSING_VALUE },
+  numCol("planBought", "Plan Buys", signalValueCell),
+  numCol("sold", "Sold", signalValueCell),
+  { key: "last", header: "Last", stackPriority: 1, format: signalDayCell },
 ];
 
 /**
@@ -324,7 +287,7 @@ function amendmentNote(entry: ParsedInsiderFiling): string {
   return [original ? `Original filed ${original}` : "", ...buildInsiderDisclosureText(entry, { byLine: false }).split("\n")].filter(Boolean).join("\n");
 }
 
-export interface InsiderHeadlessDependencies {
+interface InsiderHeadlessDependencies {
   /** Daily FX closes for values in a base currency other than USD; the report's API client unless a test stands in. */
   fxHistory?: FxHistoryClient;
   loadSignals?(query: InsiderSignalsQuery, limit: number, ctx: HeadlessPaneContext): Promise<InsiderSignalsPayload>;
@@ -620,7 +583,7 @@ async function severalTickers(
   };
 }
 
-export function createInsiderHeadless(
+function createInsiderHeadless(
   dependencies: InsiderHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {
@@ -635,125 +598,46 @@ export function createInsiderHeadless(
     },
     options: [
       {
-        key: "watchlist",
+        key: "watchlist", type: "string", defaultValue: "", placeholder: "name",
         description: `A watchlist's tickers, the first ${MAX_INSIDER_TICKERS}, in one table with a Ticker column, as typing them would.`,
-        type: "string",
-        defaultValue: "",
-        placeholder: "name",
         shot: { reportOnly: "reads a watchlist's tickers into one table" },
       },
-      {
-        key: "name",
-        description: "Exact reporting owner name.",
-        type: "string",
-        defaultValue: "",
-      },
-      {
-        key: "type",
+      { key: "name", description: "Exact reporting owner name.", type: "string", defaultValue: "" },
+      enumOption("type", [{ value: "trades", aliases: ["buys-sells", "buys", "sells"] }, "other", "all"], {
         description: "Transaction types: trades (open-market buys and sells, what the pane opens on), other (awards, exercises, tax, gifts), or all. Without it, every line.",
-        type: "enum",
-        values: [
-          { value: "trades", aliases: ["buys-sells", "buys", "sells"] },
-          { value: "other" },
-          { value: "all" },
-        ],
         pluginState: { pluginId: "ticker-research", key: "insider:typeFilter" },
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        aliases: ["count", "rows"],
+      }),
+      limitOption({
+        aliases: ["count", "rows"], defaultValue: INSIDER_REPORT_FILINGS, maximum: 100,
         description: "Maximum of the company's own Form 4 and Form 4/A filings to parse; without a ticker, companies to rank.",
-        type: "integer",
-        defaultValue: INSIDER_REPORT_FILINGS,
-        minimum: 1,
-        maximum: 100,
-      },
-      {
-        key: "window",
-        aliases: ["days"],
+      }),
+      intOption("window", {
+        aliases: ["days"], defaultValue: 30, minimum: 1, maximum: 90, pluginState: SIGNAL_OPTION_STATE("window"),
         description: "Without a ticker: days of open-market buying or selling to rank, 1 to 90; with --view insiders, the days its insiders cover.",
-        type: "integer",
-        defaultValue: 30,
-        minimum: 1,
-        maximum: 90,
-        pluginState: SIGNAL_OPTION_STATE("window"),
-      },
-      {
-        key: "side",
+      }),
+      enumOption("side", [{ value: "buy", aliases: ["buys", "buying", "purchases"] }, { value: "sell", aliases: ["sells", "selling", "sales"] }], {
         description: "Buying (open-market purchases) or selling (sales an insider chose: not under a Rule 10b5-1 plan, to cover tax, out of an option exercise or in an offering). Without a ticker, the side to rank; with --view insiders, the side whose dollars sort first.",
-        type: "enum",
-        defaultValue: "buy",
-        values: [
-          { value: "buy", aliases: ["buys", "buying", "purchases"] },
-          { value: "sell", aliases: ["sells", "selling", "sales"] },
-        ],
-        example: "--side sell --min-value 250000",
-        exampleWithoutArgument: true,
-        pluginState: SIGNAL_OPTION_STATE("side"),
-      },
-      {
-        key: "role",
+        defaultValue: "buy", example: "--side sell --min-value 250000", exampleWithoutArgument: true, pluginState: SIGNAL_OPTION_STATE("side"),
+      }),
+      enumOption("role", ["all", { value: "officers", aliases: ["officer", "executives"] }, { value: "directors", aliases: ["director"] }, { value: "owners", aliases: ["owner", "10%"] }], {
         description: "Without a ticker: whose trades to rank: all, officers (CEO, CFO and other officers), directors or owners (10% owners).",
-        type: "enum",
-        defaultValue: "all",
-        values: [
-          { value: "all" },
-          { value: "officers", aliases: ["officer", "executives"] },
-          { value: "directors", aliases: ["director"] },
-          { value: "owners", aliases: ["owner", "10%"] },
-        ],
-        example: "--role directors --cluster --window 90",
-        exampleWithoutArgument: true,
-        pluginState: SIGNAL_OPTION_STATE("role"),
-      },
-      {
-        key: "minValue",
-        aliases: ["min-value", "min"],
+        defaultValue: "all", example: "--role directors --cluster --window 90", exampleWithoutArgument: true, pluginState: SIGNAL_OPTION_STATE("role"),
+      }),
+      intOption("minValue", {
+        aliases: ["min-value", "min"], minimum: 0, pluginState: SIGNAL_OPTION_STATE("minValue"),
         description: "Without a ticker: least US dollars a company's insiders traded in the window.",
-        type: "integer",
-        minimum: 0,
-        pluginState: SIGNAL_OPTION_STATE("minValue"),
-      },
-      {
-        key: "cluster",
-        description: "Without a ticker: only companies where two insiders or more traded within a few weeks.",
-        type: "boolean",
-        pluginState: SIGNAL_OPTION_STATE("cluster"),
-      },
-      {
-        key: "new",
-        description: "Without a ticker, buying: only companies where an insider opened a new position.",
-        type: "boolean",
-        pluginState: SIGNAL_OPTION_STATE("position"),
-      },
-      {
-        key: "exited",
-        description: "Without a ticker, with --side sell: only companies where an insider sold their whole stake.",
-        type: "boolean",
-        example: "--side sell --exited",
-        exampleWithoutArgument: true,
-        pluginState: SIGNAL_OPTION_STATE("position"),
-      },
-      {
-        key: "view",
+      }),
+      { key: "cluster", description: "Without a ticker: only companies where two insiders or more traded within a few weeks.", type: "boolean", pluginState: SIGNAL_OPTION_STATE("cluster") },
+      { key: "new", description: "Without a ticker, buying: only companies where an insider opened a new position.", type: "boolean", pluginState: SIGNAL_OPTION_STATE("position") },
+      { key: "exited", description: "Without a ticker, with --side sell: only companies where an insider sold their whole stake.", type: "boolean", example: "--side sell --exited", exampleWithoutArgument: true, pluginState: SIGNAL_OPTION_STATE("position") },
+      enumOption("view", [{ value: "trades", aliases: ["transactions"] }, { value: "insiders", aliases: ["insider"] }], {
         description: "With a ticker: trades (each Form 4 line as filed, the default) or insiders (one row per insider over --window, as the ranking counts them: nth trade, size against usual, stake, dollars bought or sold; --side sell lists the largest sellers first).",
-        type: "enum",
-        defaultValue: "trades",
-        values: [
-          { value: "trades", aliases: ["transactions"] },
-          { value: "insiders", aliases: ["insider"] },
-        ],
-        example: "--view insiders --window 90",
-        pluginState: { pluginId: "ticker-research", key: "insider:view" },
-      },
-      {
-        key: "cap",
+        defaultValue: "trades", example: "--view insiders --window 90", pluginState: { pluginId: "ticker-research", key: "insider:view" },
+      }),
+      enumOption("cap", INSIDER_SIGNAL_CAP_OPTIONS.map((option) => option.value), {
         description: "Without a ticker: market value, micro (under $300M), small ($300M to $2B), mid ($2B to $10B) or large; where the server stores market values.",
-        type: "enum",
-        values: INSIDER_SIGNAL_CAP_OPTIONS.map((option) => ({ value: option.value })),
         pluginState: SIGNAL_OPTION_STATE("cap"),
-      },
+      }),
     ],
     columns: INSIDER_COLUMNS,
     // The Trades view filters by insider as the pane's own filter does, kept by ticker.

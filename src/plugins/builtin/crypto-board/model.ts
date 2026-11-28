@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import type { CryptoAssetKind, CryptoMarketAsset, CryptoPeg } from "../../../api-client/crypto-markets";
 import type { DataTableColumn } from "../../../components";
 import { getTableWidth } from "../../../components/ui/table-layout";
@@ -153,7 +154,7 @@ function priceVenueText(quote: Quote | null, delayed: boolean): string {
   return quote ? quoteSourceName(quote) || MISSING_VALUE : COMPOSITE_PRICE_VENUE;
 }
 
-export const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
+const cryptoQuoteKey = (asset: Pick<CryptoMarketAsset, "symbol">) =>
   buildQuoteKey({ symbol: asset.symbol, exchange: CRYPTO_EXCHANGE });
 
 const positive = (value: number | null | undefined): value is number => isFiniteNumber(value) && value > 0;
@@ -284,7 +285,7 @@ function buildCryptoRow(
  * bond token priced toward par at maturity (BUSD0) is marked by its kind and
  * has no par to be off.
  */
-export function formatPegTarget(peg: CryptoPeg | null | undefined): string {
+function formatPegTarget(peg: CryptoPeg | null | undefined): string {
   if (!peg) return "";
   if (peg.accrues) return `${peg.currency} ${peg.kind === "bond" ? "bond" : "yield"}`;
   if (peg.currency === "USD") return "USD";
@@ -292,7 +293,7 @@ export function formatPegTarget(peg: CryptoPeg | null | undefined): string {
 }
 
 /** Basis points off the peg, to a tenth: (price / target - 1) x 10,000. Null when the coin accrues (yield, a bond) or the target is unknown. */
-export function offPegBasisPoints(price: number, peg: CryptoPeg | null | undefined): number | null {
+function offPegBasisPoints(price: number, peg: CryptoPeg | null | undefined): number | null {
   if (!peg || peg.accrues || peg.price == null || !(peg.price > 0) || !(price > 0)) return null;
   return toBasisPoints((price / peg.price - 1) * 100, 1);
 }
@@ -433,7 +434,7 @@ export function cryptoRowObservations(rows: readonly CryptoRow[]): CryptoRowObse
  * previous close) when there is one, so a live price crossing a power of ten
  * keeps its decimals.
  */
-export function formatCryptoPrice(value: number | null, minimumDecimals = 2, referencePrice?: number | null): string {
+function formatCryptoPrice(value: number | null, minimumDecimals = 2, referencePrice?: number | null): string {
   if (value == null || !Number.isFinite(value) || value <= 0) return MISSING_VALUE;
   const magnitude = Math.floor(Math.log10(positive(referencePrice) ? referencePrice : value));
   const decimals = Math.min(12, Math.max(minimumDecimals, 3 - magnitude));
@@ -449,11 +450,12 @@ export function formatCryptoPercent(value: number | null): string {
 }
 
 /**
- * "as of 2026-10-21 UTC close": a daily total's newest day, which is that UTC
- * day's close. The DeFi and stablecoin tabs date theirs the same way.
+ * "as of 21 Oct 2026 UTC close": a daily total's newest day, which is that UTC
+ * day's close. The DeFi and stablecoin tabs date theirs the same way; a
+ * report's JSON and CSV write the day in ISO (`day`).
  */
-export function utcCloseAsOfText(asOf: string): string {
-  return `as of ${asOf} UTC close`;
+export function utcCloseAsOfText(asOf: string, day: (value: string) => string = formatDay): string {
+  return `as of ${day(asOf)} UTC close`;
 }
 
 // Sorting ---------------------------------------------------------------------

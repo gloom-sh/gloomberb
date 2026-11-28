@@ -112,6 +112,7 @@ const NO_EVENTS: readonly CompositeChartEvent[] = [];
 const NO_PROJECTED_EVENTS: readonly { event: CompositeChartEvent; guide: CompositeEventGuide }[] = [];
 const subscribeToNothing = () => () => {};
 const holdsNothing = () => false;
+const pinsNothing = () => null;
 
 function finiteTimestampOrNull(date: Date | null | undefined): number | null {
   const timestamp = date?.getTime() ?? null;
@@ -235,6 +236,8 @@ function ThemedCompositeChart({
   emptyDetail,
   formatValue,
   onCursorDateChange,
+  pinKeys = false,
+  onPinnedMomentChange,
   onViewportChange,
   onActivate,
   onPress,
@@ -581,6 +584,14 @@ function ThemedCompositeChart({
   const showsSharedCursor = useSyncExternalStore(subscribeToLink, useCallback(() => sharedTime?.() != null, [sharedTime]));
   const holdsSharedCursor = useSyncExternalStore(subscribeToLink, link?.held ?? holdsNothing);
   const pinnedCursor = useSyncExternalStore(subscribeToLink, link?.pinned ?? holdsNothing);
+  // An owner that follows the pin (a table under the chart) is told where it
+  // moves, so only a chart that shares the tab's crosshair moves the owner.
+  // A chart that goes (the band folding to a strip) leaves it nothing to follow.
+  const pinnedMoment = useSyncExternalStore(subscribeToLink, link?.pinnedMoment ?? pinsNothing);
+  useEffect(() => {
+    onPinnedMomentChange?.(pinnedMoment);
+    return () => onPinnedMomentChange?.(null);
+  }, [onPinnedMomentChange, pinnedMoment]);
   const publishCursor = link?.publish;
   const cursorSource = useMemo<CompositeCursorSource | null>(() => baseScene ? createCompositeCursorSource({
     baseScene,
@@ -773,6 +784,7 @@ function ThemedCompositeChart({
     restingCursor,
     updateCursor: updateKeyboardCursor,
     pin: pinnable ? { pinned: pinnedCursor, toggle: togglePin } : null,
+    pinKeys,
     onActivate,
     timePick,
     pricePick,
@@ -964,6 +976,31 @@ function ThemedCompositeChart({
     ? { width: "auto", height: "auto", right: `calc(${rightPadding} * var(--cell-w))`, bottom: `calc(${timeAxisRows + xMarkerRows} * var(--cell-h))` }
     : undefined;
 
+  const renderGutteredRow = (
+    content: ReactNode,
+    extra: {
+      height?: number;
+      style?: Record<string, unknown>;
+      gestures?: Record<string, unknown>;
+      interactive?: boolean;
+      role?: string;
+    } = {},
+  ) => (
+    <Box
+      flexDirection="row"
+      width={totalWidth}
+      height={extra.height ?? 1}
+      style={extra.style ?? (isDesktopWeb ? DESKTOP_FULL_ROW : undefined)}
+      {...extra.gestures}
+      data-gloom-interactive={extra.interactive ? "true" : undefined}
+      data-gloom-role={extra.role}
+    >
+      {leftPadding > 0 ? <Box width={leftPadding} /> : null}
+      {content}
+      {rightPadding > 0 ? <Box width={rightPadding} /> : null}
+    </Box>
+  );
+
   if (!baseScene || !cursorSource) {
     const emptyPlotHeight = Math.max(0, totalHeight - legendRows - timeAxisRows - xMarkerRows);
     return (
@@ -991,56 +1028,70 @@ function ThemedCompositeChart({
             keyboardIndex={legendKeyboardIndex}
           />
         ) : null}
-        {emptyPlotHeight > 0 ? (
-          <Box
-            flexDirection="row"
-            width={totalWidth}
+        {emptyPlotHeight > 0 ? renderGutteredRow(
+          <ChartSurface
+            width={plotWidth}
             height={emptyPlotHeight}
-            style={isDesktopWeb ? { width: "100%", flex: "1 1 0px", height: "auto", minHeight: 0 } : undefined}
+            style={isDesktopWeb ? { ...DESKTOP_PLOT_COLUMN, height: "auto", alignSelf: "stretch" } : undefined}
+            alignItems="center"
+            justifyContent="center"
+            onMouseScroll={interactive && navigable && navigationFrame ? handleEmptyMouseScroll : undefined}
+            cursor={interactive && navigable && navigationFrame ? "grab" : undefined}
+            data-gloom-interactive={interactive && navigable && navigationFrame ? "true" : undefined}
+            data-gloom-role="composite-chart-empty"
+            data-gloom-label={emptyMessage}
           >
-            {leftPadding > 0 ? <Box width={leftPadding} /> : null}
-            <ChartSurface
-              width={plotWidth}
-              height={emptyPlotHeight}
-              style={isDesktopWeb ? { ...DESKTOP_PLOT_COLUMN, height: "auto", alignSelf: "stretch" } : undefined}
-              alignItems="center"
-              justifyContent="center"
-              onMouseScroll={interactive && navigable && navigationFrame ? handleEmptyMouseScroll : undefined}
-              cursor={interactive && navigable && navigationFrame ? "grab" : undefined}
-              data-gloom-interactive={interactive && navigable && navigationFrame ? "true" : undefined}
-              data-gloom-role="composite-chart-empty"
-              data-gloom-label={emptyMessage}
-            >
-              {emptyDetail ? (
-                // The kit's empty state: the message dim, what to do about it muted under it.
-                <Box flexDirection="column" alignItems="center">
-                  <Text fg={resolvedColors.textDim}>{emptyMessage}</Text>
-                  {centeredLines(emptyDetail, plotWidth - 2).map((line, index) => (
-                    <Text key={index} fg={activeThemeColors.textMuted}>{line}</Text>
-                  ))}
-                </Box>
-              ) : (
+            {emptyDetail ? (
+              // The kit's empty state: the message dim, what to do about it muted under it.
+              <Box flexDirection="column" alignItems="center">
                 <Text fg={resolvedColors.textDim}>{emptyMessage}</Text>
-              )}
-            </ChartSurface>
-            {rightPadding > 0 ? <Box width={rightPadding} /> : null}
-          </Box>
+                {centeredLines(emptyDetail, plotWidth - 2).map((line, index) => (
+                  <Text key={index} fg={activeThemeColors.textMuted}>{line}</Text>
+                ))}
+              </Box>
+            ) : (
+              <Text fg={resolvedColors.textDim}>{emptyMessage}</Text>
+            )}
+          </ChartSurface>,
+          { height: emptyPlotHeight, style: isDesktopWeb ? { width: "100%", flex: "1 1 0px", height: "auto", minHeight: 0 } : undefined },
         ) : null}
-        {emptyTimeAxisLayout ? (
-          <Box flexDirection="row" width={totalWidth} height={1} style={isDesktopWeb ? DESKTOP_FULL_ROW : undefined}>
-            {leftPadding > 0 ? <Box width={leftPadding} /> : null}
-            <StaticXAxisLabels
-              labels={[emptyTimeAxisLayout.text]}
-              positionedLabels={emptyTimeAxisLayout.ticks}
-              width={plotWidth}
-              color={resolvedColors.textDim}
-            />
-            {rightPadding > 0 ? <Box width={rightPadding} /> : null}
-          </Box>
+        {emptyTimeAxisLayout ? renderGutteredRow(
+          <StaticXAxisLabels
+            labels={[emptyTimeAxisLayout.text]}
+            positionedLabels={emptyTimeAxisLayout.ticks}
+            width={plotWidth}
+            color={resolvedColors.textDim}
+          />,
         ) : null}
       </Box>
     );
   }
+
+  const withPointerPress = <A extends unknown[]>(fn: (...args: A) => void) => (...args: A) => {
+    pressFromPointer();
+    fn(...args);
+  };
+
+  const renderPlotOverlay = (
+    zIndex: number,
+    content: ReactNode,
+    extra: { centered?: boolean; pointerNone?: boolean; role?: string } = {},
+  ) => (
+    <Box
+      position="absolute"
+      left={leftPadding}
+      top={legendRows}
+      width={plotWidth}
+      height={plotHeight}
+      zIndex={zIndex}
+      alignItems={extra.centered ? "center" : undefined}
+      justifyContent={extra.centered ? "center" : undefined}
+      style={extra.pointerNone ? (isDesktopWeb ? { ...plotInsetStyle, pointerEvents: "none" } : undefined) : plotInsetStyle}
+      data-gloom-role={extra.role}
+    >
+      {content}
+    </Box>
+  );
 
   // The tools belong to the focused pane, and stay while one is in hand or a
   // press drags the plot, so focus moving elsewhere never hides what is
@@ -1103,10 +1154,7 @@ function ThemedCompositeChart({
           rows={legendRows}
           onWantedRowsChange={setLegendWantedRows}
           collapsed={legendCollapsed}
-          onToggleCollapsed={legendCollapsible && interactive ? () => {
-            pressFromPointer();
-            toggleLegendCollapsed();
-          } : undefined}
+          onToggleCollapsed={legendCollapsible && interactive ? withPointerPress(toggleLegendCollapsed) : undefined}
         />
       ) : null}
       {showToolbar ? (
@@ -1120,18 +1168,9 @@ function ThemedCompositeChart({
           levelTool={levelsEditable}
           maxWidth={plotWidth}
           pinned={chartLayout.toolbarPinned === true}
-          onTogglePinned={() => {
-            pressFromPointer();
-            toggleToolbar();
-          }}
-          onArmTool={(tool) => {
-            pressFromPointer();
-            armTool(tool);
-          }}
-          onPickColor={(color) => {
-            pressFromPointer();
-            pickDrawColor(color);
-          }}
+          onTogglePinned={withPointerPress(toggleToolbar)}
+          onArmTool={withPointerPress(armTool)}
+          onPickColor={withPointerPress(pickDrawColor)}
         />
       ) : null}
       {maximizedPanelId && interactive ? (
@@ -1162,10 +1201,7 @@ function ThemedCompositeChart({
             variant="secondary"
             compact
             stopPropagation
-            onPress={() => {
-              pressFromPointer();
-              resetPanelMaximized();
-            }}
+            onPress={withPointerPress(resetPanelMaximized)}
           />
         </Box>
       ) : null}
@@ -1226,83 +1262,45 @@ function ThemedCompositeChart({
           onToggleMaximized={interactive && navigable && projectedPanelCount > 1 ? () => togglePanelMaximized(panel.id) : undefined}
         />
       ))}
-      {watermarkScale ? (
+      {watermarkScale ? renderPlotOverlay(
         // Hidden until a screenshot reveals it (see utils/screenshot-watermark).
         // Above the opaque bitmaps, below drawings and the crosshair.
-        <Box
-          position="absolute"
-          left={leftPadding}
-          top={legendRows}
+        5,
+        <AsciiText text="Gloom" font="wordmark" scale={watermarkScale} color={resolvedColors.textDim} />,
+        { centered: true, role: CHART_WATERMARK_ROLE },
+      ) : null}
+      {axisMarkers.length > 0 ? renderPlotOverlay(
+        12,
+        <StaticXMarkerOverlay markers={axisMarkers} width={plotWidth} height={plotHeight} fallbackColor={resolvedColors.textDim} />,
+        { pointerNone: true },
+      ) : null}
+      {timeAxisLayout ? renderGutteredRow(
+        <CursorTimeAxis
+          cursor={cursorSource}
+          formatCursor={xAxis?.formatCursor}
+          intradayBars={intradayBars}
+          cellWidthPx={cellWidthPx}
+          labels={xAxis?.ticks ? [] : xAxis?.labels ? [...xAxis.labels] : [timeAxisLayout.text]}
+          positionedLabels={xAxis?.ticks ?? (xAxis?.labels ? undefined : timeAxisLayout.ticks)}
           width={plotWidth}
-          height={plotHeight}
-          zIndex={5}
-          alignItems="center"
-          justifyContent="center"
-          style={plotInsetStyle}
-          data-gloom-role={CHART_WATERMARK_ROLE}
-        >
-          <AsciiText text="Gloom" font="wordmark" scale={watermarkScale} color={resolvedColors.textDim} />
-        </Box>
+          color={resolvedColors.textDim}
+          cursorColor={resolvedColors.crosshair}
+          cursorBackgroundColor={resolvedColors.background}
+          extraMarkers={timeAxisMarkers}
+        />,
+        {
+          style: isDesktopWeb ? timeAxisGestures ? TIME_AXIS_ROW : DESKTOP_FULL_ROW : undefined,
+          gestures: timeAxisGestures,
+          interactive: !!timeAxisGestures,
+          role: "composite-chart-time-scale",
+        },
       ) : null}
-      {axisMarkers.length > 0 ? (
-        <Box
-          position="absolute"
-          left={leftPadding}
-          top={legendRows}
-          width={plotWidth}
-          height={plotHeight}
-          zIndex={12}
-          style={isDesktopWeb ? { ...plotInsetStyle, pointerEvents: "none" } : undefined}
-        >
-          <StaticXMarkerOverlay
-            markers={axisMarkers}
-            width={plotWidth}
-            height={plotHeight}
-            fallbackColor={resolvedColors.textDim}
-          />
-        </Box>
-      ) : null}
-      {timeAxisLayout ? (
-        <Box
-          flexDirection="row"
-          width={totalWidth}
-          height={1}
-          style={isDesktopWeb ? timeAxisGestures ? TIME_AXIS_ROW : DESKTOP_FULL_ROW : undefined}
-          {...timeAxisGestures}
-          data-gloom-interactive={timeAxisGestures ? "true" : undefined}
-          data-gloom-role="composite-chart-time-scale"
-        >
-          {leftPadding > 0 ? <Box width={leftPadding} /> : null}
-          <CursorTimeAxis
-            cursor={cursorSource}
-            formatCursor={xAxis?.formatCursor}
-            intradayBars={intradayBars}
-            cellWidthPx={cellWidthPx}
-            labels={xAxis?.ticks ? [] : xAxis?.labels ? [...xAxis.labels] : [timeAxisLayout.text]}
-            positionedLabels={xAxis?.ticks ?? (xAxis?.labels ? undefined : timeAxisLayout.ticks)}
-            width={plotWidth}
-            color={resolvedColors.textDim}
-            cursorColor={resolvedColors.crosshair}
-            cursorBackgroundColor={resolvedColors.background}
-            extraMarkers={timeAxisMarkers}
-          />
-          {rightPadding > 0 ? <Box width={rightPadding} /> : null}
-        </Box>
-      ) : null}
-      {xMarkerRows > 0 ? (
-        <Box flexDirection="row" width={totalWidth} height={1} style={isDesktopWeb ? DESKTOP_FULL_ROW : undefined}>
-          {leftPadding > 0 ? <Box width={leftPadding} /> : null}
-          {axisMarkers.length > 0 ? (
-            <StaticXMarkerLabels
-              markers={axisMarkers}
-              width={plotWidth}
-              fallbackColor={resolvedColors.textDim}
-            />
-          ) : (
-            <EventCaptions captions={eventCaptions} width={plotWidth} color={resolvedColors.textDim} />
-          )}
-          {rightPadding > 0 ? <Box width={rightPadding} /> : null}
-        </Box>
+      {xMarkerRows > 0 ? renderGutteredRow(
+        axisMarkers.length > 0 ? (
+          <StaticXMarkerLabels markers={axisMarkers} width={plotWidth} fallbackColor={resolvedColors.textDim} />
+        ) : (
+          <EventCaptions captions={eventCaptions} width={plotWidth} color={resolvedColors.textDim} />
+        ),
       ) : null}
     </Box>
   );

@@ -21,6 +21,7 @@ import type { PaneAccessGate } from "./pane-functions/access-gate";
 import { countContentFigures } from "./content-figures";
 import { retrievedAtOf, savedCopyAt, savedCopyShownAt } from "../data/saved-copies";
 import { readVisibleKeyValues } from "./visible-key-values";
+import { readRenderedTableRows } from "./rendered-table-rows";
 import { rowViewportVisibility, scrollTruncationReasons } from "./scroll-truncation";
 import {
   SHOT_API_PROXY_PREFIX,
@@ -44,7 +45,7 @@ import { isShotApiRequestAllowed, isShotSessionPath } from "./desktop-pane-shot-
 import { renderElectrobunViewHtml } from "../renderers/dom/build-assets";
 import { loadShotView, SHOT_VIEW_SCRIPT, SHOT_VIEW_STYLESHEET, type ShotViewFiles } from "./desktop-pane-shot-view";
 import { errorMessage } from "../utils/errors";
-import { findChromeExecutable, launchShotBrowser, type CdpPage } from "./desktop-pane-shot-browser";
+import { openShotPage, type CdpPage } from "./desktop-pane-shot-browser";
 
 export interface DesktopPaneShotIntradayHistory {
   target?: InstrumentRef;
@@ -82,6 +83,12 @@ export interface DesktopPaneShotPayload {
   statusLine?: boolean;
   /** A DES overview report tracks its deferred snapshot explicitly, rather than settling like a screenshot. */
   readTickerReport?: boolean;
+  /**
+   * A report reads every column of a table, the ones past its right edge
+   * too: no table leaves a column out for width, as a picture's does
+   * (`DataTableProps.columnDropOrder`).
+   */
+  everyColumn?: boolean;
   /**
    * The tallest the capture may grow, in cells, to show every row its tables
    * scroll past or all the text its reader scrolls past; absent keeps the
@@ -181,8 +188,9 @@ export interface DesktopPaneShotBridge {
 interface DesktopPaneShotRenderedCell {
   /**
    * The cell can be blank with nothing missing: its whole column can
-   * (DataTableColumn.mayBeBlank), or its row is still waiting on the value
-   * (DataTableCell.mayBeBlank).
+   * (DataTableColumn.mayBeBlank), or its row owes no value here
+   * (DataTableCell.mayBeBlank). A strict capture leaves it out of a blank
+   * column's count whatever its text.
    */
   mayBeBlank?: true;
   columnId?: string;
@@ -191,7 +199,8 @@ interface DesktopPaneShotRenderedCell {
   /** The ISO instant behind a cell whose text shortens a time ("Wed 11:27"), from the table cell's export value. */
   instant?: string;
   /** The full-precision number behind a cell whose text rounds it (a trade of -9.4596), from the same export value. */
-  value?: number;
+  value?: number | null;
+  unit?: string;
   /** A column only the JSON and CSV carry (DataTable `reportColumns`): the text report leaves it out. Only in `reportRows`. */
   reportOnly?: true;
 }
@@ -273,6 +282,7 @@ export interface DesktopPaneShotRenderResult {
   cutColumns?: string[];
   /** A wall that needs an account, or a Pro lock on part of the pane. */
   accessGate?: PaneAccessGate | null;
+  signInGate?: "verify-email" | "pro" | "free";
   /**
    * The blocks of text with a figure in them that the pane's body shows
    * outside its controls, chrome, notices, charts and labels
@@ -342,13 +352,11 @@ export async function renderDesktopPaneScreenshot(
   apiProxy: DesktopPaneShotApiProxy,
   options: { captureImage?: boolean; bridge?: DesktopPaneShotBridge; statusLine?: ShotStatusLine } = {},
 ): Promise<DesktopPaneShotRenderResult & { image?: Uint8Array }> {
-  const chrome = await findChromeExecutable();
   const view = await loadShotView();
   return withShotTempDir("gloom-pane-shot-", async (tempDir) => {
     const server = serveShotPage(view, shotPageHtml(view, payload), apiProxy, options.bridge ?? null);
     try {
       return await capturePageScreenshot({
-        chrome,
         url: server.url,
         widthPx: payload.widthPx,
         heightPx: payload.heightPx,
@@ -783,7 +791,6 @@ async function shotApiResponse(response: Response, path: string): Promise<Respon
 }
 
 async function capturePageScreenshot({
-  chrome,
   url,
   widthPx,
   heightPx,
@@ -794,7 +801,6 @@ async function capturePageScreenshot({
   statusLine,
   fitRows,
 }: {
-  chrome: string;
   url: string;
   widthPx: number;
   heightPx: number;
@@ -805,7 +811,7 @@ async function capturePageScreenshot({
   statusLine?: ShotStatusLine;
   fitRows?: { heightCells: number; maxHeightCells: number; roles: readonly string[] };
 }): Promise<DesktopPaneShotRenderResult & { image?: Uint8Array }> {
-  const browser = await launchShotBrowser(chrome, { widthPx, heightPx, userDataDir });
+  const browser = await openShotPage({ widthPx, heightPx, userDataDir });
   const session = browser.page;
   try {
     await session.send("Runtime.enable");
@@ -1027,10 +1033,23 @@ function stateMarkers(text: string, patterns: RegExp[]): string[] {
   )))];
 }
 
-async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotRenderResult> {
+/** Omit decorative placeholders from text extraction without changing the screenshot or layout. */
+function withoutReportDecorations<T>(root: HTMLElement, read: (root: HTMLElement) => T): T {
+  const selector = '[data-gloom-report-ignore="true"]';
+  if (!root.querySelector(selector)) return read(root);
+  const style = root.ownerDocument.createElement("style");
+  style.textContent = `${selector}, ${selector} * { visibility: hidden !important; }`;
+  root.ownerDocument.head.appendChild(style);
+  try {
+    return read(root);
+  } finally {
+    style.remove();
+  }
+}
+
+export async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotRenderResult> {
   const result = await session.send("Runtime.evaluate", {
-    expression: `(() => {
-      const root = document.getElementById("root") || document.body;
+    expression: `(${withoutReportDecorations.toString()})(document.getElementById("root") || document.body, (root) => {
       const semanticUi = window.__GLOOM_CLI_SHOT_SEMANTIC_UI__ || [];
       const normalize = (value) => String(value || "").replace(/\\s+/g, " ").trim();
       const isVisible = (element) => {
@@ -1060,6 +1079,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
       const rows = [];
       const truncationReasons = new Set();
       const scrollReasons = (${scrollTruncationReasons.toString()});
+      const readTableRows = (${readRenderedTableRows.toString()});
       const visibleTables = [...root.querySelectorAll('[data-gloom-role="data-table"]')].filter(isVisible);
       // A table that publishes every row has nothing cut from a report, whatever the viewport shows.
       const reportedRowsOf = (tableIndex) => {
@@ -1104,7 +1124,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           const tableMetadata = semanticTables[tableIndex] && semanticTables[tableIndex].metadata || {};
           const semanticColumns = Array.isArray(tableMetadata.columns) ? tableMetadata.columns : [];
           const headerCells = [...table.querySelectorAll('[data-gloom-role="data-table-header-cell"]')];
-          const headers = headerCells.map((cell) => normalize(cell.innerText || cell.textContent));
+          const headers = headerCells.map((cell) => normalize(cell.innerText));
           // A column drawn past the edge of the table's viewport, whole or in part, is one the picture cut.
           const scroller = table.querySelector('[data-gloom-role="data-table-body-scroll"]');
           if (scroller instanceof HTMLElement) {
@@ -1119,49 +1139,12 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
               if (!cutColumns.includes(label)) cutColumns.push(label);
             });
           }
-          const rowElements = [...table.querySelectorAll(
-            '[data-gloom-role="data-table-row"], [data-gloom-role="data-table-section-header"]',
-          )].filter(isVisible);
-          rowElements.forEach((row, rowIndex) => {
-            const cellElements = [...row.querySelectorAll('[data-gloom-role="data-table-cell"]')];
-            const values = cellElements.length > 0 ? cellElements : [row];
-            const rowKey = row.getAttribute("data-gloom-row-key");
-            const cells = values.map((cell, cellIndex) => {
-              const semanticColumn = semanticColumns[cellIndex] || {};
-              const text = normalize(cell.innerText || cell.textContent);
-              const textNodes = [cell, ...cell.querySelectorAll('*')];
-              if (
-                /\\u2026|\\.\\.\\./.test(text)
-                || textNodes.some((node) => (
-                  node instanceof HTMLElement
-                  && isVisible(node)
-                  && node.scrollWidth > node.clientWidth + 1
-                ))
-              ) {
-                truncationReasons.add("one or more cells are visibly clipped");
-                if (!reportedTables.has(table)) reportTruncationReasons.add("one or more cells are visibly clipped");
-              }
-              const instant = cell.getAttribute("data-gloom-cell-instant");
-              const exact = Number(cell.getAttribute("data-gloom-cell-value") || "NaN");
-              return {
-                ...(typeof semanticColumn.id === "string" ? { columnId: semanticColumn.id } : {}),
-                ...(semanticColumn.mayBeBlank === true || cell.getAttribute("data-gloom-cell-may-be-blank") === "true" ? { mayBeBlank: true } : {}),
-                columnLabel: typeof semanticColumn.label === "string"
-                  ? semanticColumn.label
-                  : headers[cellIndex] || (values.length === 1 ? "Row" : String(cellIndex + 1)),
-                text,
-                ...(instant ? { instant } : {}),
-                ...(Number.isFinite(exact) ? { value: exact } : {}),
-              };
-            }).filter((cell) => cell.text.length > 0);
-            if (cells.length === 0) return;
-            const captured = {
-              tableIndex,
-              rowIndex,
-              ...(rowKey ? { key: rowKey } : {}),
-              selected: row.getAttribute("data-selected") === "true",
-              cells,
-            };
+          const drawn = readTableRows(table, tableIndex, semanticColumns, isVisible);
+          if (drawn.clipped) {
+            truncationReasons.add("one or more cells are visibly clipped");
+            if (!reportedTables.has(table)) reportTruncationReasons.add("one or more cells are visibly clipped");
+          }
+          drawn.rows.forEach((captured) => {
             rows.push(captured);
             if (!reportedTables.has(table)) reportRows.push(captured);
           });
@@ -1186,7 +1169,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         [...root.querySelectorAll('[data-gloom-role="desktop-list-row"], [data-gloom-row="true"]')]
           .filter(isVisible)
           .forEach((row, rowIndex) => {
-            const text = normalize(row.innerText || row.textContent);
+            const text = normalize(row.innerText);
             if (!text) return;
             rows.push({
               tableIndex: 0,
@@ -1197,18 +1180,18 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           });
       }
       return {
-        visibleText: root.innerText || root.textContent || "",
+        visibleText: root.innerText || "",
         // What the visible text fields hold, which innerText leaves out: OVME's Underlying is one.
         fieldValues: [...root.querySelectorAll("input, textarea")]
           .filter((field) => isVisible(field) && field.type !== "password" && field.type !== "hidden")
           .map((field) => normalize(field.value))
           .filter(Boolean),
         footerText: [...root.querySelectorAll('[data-gloom-role="pane-footer"]')]
-          .map((footer) => normalize(footer.innerText || footer.textContent))
+          .map((footer) => normalize(footer.innerText))
           .filter(Boolean)
           .join(" "),
         footerNotes: [...root.querySelectorAll('[data-gloom-role="pane-footer-notes"]')]
-          .map((note) => normalize(note.innerText || note.textContent))
+          .map((note) => normalize(note.innerText))
           .filter(Boolean),
         visibleKeyValues: (${readVisibleKeyValues.toString()})(root),
         surfaces: [...root.querySelectorAll('[data-gloom-surface-renderer]')].filter(isVisible).map((element) => ({
@@ -1236,7 +1219,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
           }
           return [...states[0].children]
             .filter((child) => isVisible(child) && !child.querySelector('button, [role="button"]'))
-            .map((child) => normalize(child.innerText || child.textContent))
+            .map((child) => normalize(child.innerText))
             .filter(Boolean);
         })(),
         // What each visible error and empty state says, for the Reason a strict capture gives.
@@ -1248,7 +1231,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
               const parts = state.children.length > 0 ? [...state.children] : [state];
               return parts
                 .filter((part) => isVisible(part) && !part.matches('button, [role="button"]') && !part.querySelector('button, [role="button"]'))
-                .map((part) => normalize(part.innerText || part.textContent))
+                .map((part) => normalize(part.innerText))
                 .filter(Boolean)
                 // A title and its message read as two sentences.
                 .reduce((text, part) => !text ? part : /[.!?:]$/.test(text) ? text + " " + part : text + ". " + part, "");
@@ -1263,6 +1246,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         // The shared sign-in wall and the Pro lock prompt every gated pane draws.
         accessGate: [...root.querySelectorAll('[data-gloom-ui="sign-in-wall"]')].some(isVisible) ? "sign-in"
           : [...root.querySelectorAll('[data-gloom-ui="pro-lock"]')].some(isVisible) ? "pro" : "",
+        signInGate: [...root.querySelectorAll('[data-gloom-sign-in]')].find(isVisible)?.getAttribute("data-gloom-sign-in"),
         rows,
         truncated: truncationReasons.size > 0,
         truncationReasons: [...truncationReasons],
@@ -1273,7 +1257,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         }),
         semanticUi,
       };
-    })()`,
+    })`,
     returnByValue: true,
   }) as {
     result?: {
@@ -1293,6 +1277,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
         contentFigures?: number;
         cutColumns?: unknown;
         accessGate?: string;
+        signInGate?: string;
         rows?: DesktopPaneShotRenderedRow[];
         truncated?: boolean;
         truncationReasons?: string[];
@@ -1311,8 +1296,9 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
   const loadingStateMarkers = markers.loading;
   const errorStateMarkers = markers.error;
   const emptyStateMarkers = markers.empty;
-  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || markers.signIn ? "sign-in"
-    : value?.accessGate === "pro" || markers.pro ? "pro" : null;
+  const accessGate: PaneAccessGate | null = value?.accessGate === "sign-in" || value?.accessGate === "pro" ? value.accessGate
+    : markers.signIn ? "sign-in" : markers.pro ? "pro" : null;
+  const signInGate = value?.signInGate;
   const rows = Array.isArray(value?.rows) ? value.rows : [];
   const textShowsEllipsis = rows.some((row) => row.cells.some((cell) => /\u2026|\.\.\./.test(cell.text)));
   const truncationReasons = Array.isArray(value?.truncationReasons)
@@ -1350,6 +1336,7 @@ async function readRenderedPaneState(session: CdpPage): Promise<DesktopPaneShotR
     ...(Array.isArray(value?.emptyStateText) && value.emptyStateText.length > 0
       ? { emptyStateText: value.emptyStateText.filter((line): line is string => typeof line === "string" && line.length > 0) } : {}),
     accessGate,
+    ...(signInGate === "verify-email" || signInGate === "pro" || signInGate === "free" ? { signInGate } : {}),
     ...shotStateText(value?.stateText),
     ...(typeof value?.contentFigures === "number" ? { contentFigures: value.contentFigures } : {}),
     ...(Array.isArray(value?.cutColumns) && value.cutColumns.length > 0

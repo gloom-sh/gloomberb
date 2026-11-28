@@ -21,6 +21,7 @@ import type { RemoteControlRequest, RemoteControlResponse } from "../../../../re
 import { installCrashReporter } from "../../../../telemetry/crash-reports";
 import { createNodeCrashReporterHost } from "../../../../telemetry/crash-reports-node";
 import { createStallClocks } from "../../../../telemetry/stall-clocks";
+import { readWindowsTimeoutClock } from "../../../../telemetry/windows-time";
 import { installStallReporter, parseStallEvent, recordStall } from "../../../../telemetry/stall-reports";
 import { createNodeStallReporterHost } from "../../../../telemetry/stall-reports-node";
 import { installUpdateFailureReporter, reviewLastUpdateAttempt } from "../../../../telemetry/update-failures";
@@ -574,6 +575,7 @@ export class DesktopBackend {
     rpc = BrowserView.defineRPC<ElectrobunDesktopRpcSchema>({
       handlers: {
         requests: {
+          "runtime.clock": readWindowsTimeoutClock,
           "backend.request": async ({ method, payload }) => {
             const request = {
               method,

@@ -1,6 +1,7 @@
 import { apiClient, type CloudNoteScope, type CloudThesis, type ThesisPatch, type ThesisSignal } from "../../../../api-client";
 import type { AppNotificationDelivery, AppNotificationRequest, PluginPersistence } from "../../../../types/plugin";
 import { logFailure } from "../../../../utils/log-failure";
+import { SnapshotStore } from "../../shared/snapshot-store";
 import { computeHealth } from "./model";
 
 interface ThesisStoreSnapshot {
@@ -13,7 +14,6 @@ interface ThesisStoreSnapshot {
   offline: boolean;
 }
 
-type Listener = (snapshot: ThesisStoreSnapshot) => void;
 type Notifier = (request: AppNotificationRequest) => AppNotificationDelivery | void;
 
 const CACHE_STATE_KEY = "thesis-cache";
@@ -53,11 +53,11 @@ type ThesisStoreClient = Pick<
  * readable offline from the last copy. Writes go through here so every pane
  * showing a thesis sees the saved version at once.
  */
-export class ThesisStore {
-  constructor(private readonly client: ThesisStoreClient = apiClient) {}
+class ThesisStore extends SnapshotStore<ThesisStoreSnapshot> {
+  constructor(private readonly client: ThesisStoreClient = apiClient) {
+    super(EMPTY);
+  }
 
-  private snapshot: ThesisStoreSnapshot = EMPTY;
-  private readonly listeners = new Set<Listener>();
   private persistence: PluginPersistence | null = null;
   private notifier: Notifier | null = null;
   private openThesis: ((thesisId: string) => void) | null = null;
@@ -73,17 +73,6 @@ export class ThesisStore {
   private refreshTimer: ReturnType<typeof setTimeout> | null = null;
   private started = false;
   private readonly signalListeners = new Set<(thesisId: string) => void>();
-
-  getSnapshot(): ThesisStoreSnapshot {
-    return this.snapshot;
-  }
-
-  subscribe(listener: Listener): () => void {
-    this.listeners.add(listener);
-    return () => {
-      this.listeners.delete(listener);
-    };
-  }
 
   /** Fires when a thesis's signals changed, so an open detail refetches them. */
   onSignals(listener: (thesisId: string) => void): () => void {
@@ -273,11 +262,6 @@ export class ThesisStore {
       this.refreshTimer = null;
       this.refresh();
     }, 400);
-  }
-
-  private update(patch: Partial<ThesisStoreSnapshot>): void {
-    this.snapshot = { ...this.snapshot, ...patch };
-    for (const listener of this.listeners) listener(this.snapshot);
   }
 
   private notifySignals(frame: ThesisEventFrame): void {

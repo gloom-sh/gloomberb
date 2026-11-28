@@ -15,13 +15,14 @@ import { spanAxisFormatter } from "../../../components/chart-table";
 import { useChartViewReset } from "../../../components/chart/core/view-reset";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
 import { handleRefreshKey, usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePluginPaneState } from "../../../public/react";
+import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
+import { useAutoRefresh, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { formatNumber } from "../../../utils/format";
 import { isPlainKeyboardEvent } from "../../../utils/keyboard";
-import { fetchTreasuryDaily } from "./client";
+import { useTreasuryDailyResources } from "./resource";
 import {
   CASH_COLUMNS,
   DEBT_COLUMNS,
@@ -54,24 +55,19 @@ function scaledCell(value: number | null, text: string, muted: string): DataTabl
 
 export function TreasuryDailyPane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
-  const request = useCallback(() => fetchTreasuryDaily(), []);
-  const resource = useAsyncResource(request);
+  const { cash, debt, history } = useTreasuryDailyResources();
   const [storedTab, setTab] = usePluginPaneState<string>("tab", "cash");
   const tab: TreasuryTab = storedTab === "debt" ? "debt" : "cash";
-  const data = resource.data;
-  const cashRows = data?.cash.rows ?? EMPTY_CASH;
-  const debtRows = data?.debt ?? EMPTY_DEBT;
+  const active = tab === "cash" ? cash : debt;
+  const cashRows = cash.data?.rows ?? EMPTY_CASH;
+  const debtRows = debt.data ?? EMPTY_DEBT;
   const activeRows = tab === "cash" ? cashRows : debtRows;
-  const recordDate = tab === "cash" ? data?.cash.recordDate ?? null : debtRows[0]?.date ?? null;
+  const recordDate = tab === "cash" ? cash.data?.recordDate ?? null : debtRows[0]?.date ?? null;
   const [storedRange, setStoredRange] = usePluginPaneState<string>("range", "1Y");
   const range = tgaRange(storedRange);
   const resetChartView = useChartViewReset();
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const resolvedId = activeRows.some((row) => row.id === selectedId) ? selectedId : activeRows[0]?.id ?? null;
-  const info = useMemo(
-    () => (recordDate ? [{ id: "record-date", parts: [{ text: recordDate, tone: "muted" as const }] }] : []),
-    [recordDate],
-  );
   const { strip, rows: tabRows } = usePaneTabs({
     tabs: TREASURY_TABS,
     activeValue: tab,
@@ -79,30 +75,55 @@ export function TreasuryDailyPane({ width, height, focused }: PaneProps) {
     focused,
     dense: true,
   });
-  useAutoRefresh(resource.updatedAt, resource.load);
-  const refresh = useCallback(() => resource.reload(), [resource.reload]);
+  const resources = [cash, debt, history];
+  const lastUpdated = resources.every((section) => section.updatedAt !== null && section.savedAt === null && !section.error)
+    ? Math.min(...resources.map((section) => section.updatedAt!)) : null;
+  const refresh = useCallback(() => {
+    cash.reload();
+    debt.reload();
+    history.reload();
+  }, [cash.reload, debt.reload, history.reload]);
+  useAutoRefresh(lastUpdated, refresh);
   usePaneRefreshKey(refresh, { focused });
+  const subject = tab === "cash" ? "Treasury cash" : "Treasury debt";
+  const activeError = active.data ? null : active.error;
+  const activeLoading = !active.data && active.loading;
+  const historyDate = tab === "cash" && history.savedAt !== null ? history.data?.at(-1)?.date : undefined;
+  const partial = resources.some((section) => section.error) && resources.some((section) => section.data);
+  const stale = active.savedAt !== null;
+  const info = useMemo(() => [
+    ...(recordDate ? [{ id: "record-date", capture: partial || stale, parts: [{ text: recordDate, tone: "muted" as const }] }] : []),
+    ...(stale ? [{ ...STALE_SEGMENT, capture: true }] : []),
+    ...(historyDate ? [{ id: "history-date", capture: true, parts: [{ text: `History stale · ${historyDate}`, tone: "warning" as const }] }] : []),
+    ...(partial ? [{ id: "partial", capture: true, parts: [{ text: "partial", tone: "warning" as const }] }] : []),
+  ], [historyDate, partial, recordDate, stale]);
   usePaneStatusFooter({
     registrationId: TREASURY_DAILY_PANE_ID,
-    loading: resource.loading,
-    error: resource.error,
+    loading: active.loading,
+    error: activeError,
     info,
   });
   usePaneNoticeFooter({
-    registrationId: `${TREASURY_DAILY_PANE_ID}:history`,
-    focused: focused && tab === "cash",
-    notices: data?.tgaError ? [`Closing balance history is unavailable: ${data.tgaError}`] : [],
+    registrationId: `${TREASURY_DAILY_PANE_ID}:warnings`,
+    focused,
+    notices: [
+      { label: "Cash", section: cash, bodyError: tab === "cash" && activeError },
+      { label: "Debt", section: debt, bodyError: tab === "debt" && activeError },
+      { label: "Closing balance history", section: history, bodyError: false },
+    ].flatMap(({ label, section, bodyError }) => section.error && !bodyError
+      ? [`${label} ${section.data ? "refresh failed; showing saved data" : "unavailable"}: ${section.error}`]
+      : []),
   });
 
   // The closing balance the table's last line states for the day, drawn over the range chosen.
   const series = useMemo(() => {
-    const closes = tgaClosesInRange(data?.tga ?? [], range);
+    const closes = tgaClosesInRange(history.data ?? [], range);
     return closes.length < 2 ? [] : [staticSeries(
       closes.map((close) => scalarPoint(new Date(`${close.date}T00:00:00Z`), close.millions / 1_000)),
       { id: "tga-closing-balance", label: TGA_SERIES_LABEL, color: colors.positive, calendarSpaced: true },
     )];
-  }, [colors.positive, data?.tga, range]);
-  const chart: ChartTableChart | null = data?.tgaError ? null : {
+  }, [colors.positive, history.data, range]);
+  const chart: ChartTableChart | null = !history.data ? null : {
     series,
     formatValue: formatBillionsLevel,
     formatAxisValue: formatBillionsAxis,
@@ -136,16 +157,15 @@ export function TreasuryDailyPane({ width, height, focused }: PaneProps) {
   }, [colors.textMuted]);
 
   let body = null;
-  if (resource.loading && !data) {
+  if (activeLoading && (tab === "debt" || !chart)) {
     body = <PaneStatusBody loading align="center" />;
-  } else if (!data && resource.error) {
-    body = <PaneStatusBody error={resource.error} subject="Treasury cash and debt" />;
-  } else if (data && tab === "cash") {
+  } else if (tab === "cash") {
     body = (
       <DataTableView<CashAccount, CashColumn>
         focused={focused}
         rootWidth={width}
         rootHeight={bodyHeight}
+        status={{ loading: activeLoading, error: activeError, subject }}
         rootBefore={chart ? (
           <ChartTableHeader
             width={width}
@@ -186,12 +206,13 @@ export function TreasuryDailyPane({ width, height, focused }: PaneProps) {
         emptyStateTitle="No cash balance for this day."
       />
     );
-  } else if (data) {
+  } else {
     body = (
       <DataTableView<DebtDay, DebtColumn>
         focused={focused}
         rootWidth={width}
         rootHeight={bodyHeight}
+        status={{ error: activeError, subject }}
         columns={DEBT_COLUMNS}
         items={debtRows}
         sortColumnId={null}

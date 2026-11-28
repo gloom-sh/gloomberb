@@ -98,7 +98,7 @@ const FAIL_ROWS: readonly RowDef[] = FAIL_ASSETS.flatMap(([asset, label]) => [
 ]);
 
 /** Every series a board needs, with the series that holds each one's change from the week before. */
-export const changeSeriesId = (key: string): string => `${key}C`;
+const changeSeriesId = (key: string): string => `${key}C`;
 
 /** Sums with the float noise of fractional $mn figures rounded away. */
 function sum(values: readonly number[]): number {
@@ -242,7 +242,8 @@ export type DealerColumn = DataTableColumn & { id: DealerColumnId };
 
 const DEALER_COLUMNS: readonly DealerColumn[] = [
   { id: "position", label: "Position", width: 28, align: "left", flexGrow: 1 },
-  { id: "asOf", label: "As of", width: 10, align: "left" },
+  // One release date on every row is the footer's.
+  { id: "asOf", label: "As of", width: 10, align: "left", omitWhenSame: true },
   { id: "latest", label: "Latest $mn", width: 12, align: "right" },
   { id: "previous", label: "Previous $mn", width: 12, align: "right" },
   { id: "change", label: "Change $mn", width: 12, align: "right" },

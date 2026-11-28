@@ -607,6 +607,8 @@ The `setup()` function receives a context object with these capabilities:
 | `ctx.registerTickerAction(action)` | Add a per-ticker action (shown via `a` key) |
 | `ctx.registerContextMenuProvider(provider)` | Add renderer-neutral context menu items |
 
+Every contribution needs a non-empty string `id`. A registration without one fails the plugin's load with a message that names the plugin and the kind of contribution, and the Plugins pane shows the plugin as failed with that message.
+
 ### Context menus
 
 Plugins can contribute items to native desktop context menus without importing Electrobun, the DOM, or OpenTUI directly. Use Gloom APIs from the plugin context, and let the renderer decide whether a native menu is available.
@@ -1315,7 +1317,7 @@ ctx.registerPane({
 });
 ```
 
-Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share applies this projection to public links automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
+Use `true` instead of an array to keep a whole scope local. Set `title: true` when the title can identify a private channel or account. A state field that is private by its value rather than its name takes `prepareState(state)`, which returns the state to publish before `private.state` and the sensitive-name filter apply: the earnings board keeps a sector fund in its Names choice but drops one of the person's lists. Plugin-global resume/config/resource state is never copied. State that should travel with a layout or pane share belongs in `usePluginPaneState()` or `usePaneSettingValue()`, not `usePluginState()`. Share applies this projection to public links automatically; `PaneTemplateDef.publicShare` remains only for old v1 links or deliberate transformed snapshots.
 
 ### Personal data in a pane
 
@@ -1555,6 +1557,8 @@ Use `Box` and `ScrollBox` to arrange content. A `ScrollBox` scrolls vertically u
 `Button` supports a compact layout and a separate `displayLabel` for short/icon actions; `label` remains the full accessible and automation name. Use `stopPropagation` for actions nested inside a row. `ActionRow` owns an expandable row's interaction and disclosure affordance. `SelectButton` opens the kit menu on the desktop and a choice dialog in the terminal; a `SelectControl` ref can open it without knowing the renderer.
 
 Long select menus can give each option a `group` label. Consecutive options with the same label share a non-selectable heading in `SelectButton`, `SelectField`, `ChoiceDialog` and a `QueryBar` select filter; keyboard navigation skips the headings, and the menu scrolls within its surface. Leave `group` out for choices before the first heading.
+
+A row that is shown but does not apply right now reads muted through the table's `isRowMuted`, which mutes every cell and the ticker badges in it; do not colour its cells one by one. `FeedDataTableStackView` follows the tab's pinned crosshair when its items' `timestamp` is an instant (the default time-ago column, or a `timeColumn` with `instant: true`): it selects the item out by the pinned moment, mutes the later ones and names the pin in the footer. A `timeColumn` dated by day leaves `instant` out and does not follow. A chart over a table that uses `useChartTableSelection` and spreads it into the `ChartTableHeader` chart pins and follows the pin with no other wiring.
 
 A pane's primary tab strip goes through `usePaneTabs({ tabs, activeValue, onSelect, focused })`, called above any early return. It takes every `Tabs` prop and returns `{ strip, rows }`: on the desktop the strip moves into the pane title bar and `strip` is null; the terminal gets the `Tabs` row to draw first. Subtract `rows` from heights. `queryBarWidth` turns the strip into a `QueryBar` view on the desktop when the pane sits under another title-bar strip (a Ticker Research tab). `usePaneHeaderTabs` is the lower-level hook underneath, for a pane that lays the body strip out itself.
 
@@ -1911,6 +1915,58 @@ The full set of pane conventions (anatomy, where actions and status go, table + 
 - Use `colors` and the shared components instead of hard-coded palette values when possible.
 - Use `usePaneTicker()` inside pane/tab components so multi-pane layouts keep working correctly.
 - On the desktop and the web no text is selectable unless it opts in, so a stray double click or Ctrl/Cmd+A never highlights the interface. Text people copy by hand (an article, an answer, a log, code) takes `<Text selectable>` for a run, or `data-gloom-selectable="true"` on the `Box` around a block; `MarkdownText` and the article reader already do. Text fields keep their own selection. Anything else is a copy action or an export. The terminal selects with the mouse as before.
+
+## Plugin translations
+
+Use `t`, `tc` and `tf` for shared app strings. To provide your own strings,
+register keys under your plugin's ID in `setup` and call the returned disposers
+in `dispose`. The registry calls `dispose` when it unregisters the plugin or
+if `setup` fails. Disabling a plugin leaves it registered but hides its
+translations until it is enabled again. Keep each disposer as soon as
+registration succeeds so a partial setup is cleaned up too.
+
+```tsx
+import { registerTranslations, tPlugin, useAppLanguage } from "gloomberb/i18n";
+import type { GloomPlugin } from "gloomberb/types/plugin";
+
+const pluginId = "market-tool";
+const disposers: Array<() => void> = [];
+
+const plugin: GloomPlugin = {
+  id: pluginId,
+  name: "Market Tool",
+  version: "1.0.0",
+  setup() {
+    disposers.push(registerTranslations(pluginId, "es", { ready: "Listo", "opening-price": "Apertura" }));
+    disposers.push(registerTranslations(pluginId, "ja", { ready: "準備完了", "opening-price": "始値" }));
+  },
+  dispose() {
+    for (const dispose of disposers.splice(0)) dispose();
+  },
+};
+export default plugin;
+
+export function useMarketToolStatus() {
+  useAppLanguage();
+  return tPlugin(pluginId, "ready", "Ready");
+}
+
+const openColumn = {
+  id: "open", label: "Open", width: 12, align: "right" as const,
+  labelTranslation: { pluginId, key: "opening-price" },
+};
+```
+
+`useAppLanguage()` still returns the language string and also re-renders when
+entries for that language change. Read `tPlugin` during render rather than
+memoizing its result by language alone. It returns your fallback in English or
+when the active language has no entry for the key. Registrations never override
+shared app strings; only registrations for the same plugin, language and key
+can replace one another, and each disposer can be called more than once.
+
+On a `DataTable` or `DataTableView` column, `labelTranslation` opts in only
+that drawn header. The `label` remains the fallback and is what CSV exports
+and automation read. Columns without this property behave exactly as before.
 
 ## Example: adding a command
 

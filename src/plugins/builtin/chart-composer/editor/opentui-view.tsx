@@ -52,6 +52,18 @@ export function OpenTuiSeriesEditorFields({
     <>
       {fields.map((field) => {
         const focused = keyboardFocus === field.id;
+        const segmented = field.kind !== "color" ? (
+          <SegmentedControl
+            options={field.options}
+            value={field.value}
+            onChange={field.onChange}
+            focused={focused}
+            allowEditable={focused}
+            shortcutScope={dialogId}
+            width="100%"
+            wrap
+          />
+        ) : null;
         return (
           <TuiEditorField
             key={field.id}
@@ -70,32 +82,10 @@ export function OpenTuiSeriesEditorFields({
               />
             ) : field.kind === "panel" ? (
               <Box flexDirection="row" width="100%" minWidth={0} gap={1} overflow="hidden">
-                <Box flexGrow={1} minWidth={0} overflow="hidden">
-                  <SegmentedControl
-                    options={field.options}
-                    value={field.value}
-                    onChange={field.onChange}
-                    focused={focused}
-                    allowEditable={focused}
-                    shortcutScope={dialogId}
-                    width="100%"
-                    wrap
-                  />
-                </Box>
+                <Box flexGrow={1} minWidth={0} overflow="hidden">{segmented}</Box>
                 <Button label="New Panel" shortcut="N" onPress={field.onAddPanel} />
               </Box>
-            ) : (
-              <SegmentedControl
-                options={field.options}
-                value={field.value}
-                onChange={field.onChange}
-                focused={focused}
-                allowEditable={focused}
-                shortcutScope={dialogId}
-                width="100%"
-                wrap
-              />
-            )}
+            ) : segmented}
           </TuiEditorField>
         );
       })}

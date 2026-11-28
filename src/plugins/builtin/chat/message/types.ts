@@ -20,6 +20,11 @@ export interface ChatMessageBaseProps {
   hoveredIdx: number | null;
   /** A message the reader was sent to, marked for a moment. */
   highlighted?: boolean;
+  /**
+   * This is the row the keyboard is on and the chat, not the composer, has the
+   * keys: its actions name the keys that press them (Enter, + and e).
+   */
+  actionKeysShown?: boolean;
   canSend: boolean;
   catalog: Record<string, InlineTickerCatalogEntry>;
   userByUsername: Map<string, ChatUserSummary>;

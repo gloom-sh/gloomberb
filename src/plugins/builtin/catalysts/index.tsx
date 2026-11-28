@@ -11,11 +11,10 @@ function ResearchCatalysts(props: TickerResearchTabProps) {
   return <CatalystView key={symbol ?? "market"} {...props} symbol={symbol} />;
 }
 export const catalystsModule: PluginModule = {
+  caches: [catalystCache, catalystDetailCache],
   setup(ctx) {
-    for (const cache of [catalystCache, catalystDetailCache]) cache.attach(ctx.persistence);
     ctx.registerTickerResearchTab({ id: "catalysts", name: "Catalysts", order: 35, component: ResearchCatalysts, instruments: ["equity"] });
   },
-  dispose() { catalystCache.reset(); catalystDetailCache.reset(); },
   panes: [
     { id: "catalysts", name: "Catalysts", icon: "C", component: CatalystsPane, defaultPosition: "right", shareItem: { ticker: true }, tickerFollower: true, instruments: ["equity"], defaultMode: "floating", defaultFloatingSize: { width: 130, height: 32 }, tableExport: true, headless: catalystsHeadless },
     { id: "litigation", name: "Litigation", icon: "L", component: LitigationPane, defaultPosition: "right", defaultMode: "floating", defaultFloatingSize: { width: 120, height: 30 }, shareItem: { ticker: true }, tickerFollower: true,

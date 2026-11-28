@@ -1,13 +1,12 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import { ChartTableHeader, DataTableView, EmptyState, PaneStatusBody, QueryBar, scalarPoint, spanAxisFormatter, staticSeries,
   useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneTicker, type DataTableCell, type DataTableColumn,
   type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { instrumentFromTicker } from "../../../market-data/request-types";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
-import { useAsyncResource } from "../../../react/async-resource";
 import { useCloudDisplayScope } from "../../../api-client/plan-access";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import { blendHex } from "../../../theme/color-utils";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
@@ -48,7 +47,7 @@ function renderCell(row: PeBandRow, column: DataTableColumn, colors: ReturnType<
   switch (column.id) {
     case "period": return { text: periodLabel(row) };
     // A figure with no publication date on record steps at its period end.
-    case "known": return row.dated ? { text: row.knownAt.toISOString().slice(0, 10), value: row.knownAt.toISOString().slice(0, 10) }
+    case "known": return row.dated ? dayCell(row.knownAt)
       : { text: "period end", color: colors.textMuted };
     case "eps": return { text: row.eps == null ? MISSING_VALUE : `${formatPerShare(row.eps)}${fxTarget && row.currency ? ` ${row.currency}` : ""}`, value: row.eps,
       color: row.eps != null && row.eps <= 0 ? colors.negative : undefined };
@@ -96,24 +95,24 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
     return inputs;
   }, [instrumentKey, marketData]);
   const scope = useCloudDisplayScope();
-  const inputs = useAsyncResource(scope && instrument && marketData ? loader : null, {
+  const inputs = usePaneResource(scope && instrument && marketData ? loader : null, {
+    focused,
     savedCopy: scope && marketData && !instrument?.instrument ? { key: ["pe-band", scope, marketData.id, instrumentKey] } : null,
   });
   useEffect(() => () => controller.current?.abort(), [loader]);
-  useAutoRefresh(inputs.updatedAt, inputs.load);
-  usePaneRefreshKey(() => { inputs.reload(); }, { focused });
 
   const lookbackYears = Number(lookback);
   const model = useMemo(() => inputs.data
-    ? projectPeBand(inputs.data.financials, inputs.data.history, { symbol: symbol ?? "", lookbackYears: Number.isFinite(lookbackYears) ? lookbackYears : 10,
+    ? projectPeBand(inputs.data.financials, inputs.data.history, { symbol: symbol ?? "", exchange: instrument?.exchange, lookbackYears: Number.isFinite(lookbackYears) ? lookbackYears : 10,
       reports: inputs.data.reports, fx: inputs.data.fx, fxError: inputs.data.fxError, daily: inputs.data.daily })
-    : null, [inputs.data, lookbackYears, symbol]);
+    : null, [inputs.data, lookbackYears, symbol, instrument?.exchange]);
   const rows = model?.rows ?? [];
   const conversion = model?.conversion ?? null;
   const showFx = !!conversion || rows.some((row) => row.fx);
   const columns = useMemo(() => tableColumns(showFx), [showFx]);
   const series = useMemo(() => model && !model.error ? chartSeries(model, colors) : [], [model, colors]);
   const currency = model?.currency ?? undefined;
+  const scoped = !!inputs.data?.financials?.statementScope;
   const firstWeek = model?.weeks[0]?.date;
   const lastWeek = model?.weeks.at(-1)?.date;
   const sampleStart = model?.sample?.start;
@@ -123,7 +122,7 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
       ? `${lookbackYears}Y` : `since ${sampleStart.getUTCFullYear()}`;
 
   const selected = rows.some((row) => rowKey(row) === selectedId) ? selectedId : rows[0] ? rowKey(rows[0]) : null;
-  const rowDate = useCallback((row: PeBandRow) => (firstWeek && row.knownAt >= firstWeek ? row.knownAt : null), [firstWeek?.getTime()]);
+  const rowDate = useCallback((row: PeBandRow) => row.priceAt !== undefined ? row.priceAt : (firstWeek && row.knownAt >= firstWeek ? row.knownAt : null), [firstWeek?.getTime()]);
   const link = useChartTableSelection({ rows, getId: rowKey, getDate: rowDate, selectedId: selected, onSelect: setSelectedId, focused });
 
   const undatedNotice = model?.undated
@@ -168,12 +167,12 @@ export function PeBandPane({ width, height, focused }: PaneProps) {
         selection={{ kind: "id", selectedId: selected, getId: rowKey, onChange: (id) => setSelectedId(id) }}
         selectedTextOverridesCellColor
         getExportMetadata={() => [["symbol", model.symbol], ["currency", model.currency ?? ""],
-          ["units", showFx
+          ["units", scoped ? "EPS and price in the listing currency; P/E at the first eligible close on or after EPS publication" : showFx
             ? `EPS as reported; period-end FX to ${model.currency ?? ""}; P/E at the close of the day the EPS became known`
             : "EPS and price in the listing currency; P/E at the close of the day the EPS became known"]]}
         renderCell={(row, column) => renderCell(row, column, colors, showFx ? currency : undefined)}
         rootBefore={<ChartTableHeader width={width} height={height} tableRows={rows.length} tableColumns={columns} query={query} figures={figures}
-          chart={model.weeks.length >= 2 ? { series, formatValue: formatPrice, formatAxisValue: formatAxis, remoteKind: "pe-band", ...link } : null} />} />
+          chart={scoped || model.weeks.length >= 2 ? { series, allowSinglePoint: scoped, formatValue: formatPrice, formatAxisValue: formatAxis, remoteKind: "pe-band", ...link } : null} />} />
         : null}
     </PaneStatusBody>
   </Box>;

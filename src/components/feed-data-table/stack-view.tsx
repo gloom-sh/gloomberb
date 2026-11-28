@@ -10,6 +10,7 @@ import { nextHeaderSort } from "../../utils/sort-values";
 import { toTimestampMillis } from "../../utils/timestamp";
 import { DataTableStackView } from "../data-table/stack-view";
 import { usePaneFooter } from "../layout/pane/footer";
+import { usePinnedList } from "../use-pinned-moment";
 import type { DataTableKeyEvent, DataTableRootKeyContext } from "../data-table/view";
 import {
   activeStackIndex,
@@ -28,6 +29,8 @@ export interface FeedDataTableItem {
   /** A tone for the source cell, such as a form that matters; the text carries the meaning. */
   eyebrowColor?: string;
   title: string;
+  /** What an export writes for the title when it differs from the text: its days in ISO where the text puts them first. */
+  titleValue?: string;
   timestamp?: Date | string | null;
   detailTitle?: string;
   /** Short lines over the text; the terminal's form of the facts when both are given. */
@@ -53,6 +56,14 @@ export interface FeedDataTableTimeColumn {
   label: string;
   width: number;
   format: (timestamp: Date | string) => string;
+  /**
+   * Each item's `timestamp` is an instant, to the minute or finer, so the
+   * feed follows the tab's pinned crosshair: it selects the newest item out
+   * by the pinned moment and mutes the later ones. The default column (how
+   * long ago) is one. Leave it unset for a day, such as a filing date: a day
+   * cannot say whether it came before a moment in it.
+   */
+  instant?: boolean;
 }
 
 interface FeedDataTableStackViewProps {
@@ -82,9 +93,41 @@ interface FeedDataTableStackViewProps {
 }
 
 function timestampValue(item: FeedDataTableItem): number {
-  if (!item.timestamp) return 0;
+  return itemMoment(item) ?? 0;
+}
+
+function itemMoment(item: FeedDataTableItem): number | null {
+  if (!item.timestamp) return null;
   const timestamp = toTimestampMillis(item.timestamp);
-  return Number.isFinite(timestamp) ? timestamp : 0;
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+const rowId = (row: DetailRow) => row.item.id;
+const rowMoment = (row: DetailRow) => itemMoment(row.item);
+
+/** The item the selection is on, by id, and whether it went out of the list. */
+interface KeptSelection {
+  index: number;
+  id: string | null;
+  lost: boolean;
+}
+
+/**
+ * Where the selection is once the items or the owner's index change. The
+ * owner moving the index moves it. In a feed that streams (`streams`), items
+ * coming in above it, or going out, leave it on the same item, though its
+ * index moves; when its item goes out, it takes the row now in its place, and
+ * says the item was `lost`, so a pin can pick the row at the pin instead. A
+ * feed that does not stream (filings by day) keeps the owner's index as it
+ * is, so an owner that sends a filtered list back to its top gets the top.
+ */
+function keepSelection(kept: KeptSelection, items: readonly FeedDataTableItem[], index: number, streams: boolean): KeptSelection {
+  const id = items[index]?.id ?? null;
+  if (!streams || index !== kept.index || kept.id === null) {
+    return index === kept.index && id === kept.id && !kept.lost ? kept : { index, id, lost: false };
+  }
+  if (id === kept.id || items.some((item) => item.id === kept.id)) return kept;
+  return { index, id: items[Math.min(index, items.length - 1)]?.id ?? null, lost: true };
 }
 
 function compareText(a: string, b: string): number {
@@ -175,8 +218,26 @@ export function FeedDataTableStackView({
   const sortedRows = useMemo(() => {
     return sortIndexedStackRows(items, sortPreference, compareRows);
   }, [items, sortPreference]);
+  // The owner keeps an index; a feed of instants, which streams and follows
+  // the tab's pin, keeps the item at it. It moves the owner's index along with
+  // the item (below), and the row drawn selected is the item's from the first
+  // frame.
+  const streams = timeColumn ? timeColumn.instant === true : true;
+  const [keptState, setKept] = useState<KeptSelection>(() => ({ index: selectedIdx, id: items[selectedIdx]?.id ?? null, lost: false }));
+  let kept = keptState;
+  const nextKept = keepSelection(kept, items, selectedIdx, streams);
+  if (nextKept !== kept) {
+    kept = nextKept;
+    setKept(nextKept);
+  }
+  const keptIdx = kept.id === null ? -1
+    : items[selectedIdx]?.id === kept.id ? selectedIdx : items.findIndex((item) => item.id === kept.id);
+  const shownIdx = keptIdx >= 0 ? keptIdx : selectedIdx;
+  useEffect(() => {
+    if (keptIdx >= 0 && keptIdx !== selectedIdx) onSelect(keptIdx);
+  }, [keptIdx, onSelect, selectedIdx]);
   const selectedRowIndex = sortedRows.findIndex(
-    (row) => row.itemIndex === selectedIdx,
+    (row) => row.itemIndex === shownIdx,
   );
   const activeRowIndex = activeStackIndex(sortedRows.length, selectedRowIndex);
   const openItem = useMemo(
@@ -226,10 +287,30 @@ export function FeedDataTableStackView({
   }, [activeOpenItemId, controlled, onOpenItemIdChange]);
 
   useEffect(() => {
-    if (items.length > 0 && selectedIdx >= items.length) {
+    if (keptIdx < 0 && items.length > 0 && selectedIdx >= items.length) {
       onSelect(Math.max(0, items.length - 1));
     }
-  }, [items.length, onSelect, selectedIdx]);
+  }, [items.length, keptIdx, onSelect, selectedIdx]);
+
+  // Items out at an instant follow the tab's pinned crosshair, as the news
+  // feeds do: the newest out by then is selected when the pin moves, the
+  // later ones read muted. A selected item gone from the feed reads as no
+  // selection there, so the pin's row takes its place.
+  const selectRow = useCallback((id: string) => {
+    const row = sortedRows.find((entry) => entry.item.id === id);
+    if (!row) return;
+    setKept((current) => (current.lost ? { ...current, lost: false } : current));
+    onSelect(row.itemIndex);
+  }, [onSelect, sortedRows]);
+  const { isAfterPin } = usePinnedList<DetailRow>("feed-table:pin", {
+    follows: streams,
+    enabled: !openItem,
+    rows: sortedRows,
+    getId: rowId,
+    moment: rowMoment,
+    selectedId: kept.lost ? null : kept.id,
+    select: selectRow,
+  });
 
   const renderCell = useCallback((
     row: DetailRow,
@@ -251,6 +332,7 @@ export function FeedDataTableStackView({
       case "title":
         return {
           text: row.item.title,
+          ...(row.item.titleValue !== undefined ? { value: row.item.titleValue } : {}),
           color: colors.text,
           attributes: isItemRead
             ? isItemRead(row.item)
@@ -307,6 +389,7 @@ export function FeedDataTableStackView({
         )}
       getItemKey={(row) => row.item.id}
       renderCell={renderCell}
+      isRowMuted={isAfterPin}
       selectedTextOverridesCellColor
       emptyStateTitle={t(emptyStateTitle)}
       emptyStateHint={emptyStateHint}

@@ -20,7 +20,14 @@ const MESSAGE_GROUP_THRESHOLD_MS = 5 * 60 * 1000;
 const MESSAGE_SELECTION_BOTTOM_INSET = 1;
 
 export const CHAT_COMPOSER_MAX_ROWS = 5;
-export const MESSAGE_ACTION_WIDTH = 9;
+/**
+ * Cells each of a message's icon actions (Reply, React, Edit) takes: the
+ * terminal's glyph with a space either side. The desktop's icon button fits
+ * in the same room.
+ */
+export const MESSAGE_ICON_ACTION_WIDTH = 3;
+/** Cells the Retry a failed send offers takes, in place of the icons. */
+export const MESSAGE_RETRY_ACTION_WIDTH = 9;
 export const COMPOSER_ACTION_WIDTH = 10;
 
 export function isGroupedWithPrevious(messages: ChatMessage[], index: number) {

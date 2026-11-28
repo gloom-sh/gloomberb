@@ -897,41 +897,33 @@ export function TeamPane({ focused, width, height, close }: PaneProps) {
                   });
                 }}
               />
-            ) : team && section === "settings" ? (
-              <SettingsSection
-                team={team}
-                draft={draft}
-                width={contentWidth}
-                busy={busy}
-                dirty={dirty}
-                onChange={setDraft}
-                onSave={saveSettings}
-                onLeave={() => {
-                  void run("leave", async () => {
-                    await apiClient.leaveTeam(team.id);
-                    teamStore.removeTeam(team.id);
-                    teamStore.refresh();
-                    void chatController.refreshChatState()
-                      .catch(logFailure("cloud.team.pane", "Refresh chat channels after leaving a team failed"));
-                    setTeamId(null);
-                    if (teamStore.getSnapshot().teams.length <= 1) close?.();
-                    return { tone: "info", text: `You left ${team.name}.` };
-                  });
-                }}
-                onDelete={() => {
-                  void run("delete", async () => {
-                    await apiClient.deleteTeam(team.id);
-                    teamStore.removeTeam(team.id);
-                    teamStore.refresh();
-                    void chatController.refreshChatState()
-                      .catch(logFailure("cloud.team.pane", "Refresh chat channels after deleting a team failed"));
-                    setTeamId(null);
-                    if (teamStore.getSnapshot().teams.length <= 1) close?.();
-                    return { tone: "info", text: `Deleted ${team.name}.` };
-                  });
-                }}
-              />
-            ) : null}
+            ) : team && section === "settings" ? (() => {
+              const exitTeam = (kind: "leave" | "delete") => {
+                void run(kind, async () => {
+                  await (kind === "leave" ? apiClient.leaveTeam(team.id) : apiClient.deleteTeam(team.id));
+                  teamStore.removeTeam(team.id);
+                  teamStore.refresh();
+                  void chatController.refreshChatState()
+                    .catch(logFailure("cloud.team.pane", `Refresh chat channels after ${kind === "leave" ? "leaving" : "deleting"} a team failed`));
+                  setTeamId(null);
+                  if (teamStore.getSnapshot().teams.length <= 1) close?.();
+                  return { tone: "info", text: kind === "leave" ? `You left ${team.name}.` : `Deleted ${team.name}.` };
+                });
+              };
+              return (
+                <SettingsSection
+                  team={team}
+                  draft={draft}
+                  width={contentWidth}
+                  busy={busy}
+                  dirty={dirty}
+                  onChange={setDraft}
+                  onSave={saveSettings}
+                  onLeave={() => exitTeam("leave")}
+                  onDelete={() => exitTeam("delete")}
+                />
+              );
+            })() : null}
             {!showCreate && team && details.loading && details.members.length === 0 ? (
               <Muted>{loadingText()}</Muted>
             ) : null}

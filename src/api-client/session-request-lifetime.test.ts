@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, expect, test } from "bun:test";
 import { apiClient, setCloudApiFetchTransport, type AuthUser } from "./index";
 import { ChatController } from "../plugins/builtin/chat/controller";
+import { replaceCredentialInResponseHeaders } from "../test-support/cloud-api";
 import { MemoryPluginPersistence } from "../test-support/plugin-persistence";
 
 const pro: AuthUser = { id: "controlled", username: "Controlled", name: "Controlled", email: "test@example.invalid", emailVerified: true, plan: "pro", image: null, createdAt: "", updatedAt: "" };
@@ -20,7 +21,7 @@ beforeEach(() => {
   controller = new ChatController();
 });
 afterEach(() => {
-  controller.dispose(); apiClient.dispose(); apiClient.setSessionToken(null);
+  controller.dispose(); apiClient.dispose(); apiClient.setSessionToken(null); apiClient.setCookieSessionMode(false);
   setCloudApiFetchTransport(null);
 });
 
@@ -164,6 +165,39 @@ test("current cookie and socket-token rotation remains accepted and revalidates 
   expect(apiClient.getCurrentUser()).toMatchObject(pro);
 });
 
+
+test("a credential a response's headers replace is a new one at the headers, told once, the same one again never", async () => {
+  // Synthetic credentials only.
+  restore(pro, "synthetic-header-first");
+  const generation = apiClient.getCredentialGeneration();
+  let told = 0;
+  const stop = apiClient.subscribeCurrentUser(() => { told += 1; });
+  const held: Array<{ finish: () => Promise<void> }> = [];
+  try {
+    held.push(await replaceCredentialInResponseHeaders("synthetic-header-second"));
+    // At the headers: the body is still out and the account shown is the one before.
+    expect(apiClient.getCredentialGeneration()).toBe(generation + 1);
+    expect(told).toBe(1);
+    expect(apiClient.getCurrentUser()?.id).toBe(pro.id);
+    expect(apiClient.getSessionToken()).toBe("synthetic-header-second");
+    // The same credential installed, or in another answer's headers, is not a new one; nor is its body coming in.
+    apiClient.setSessionToken("synthetic-header-second");
+    held.push(await replaceCredentialInResponseHeaders("synthetic-header-second"));
+    for (const request of held.splice(0)) await request.finish();
+    expect(apiClient.getCredentialGeneration()).toBe(generation + 1);
+    expect(told).toBe(1);
+    // One installed is told once, as before; the cookie mode switched on once however often it is asked.
+    apiClient.setSessionToken("synthetic-header-third");
+    expect([apiClient.getCredentialGeneration(), told]).toEqual([generation + 2, 2]);
+    apiClient.setCookieSessionMode(true);
+    apiClient.setCookieSessionMode(true);
+    expect(apiClient.getCredentialGeneration()).toBe(generation + 3);
+  } finally {
+    stop();
+    for (const request of held) await request.finish();
+    apiClient.setCookieSessionMode(false);
+  }
+});
 
 test("new-credential validation supersedes an older live request without rechecking the retired response", async () => {
   restore(free, "old-token");

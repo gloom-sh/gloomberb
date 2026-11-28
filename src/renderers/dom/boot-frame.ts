@@ -83,7 +83,7 @@ function copyFrame(node: Node, insideFrame: boolean): Node | null {
  * closed is kept as it is, so the next launch does not draw panes the user
  * closed.
  */
-export function captureBootFrame(doc: Document, root: Element, build: string): BootFrame | null {
+function captureBootFrame(doc: Document, root: Element, build: string): BootFrame | null {
   const view = doc.defaultView;
   if (!view || !root.querySelector('[data-gloom-role="pane-window"], [data-gloom-role="status-bar"]')) return null;
   const copy = copyFrame(root, false) as Element | null;
@@ -113,7 +113,7 @@ function statusBarLabels(statusBar: Element): string {
  * and where each pane is and what it is called. Cheap enough to read every
  * few seconds; the frame itself is only copied when this changes.
  */
-export function bootFrameSignature(doc: Document, root: Element): string {
+function bootFrameSignature(doc: Document, root: Element): string {
   const view = doc.defaultView;
   const parts: string[] = [
     `${view?.innerWidth ?? 0}x${view?.innerHeight ?? 0}`,

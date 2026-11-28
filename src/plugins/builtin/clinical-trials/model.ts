@@ -122,7 +122,7 @@ export function hasTrialPhase(phases: readonly string[]): boolean {
  * before 1 before early phase 1, a study of two phases (2/3) by its later
  * one, and a study with no phase to show after them all.
  */
-export function trialPhaseRank(phases: readonly string[]): number {
+function trialPhaseRank(phases: readonly string[]): number {
   let rank = 0;
   for (const phase of phases) {
     const code = phase.trim().toUpperCase();
@@ -303,8 +303,8 @@ const TABLE_CHROME = 1 + 2;
 /** The title is what the list is read by: the drug and then the date give way before it has less than this. */
 const TITLE_ROOM_WITH_DRUG = 24;
 const TITLE_ROOM_WITH_DATE = 36;
-/** An ISO day, as every date column reads. */
-const DATE_WIDTH = 10;
+/** A day first (`21 Aug 2026`), as every date column reads. */
+const DATE_WIDTH = 11;
 
 /**
  * The title takes what is left; phase, status and ticker stay narrow and the

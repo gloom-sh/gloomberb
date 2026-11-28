@@ -2,51 +2,49 @@ import { apiClient } from "../../../api-client";
 import type { PerpBoardPayload, PerpBoardQuery, PerpBoardRow, PerpDepthPayload, PerpDepthSnapshot, PerpEquitiesPayload, PerpEquityListing, PerpHistoryPayload, PerpHistoryQuery,
   PerpLiquidationsPayload, PerpLongShortPoint, PerpLongShortRatio, PerpMarketPayload, PerpRankingsPayload } from "../../../api-client/perps";
 import { createPluginCache } from "../../../data/plugin-cache";
+import { isFiniteNumber, isFraction, isIsoInstant, isNonNegative, isNonNegativeInt, isNullableFinite, isNullableIsoInstant, isPositiveNumber, isStringArray } from "../../../utils/guards";
 import { cachedCloudResource, loadCloudResource } from "../shared/cloud-resource";
 import { baseOfLabel, largestPerpMarket, marketLabel, perpBaseCandidates, separatedPairBase } from "./model";
 
-export const perpsCache = createPluginCache<PerpBoardPayload>({ kind: "perps-board", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
-export const perpsHistoryCache = createPluginCache<PerpHistoryPayload>({ kind: "perps-history", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
-const finiteOrNull = (n: unknown) => n === null || typeof n === "number" && Number.isFinite(n);
-const date = (s: unknown) => typeof s === "string" && Number.isFinite(Date.parse(s));
-const share = (n: unknown) => typeof n === "number" && n >= 0 && n <= 1;
+const makeCache = <T>(kind: string, staleMs = 60_000) =>
+  createPluginCache<T>({ kind, source: "gloom-cloud", schemaVersion: 1, policy: { staleMs, expireMs: 86_400_000 } });
+export const perpsCache = makeCache<PerpBoardPayload>("perps-board");
+export const perpsHistoryCache = makeCache<PerpHistoryPayload>("perps-history");
 /** A long/short reading: shares within 0..1, a finite ratio or none. Older servers send no reading at all. */
 const validShares = (value: Pick<PerpLongShortPoint, "longShare" | "shortShare" | "ratio" | "derived" | "definition" | "observedAt">) =>
-  share(value.longShare) && share(value.shortShare) && finiteOrNull(value.ratio) && typeof value.derived === "boolean" && typeof value.definition === "string" && date(value.observedAt);
+  isFraction(value.longShare) && isFraction(value.shortShare) && isNullableFinite(value.ratio) && typeof value.derived === "boolean" && typeof value.definition === "string" && isIsoInstant(value.observedAt);
 const validLongShort = (value: PerpLongShortRatio | null | undefined) => value == null
-  || typeof value === "object" && validShares(value) && typeof value.venue === "string" && typeof value.definitionText === "string" && date(value.bucketAt) && typeof value.stale === "boolean";
+  || typeof value === "object" && validShares(value) && typeof value.venue === "string" && typeof value.definitionText === "string" && isIsoInstant(value.bucketAt) && typeof value.stale === "boolean";
 function validRow(row: PerpBoardRow) {
   return !!row && typeof row.marketId === "string" && typeof row.symbol === "string" && typeof row.displayName === "string"
     && typeof row.baseAsset === "string" && typeof row.quoteCurrency === "string" && typeof row.marginCurrency === "string"
-    && date(row.observedAt) && typeof row.sourceUrl === "string" && Array.isArray(row.qualityFlags)
+    && isIsoInstant(row.observedAt) && typeof row.sourceUrl === "string" && Array.isArray(row.qualityFlags)
     && [row.markPrice, row.oraclePrice, row.fundingRate, row.fundingIntervalHours, row.fundingRate8h, row.fundingApr,
       row.predictedFundingRate, row.predictedFundingIntervalHours, row.openInterestBase, row.openInterestUsd, row.volume24hUsd,
-      row.premium, row.oiChange24h, row.closedMarketPremium].every(finiteOrNull)
+      row.premium, row.oiChange24h, row.closedMarketPremium].every(isNullableFinite)
     && (row.fundingIntervalHours === null || row.fundingIntervalHours > 0)
     && validLongShort(row.longShortRatio) && (row.longShortRatioReason == null || typeof row.longShortRatioReason === "string");
 }
 function envelope(data: { access: string; locked: number | boolean; asOf: string | null }) {
-  return !!data && ["pro", "preview"].includes(data.access) && (typeof data.locked === "boolean" || Number.isInteger(data.locked) && data.locked >= 0) && (data.asOf === null || date(data.asOf));
+  return !!data && ["pro", "preview"].includes(data.access) && (typeof data.locked === "boolean" || isNonNegativeInt(data.locked)) && isNullableIsoInstant(data.asOf);
 }
-export function validatePerpsBoard(data: PerpBoardPayload): PerpBoardPayload {
+function validatePerpsBoard(data: PerpBoardPayload): PerpBoardPayload {
   if (!envelope(data) || !Array.isArray(data.rows) || !data.rows.every(validRow)
     || new Set(data.rows.map((row) => row.marketId)).size !== data.rows.length) throw new Error("The server returned unreadable perpetual markets");
   return data;
 }
-export function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?: string): PerpHistoryPayload {
+function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?: string): PerpHistoryPayload {
   if (!envelope(data) || typeof data.marketId !== "string" || expectedMarketId !== undefined && data.marketId !== expectedMarketId || !Array.isArray(data.rows) || !Array.isArray(data.funding) || !Array.isArray(data.candles)
-    || !data.rows.every((row) => date(row.time) && [row.markPrice, row.oraclePrice, row.premium, row.fundingRate, row.fundingIntervalHours, row.openInterestBase, row.openInterestUsd].every(finiteOrNull) && (row.fundingIntervalHours === null || row.fundingIntervalHours > 0))
-    || !data.funding.every((row) => date(row.time) && typeof row.rate === "number" && Number.isFinite(row.rate) && Number.isFinite(row.intervalHours) && row.intervalHours > 0 && row.marketId === data.marketId && date(row.observedAt) && typeof row.sourceUrl === "string")
-    || !data.candles.every((row) => date(row.time) && [row.open, row.high, row.low, row.close].every((n) => typeof n === "number" && Number.isFinite(n)) && row.marketId === data.marketId && date(row.observedAt) && typeof row.sourceUrl === "string")
-    || data.longShortRatio != null && !(Array.isArray(data.longShortRatio) && data.longShortRatio.every((point) => !!point && date(point.time) && validShares(point)))) throw new Error("The server returned unreadable perpetual history");
+    || !data.rows.every((row) => isIsoInstant(row.time) && [row.markPrice, row.oraclePrice, row.premium, row.fundingRate, row.fundingIntervalHours, row.openInterestBase, row.openInterestUsd].every(isNullableFinite) && (row.fundingIntervalHours === null || row.fundingIntervalHours > 0))
+    || !data.funding.every((row) => isIsoInstant(row.time) && isFiniteNumber(row.rate) && isPositiveNumber(row.intervalHours) && row.marketId === data.marketId && isIsoInstant(row.observedAt) && typeof row.sourceUrl === "string")
+    || !data.candles.every((row) => isIsoInstant(row.time) && [row.open, row.high, row.low, row.close].every(isFiniteNumber) && row.marketId === data.marketId && isIsoInstant(row.observedAt) && typeof row.sourceUrl === "string")
+    || data.longShortRatio != null && !(Array.isArray(data.longShortRatio) && data.longShortRatio.every((point) => !!point && isIsoInstant(point.time) && validShares(point)))) throw new Error("The server returned unreadable perpetual history");
   return data;
 }
 export const fetchPerpsHistory = async (query: PerpHistoryQuery, client: Pick<typeof apiClient, "getCloudPerpsHistory"> = apiClient) => validatePerpsHistory(await client.getCloudPerpsHistory(query), query.marketId);
 
 const RANKING_KEYS = ["fundingPositive", "fundingNegative", "oiSurges", "premiumDislocations", "closedMarketDislocations"] as const;
-export function validatePerpsRankings(data: PerpRankingsPayload): PerpRankingsPayload {
+function validatePerpsRankings(data: PerpRankingsPayload): PerpRankingsPayload {
   // A market can rank in several lists, but only once in each.
   if (!envelope(data) || !RANKING_KEYS.every((key) => Array.isArray(data[key]) && data[key].every(validRow)
     && new Set(data[key].map((row) => row.marketId)).size === data[key].length)) throw new Error("The server returned unreadable perpetual rankings");
@@ -96,8 +94,7 @@ export async function fetchPerpsCompare(baseAsset: string, client: Pick<typeof a
   }
   return direct;
 }
-export const perpsRankingsCache = createPluginCache<PerpRankingsPayload>({ kind: "perps-rankings", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
+export const perpsRankingsCache = makeCache<PerpRankingsPayload>("perps-rankings");
 // Board and comparison payloads share the board cache, keyed by the query and the account's plan.
 const boardKey = (query: PerpBoardQuery, access: string) => `board:v1:${query.assetClass ?? "all"}:${query.sort ?? "oi"}:${query.search?.trim().toUpperCase() ?? ""}:${access}`;
 export const cachedPerpsBoard = (query: PerpBoardQuery, access: string) => cachedCloudResource(perpsCache, boardKey(query, access), validatePerpsBoard);
@@ -110,28 +107,25 @@ const compareKey = (baseAsset: string, access: string) => `compare:v1:${baseAsse
 export const cachedPerpsCompare = (baseAsset: string, access: string) => cachedCloudResource(perpsCache, compareKey(baseAsset, access), (data) => validatePerpsCompare(data, baseAsset));
 export const loadPerpsCompare = (baseAsset: string, access: string, force = false) => loadCloudResource(perpsCache, compareKey(baseAsset, access), () => fetchPerpsCompare(baseAsset), { force, validate: (data) => validatePerpsCompare(data, baseAsset) });
 // Liquidations and order book depth of one base asset. Older servers answer 404, which the tab shows as its error.
-const finite = (n: unknown) => typeof n === "number" && Number.isFinite(n);
-const nonNegative = (n: unknown) => finite(n) && (n as number) >= 0;
-const strings = (value: unknown) => Array.isArray(value) && value.every((entry) => typeof entry === "string");
 const cascadeEnvelope = (data: { access: string; locked: boolean; asOf: string; baseAsset: string; notes: unknown }) =>
-  !!data && ["pro", "preview"].includes(data.access) && typeof data.locked === "boolean" && date(data.asOf) && typeof data.baseAsset === "string" && strings(data.notes);
+  !!data && ["pro", "preview"].includes(data.access) && typeof data.locked === "boolean" && isIsoInstant(data.asOf) && typeof data.baseAsset === "string" && isStringArray(data.notes);
 const named = (row: { marketId: string; venue: string; symbol: string }) => !!row && typeof row.marketId === "string" && typeof row.venue === "string" && typeof row.symbol === "string";
 const TOTALS = ["long24h", "short24h", "long7d", "short7d", "count24h", "count7d"] as const;
-export function validatePerpsLiquidations(data: PerpLiquidationsPayload): PerpLiquidationsPayload {
-  if (!cascadeEnvelope(data) || !date(data.from) || !(data.collectingSince === null || date(data.collectingSince)) || !data.totals || !TOTALS.every((key) => nonNegative(data.totals[key]))
-    || !Array.isArray(data.markets) || !data.markets.every((row) => named(row) && TOTALS.every((key) => nonNegative(row[key])) && (row.lastEventAt === null || date(row.lastEventAt)))
+function validatePerpsLiquidations(data: PerpLiquidationsPayload): PerpLiquidationsPayload {
+  if (!cascadeEnvelope(data) || !isIsoInstant(data.from) || !isNullableIsoInstant(data.collectingSince) || !data.totals || !TOTALS.every((key) => isNonNegative(data.totals[key]))
+    || !Array.isArray(data.markets) || !data.markets.every((row) => named(row) && TOTALS.every((key) => isNonNegative(row[key])) && isNullableIsoInstant(row.lastEventAt))
     || new Set(data.markets.map((row) => row.marketId)).size !== data.markets.length
-    || !Array.isArray(data.hourly) || !data.hourly.every((hour) => !!hour && date(hour.time) && nonNegative(hour.long) && nonNegative(hour.short) && nonNegative(hour.count))
+    || !Array.isArray(data.hourly) || !data.hourly.every((hour) => !!hour && isIsoInstant(hour.time) && isNonNegative(hour.long) && isNonNegative(hour.short) && isNonNegative(hour.count))
     || !Array.isArray(data.largest) || !data.largest.every((print) => named(print) && (print.side === "long" || print.side === "short") && (print.priceKind === "fill" || print.priceKind === "bankruptcy")
-      && [print.price, print.quantity, print.notionalUsd].every(nonNegative) && date(print.eventAt) && date(print.receivedAt))
+      && [print.price, print.quantity, print.notionalUsd].every(isNonNegative) && isIsoInstant(print.eventAt) && isIsoInstant(print.receivedAt))
     || !Array.isArray(data.streams) || !data.streams.every((stream) => !!stream && typeof stream.venue === "string" && (stream.state === "live" || stream.state === "down")))
     throw new Error("The server returned unreadable perpetual liquidations");
   return data;
 }
 const BANDS = ["bid05", "ask05", "bid1", "ask1", "bid2", "ask2"] as const;
-const validSnapshot = (row: PerpDepthSnapshot) => !!row && typeof row.marketId === "string" && date(row.bucket) && date(row.observedAt) && (row.sourceAsOf === null || date(row.sourceAsOf))
-  && finite(row.mid) && row.mid > 0 && BANDS.every((band) => nonNegative(row[band])) && nonNegative(row.bidReach) && nonNegative(row.askReach) && finite(row.levels) && (row.grouping === null || finite(row.grouping));
-export function validatePerpsDepth(data: PerpDepthPayload): PerpDepthPayload {
+const validSnapshot = (row: PerpDepthSnapshot) => !!row && typeof row.marketId === "string" && isIsoInstant(row.bucket) && isIsoInstant(row.observedAt) && isNullableIsoInstant(row.sourceAsOf)
+  && isPositiveNumber(row.mid) && BANDS.every((band) => isNonNegative(row[band])) && isNonNegative(row.bidReach) && isNonNegative(row.askReach) && isFiniteNumber(row.levels) && isNullableFinite(row.grouping);
+function validatePerpsDepth(data: PerpDepthPayload): PerpDepthPayload {
   if (!cascadeEnvelope(data) || !Array.isArray(data.rows) || !data.rows.every((row) => validSnapshot(row) && named(row) && typeof row.stale === "boolean")
     || new Set(data.rows.map((row) => row.marketId)).size !== data.rows.length
     || !Array.isArray(data.history) || !data.history.every(validSnapshot) || !Array.isArray(data.sources)) throw new Error("The server returned unreadable order book depth");
@@ -152,10 +146,8 @@ export const fetchPerpsLiquidations = (baseAsset: string, client: Pick<typeof ap
   byBaseAsset(baseAsset, async (base) => validatePerpsLiquidations(await client.getCloudPerpsLiquidations(base)));
 export const fetchPerpsDepth = (baseAsset: string, client: Pick<typeof apiClient, "getCloudPerpsDepth"> = apiClient) =>
   byBaseAsset(baseAsset, async (base) => validatePerpsDepth(await client.getCloudPerpsDepth(base)));
-export const perpsLiquidationsCache = createPluginCache<PerpLiquidationsPayload>({ kind: "perps-liquidations", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
-export const perpsDepthCache = createPluginCache<PerpDepthPayload>({ kind: "perps-depth", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 300_000, expireMs: 86_400_000 } });
+export const perpsLiquidationsCache = makeCache<PerpLiquidationsPayload>("perps-liquidations");
+export const perpsDepthCache = makeCache<PerpDepthPayload>("perps-depth", 300_000);
 const cascadeKey = (kind: string, baseAsset: string, access: string) => `${kind}:v1:${baseAsset.toUpperCase()}:${access}`;
 export const cachedPerpsLiquidations = (baseAsset: string, access: string) => cachedCloudResource(perpsLiquidationsCache, cascadeKey("liquidations", baseAsset, access), validatePerpsLiquidations);
 export const loadPerpsLiquidations = (baseAsset: string, access: string, force = false) => loadCloudResource(perpsLiquidationsCache, cascadeKey("liquidations", baseAsset, access),
@@ -185,10 +177,9 @@ export const loadPerpsEquity = (listing: PerpEquityListing, access: string, forc
 
 /** The most listings the server looks up in one request; a longer list asks in pages of this size. */
 const PERP_EQUITIES_PAGE = 100;
-export const perpsListCache = createPluginCache<PerpEquitiesPayload>({ kind: "perps-equities", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
+export const perpsListCache = makeCache<PerpEquitiesPayload>("perps-equities");
 /** One answer per listing asked about, in its order; a contract only with its proof for that listing. */
-export function validatePerpsEquities(data: PerpEquitiesPayload, listings: readonly PerpEquityListing[]): PerpEquitiesPayload {
+function validatePerpsEquities(data: PerpEquitiesPayload, listings: readonly PerpEquityListing[]): PerpEquitiesPayload {
   if (!envelope(data) || !Array.isArray(data.results) || data.results.length !== listings.length
     || !data.results.every((result, index) => !!result && (result.market === null
       || sameListing(result.listing, listings[index]!) && validRow(result.market) && provesListing(result.market, listings[index]!))))
@@ -217,7 +208,7 @@ export const loadPerpsEquities = (listings: readonly PerpEquityListing[], access
 
 function validatePerpsMarket<T extends PerpMarketPayload>(data: T): T {
   validatePerpsBoard(data);
-  if (!Array.isArray(data.evidence) || !data.evidence.every((row) => date(row.period_at) && date(row.received_at) && typeof row.fingerprint === "string" && (row.superseded_at === null || date(row.superseded_at)))) throw new Error("The server returned unreadable market evidence");
+  if (!Array.isArray(data.evidence) || !data.evidence.every((row) => isIsoInstant(row.period_at) && isIsoInstant(row.received_at) && typeof row.fingerprint === "string" && isNullableIsoInstant(row.superseded_at))) throw new Error("The server returned unreadable market evidence");
   return data;
 }
 const fetchPerpsMarket = async (marketId: string, client: Pick<typeof apiClient, "getCloudPerpsMarket"> = apiClient) => validatePerpsMarket(await client.getCloudPerpsMarket(marketId));
@@ -355,8 +346,7 @@ async function selectPerpMarket(input: string, client: PerpMarketClient, venue?:
   }
   return { ...board, rows: [], evidence: [], methodologyUrl: "https://gloom.sh/docs/perpetuals" };
 }
-export const perpsMarketCache = createPluginCache<PerpSelection>({ kind: "perps-market", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 60_000, expireMs: 86_400_000 } });
+export const perpsMarketCache = makeCache<PerpSelection>("perps-market");
 /** `acrossVenues` adds the market's base asset on every venue (PERP's own market view); a list row reads its contract alone. */
 const selectionKey = (market: string, access: string, acrossVenues: boolean) => `${market}:${access}${acrossVenues ? ":venues" : ""}`;
 export const cachedPerpSelection = (market: string, access: string, acrossVenues = false) => cachedCloudResource(perpsMarketCache, selectionKey(market, access, acrossVenues), validatePerpsMarket);

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Box, Text, useUiHost } from "../../../../ui";
 import { Button } from "../../../../components/ui/button";
 import { DialogActions } from "../../../../components/ui/dialog-actions";
@@ -62,54 +62,89 @@ interface PromptProps {
   keyGraceMs?: number;
 }
 
+function RelayPromptFrame({
+  title,
+  footer,
+  signal,
+  keyGraceMs = KEY_GRACE_MS,
+  onDeny,
+  onKey,
+  actions,
+  actionHints,
+  children,
+}: {
+  title: string;
+  footer: string;
+  signal: AbortSignal;
+  keyGraceMs?: number;
+  onDeny: () => void;
+  onKey: (event: Parameters<Parameters<typeof useDialogKeyboard>[0]>[0]) => void;
+  actions: ReactNode;
+  actionHints?: { note: string };
+  children: ReactNode;
+}) {
+  const size = usePromptWidth();
+  const keysReady = useKeyGrace(keyGraceMs);
+  useCloseOnAbort(signal, onDeny);
+  useDialogKeyboard((event) => {
+    event.stopPropagation();
+    event.preventDefault();
+    if (event.name === "escape" || isPlainKey(event, "n", "d")) {
+      onDeny();
+      return;
+    }
+    if (keysReady()) onKey(event);
+  }, { allowEditable: true });
+
+  return (
+    <RemoteUiScope scope={RELAY_PROMPT_SCOPE}>
+      <DialogFrame title={title} footer={footer} desktopFooter={null}>
+        <Box flexDirection="column" {...size}>
+          {children}
+          <Box height={1} />
+          <DialogActions wrap hints={actionHints}>{actions}</DialogActions>
+        </Box>
+      </DialogFrame>
+    </RemoteUiScope>
+  );
+}
+
 /** First time an assistant asks to drive this terminal. */
-export function AssistantApprovalDialog({
+function AssistantApprovalDialog({
   resolve,
   caller,
   signal,
   keyGraceMs = KEY_GRACE_MS,
 }: PromptContext<AssistantDecision> & PromptProps) {
   const colors = useThemeColors();
-  const size = usePromptWidth();
-  const keysReady = useKeyGrace(keyGraceMs);
   const deny = useCallback(() => resolve("deny"), [resolve]);
-  useCloseOnAbort(signal, deny);
-  useDialogKeyboard((event) => {
-    event.stopPropagation();
-    event.preventDefault();
-    if (event.name === "escape" || isPlainKey(event, "n", "d")) {
-      deny();
-      return;
-    }
-    if (!keysReady()) return;
-    if (isPlainKey(event, "s")) resolve("session");
-    else if (isPlainKey(event, "a")) resolve("always");
-  }, { allowEditable: true });
-
   return (
-    <RemoteUiScope scope={RELAY_PROMPT_SCOPE}>
-      <DialogFrame
-        title={tf("{name} wants to control this terminal", { name: caller.name })}
-        footer={t("S this session · A always · N or Esc deny")}
-        desktopFooter={null}
-      >
-        <Box flexDirection="column" {...size}>
-          <Text fg={colors.text} wrapText>
-            {t("It connected through Gloom Cloud with Terminal control. It can read what is on screen, open and arrange panes and switch layouts.")}
-          </Text>
-          <Box height={1} />
-          <Text fg={colors.textDim} wrapText>
-            {t("Orders, transfers, messages and plugin actions still ask you each time. Revoke it any time in Account Management, Agents.")}
-          </Text>
-          <Box height={1} />
-          <DialogActions wrap>
-            <Button label={t("Allow for this session")} variant="primary" desktopShortcut="s" onPress={() => resolve("session")} />
-            <Button label={t("Always allow")} variant="secondary" desktopShortcut="a" onPress={() => resolve("always")} />
-            <Button label={t("Deny")} variant="secondary" desktopShortcut="n" onPress={deny} />
-          </DialogActions>
-        </Box>
-      </DialogFrame>
-    </RemoteUiScope>
+    <RelayPromptFrame
+      title={tf("{name} wants to control this terminal", { name: caller.name })}
+      footer={t("S this session · A always · N or Esc deny")}
+      signal={signal}
+      keyGraceMs={keyGraceMs}
+      onDeny={deny}
+      onKey={(event) => {
+        if (isPlainKey(event, "s")) resolve("session");
+        else if (isPlainKey(event, "a")) resolve("always");
+      }}
+      actions={(
+        <>
+          <Button label={t("Allow for this session")} variant="primary" desktopShortcut="s" onPress={() => resolve("session")} />
+          <Button label={t("Always allow")} variant="secondary" desktopShortcut="a" onPress={() => resolve("always")} />
+          <Button label={t("Deny")} variant="secondary" desktopShortcut="n" onPress={deny} />
+        </>
+      )}
+    >
+      <Text fg={colors.text} wrapText>
+        {t("It connected through Gloom Cloud with Terminal control. It can read what is on screen, open and arrange panes and switch layouts.")}
+      </Text>
+      <Box height={1} />
+      <Text fg={colors.textDim} wrapText>
+        {t("Orders, transfers, messages and plugin actions still ask you each time. Revoke it any time in Account Management, Agents.")}
+      </Text>
+    </RelayPromptFrame>
   );
 }
 
@@ -117,7 +152,7 @@ export function AssistantApprovalDialog({
  * Every call that can reach an outside service. There is no "always" here,
  * and only `y` allows: `a` means "always" in the approval prompt.
  */
-export function CallConfirmationDialog({
+function CallConfirmationDialog({
   resolve,
   caller,
   summary,
@@ -125,70 +160,66 @@ export function CallConfirmationDialog({
   keyGraceMs = KEY_GRACE_MS,
 }: PromptContext<ConfirmationAnswer> & PromptProps & { summary: CallSummary }) {
   const colors = useThemeColors();
-  const size = usePromptWidth();
   const terminal = useUiHost().kind === "opentui";
   const secondsLeft = useSecondsLeft(CONFIRM_WINDOW_MS, !terminal);
-  const keysReady = useKeyGrace(keyGraceMs);
   const deny = useCallback(() => resolve("deny"), [resolve]);
-  useCloseOnAbort(signal, deny);
-  useDialogKeyboard((event) => {
-    event.stopPropagation();
-    event.preventDefault();
-    if (event.name === "escape" || isPlainKey(event, "n", "d")) {
-      deny();
-      return;
-    }
-    if (keysReady() && isPlainKey(event, "y")) resolve("allow");
-  }, { allowEditable: true });
   const labelWidth = Math.max(0, ...summary.lines.map((line) => line.label.length)) + 2;
 
   return (
-    <RemoteUiScope scope={RELAY_PROMPT_SCOPE}>
-      <DialogFrame
-        title={tf("{name} asks to run an action", { name: caller.name })}
-        footer={tf("Y allow · N or Esc deny · denied after {seconds} s", { seconds: Math.round(CONFIRM_WINDOW_MS / 1_000) })}
-        desktopFooter={null}
-      >
-        <Box flexDirection="column" {...size}>
-          <Text fg={colors.textBright} wrapText>{summary.title}</Text>
-          <Box height={1} />
-          {summary.lines.map((line, index) => (
-            <Box key={`${line.label}:${index}`} flexDirection="row">
-              <Box width={labelWidth} flexShrink={0}>
-                <Text fg={colors.textDim}>{line.label}</Text>
-              </Box>
-              <Text fg={colors.text} wrapText>{line.value}</Text>
-            </Box>
-          ))}
-          <Box height={1} />
-          <DialogActions wrap hints={{ note: tf("Denied in {seconds} s", { seconds: secondsLeft }) }}>
-            <Button label={t("Allow")} variant="primary" desktopShortcut="y" onPress={() => resolve("allow")} />
-            <Button label={t("Deny")} variant="secondary" desktopShortcut="n" onPress={deny} />
-          </DialogActions>
+    <RelayPromptFrame
+      title={tf("{name} asks to run an action", { name: caller.name })}
+      footer={tf("Y allow · N or Esc deny · denied after {seconds} s", { seconds: Math.round(CONFIRM_WINDOW_MS / 1_000) })}
+      signal={signal}
+      keyGraceMs={keyGraceMs}
+      onDeny={deny}
+      onKey={(event) => { if (isPlainKey(event, "y")) resolve("allow"); }}
+      actionHints={{ note: tf("Denied in {seconds} s", { seconds: secondsLeft }) }}
+      actions={(
+        <>
+          <Button label={t("Allow")} variant="primary" desktopShortcut="y" onPress={() => resolve("allow")} />
+          <Button label={t("Deny")} variant="secondary" desktopShortcut="n" onPress={deny} />
+        </>
+      )}
+    >
+      <Text fg={colors.textBright} wrapText>{summary.title}</Text>
+      <Box height={1} />
+      {summary.lines.map((line, index) => (
+        <Box key={`${line.label}:${index}`} flexDirection="row">
+          <Box width={labelWidth} flexShrink={0}>
+            <Text fg={colors.textDim}>{line.label}</Text>
+          </Box>
+          <Text fg={colors.text} wrapText>{line.value}</Text>
         </Box>
-      </DialogFrame>
-    </RemoteUiScope>
+      ))}
+    </RelayPromptFrame>
   );
+}
+
+async function promptRelay<T extends string>(
+  dialog: DialogApi,
+  errorLabel: string,
+  content: (context: PromptContext<T>) => ReactNode,
+): Promise<T | "deny"> {
+  const answer = await dialog.prompt<T>({
+    closeOnClickOutside: false,
+    closeOnEscape: true,
+    content,
+  }).catch(logFailure("cloud.terminal-relay.prompts", errorLabel));
+  return answer ?? "deny";
 }
 
 /** The engine's prompts, drawn with the app's dialog host. */
 export function dialogRelayPrompts(dialog: DialogApi): RelayPrompts {
   return {
-    async askApproval(caller, signal): Promise<ApprovalAnswer> {
-      const answer = await dialog.prompt<AssistantDecision>({
-        closeOnClickOutside: false,
-        closeOnEscape: true,
-        content: (context: PromptContext<AssistantDecision>) => <AssistantApprovalDialog {...context} caller={caller} signal={signal} />,
-      }).catch(logFailure("cloud.terminal-relay.prompts", "The agent approval prompt failed"));
-      return answer ?? "deny";
-    },
-    async askConfirmation(caller, summary, signal): Promise<ConfirmationAnswer> {
-      const answer = await dialog.prompt<ConfirmationAnswer>({
-        closeOnClickOutside: false,
-        closeOnEscape: true,
-        content: (context: PromptContext<ConfirmationAnswer>) => <CallConfirmationDialog {...context} caller={caller} summary={summary} signal={signal} />,
-      }).catch(logFailure("cloud.terminal-relay.prompts", "The call confirmation prompt failed"));
-      return answer ?? "deny";
-    },
+    askApproval: (caller, signal): Promise<ApprovalAnswer> => promptRelay<AssistantDecision>(
+      dialog,
+      "The agent approval prompt failed",
+      (context) => <AssistantApprovalDialog {...context} caller={caller} signal={signal} />,
+    ),
+    askConfirmation: (caller, summary, signal): Promise<ConfirmationAnswer> => promptRelay<ConfirmationAnswer>(
+      dialog,
+      "The call confirmation prompt failed",
+      (context) => <CallConfirmationDialog {...context} caller={caller} summary={summary} signal={signal} />,
+    ),
   };
 }

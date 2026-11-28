@@ -1,10 +1,11 @@
+import { formatDayTime } from "../../../utils/day-format";
 import { formatShortDate } from "../../../utils/datetime-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanyMoves, HiringMove, HiringMoveExclusion, HiringMoveFlag, HiringMovePosting, HiringMovesBoard, HiringMovesFilter } from "../../../api-client/hiring";
-import { MISSING_VALUE, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE } from "../../../utils/format";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
-import type { AttentionRow } from "./model";
+import { hiringAverage as average, hiringCount as count, hiringPace as pace, hiringSigned as signed, type AttentionRow } from "./model";
 
 /**
  * HIRE's Moves tab: each covered company's new roles in the latest complete
@@ -54,12 +55,6 @@ function weekLabel(week: string | null | undefined): string {
   const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(week ?? "");
   return match ? formatShortDate(match[0], { year: false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
 }
-/** 3.4x, 0.4x, 74x: a pace against an average. */
-const pace = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
-const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
-/** An average of a few weeks keeps a decimal while it is small: 6.7 a week, not 7. */
-const average = (value: number) => formatNumber(value, value < 10 ? 1 : 0);
-const signed = (value: number, decimals = 0) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
 
 const PACE_COLUMNS = new Set(["pace", "peers", "relative"]);
 export const MOVES_SIGNED_COLUMNS = new Set(["z", "change"]);
@@ -102,7 +97,7 @@ export function moveFacts(move: HiringMove): Array<{ label: string; value: strin
     { label: "Open roles", value: count(move.openRoles) },
     { label: "Boards", value: move.sourceTickers.join(", ") },
     ...(alertText(move) ? [{ label: "Alert", value: alertText(move)! }] : []),
-    { label: "First computed", value: move.firstComputedAt },
+    { label: "First computed", value: `${formatDayTime(move.firstComputedAt)} UTC` },
   ];
 }
 
@@ -170,11 +165,15 @@ const postingRow = (closed: boolean) => (posting: HiringMovePosting): MovesRow =
     { label: "First seen", value: posting.firstSeenAt }, ...(posting.closedAt ? [{ label: "Closed", value: posting.closedAt }] : []), { label: "Board", value: posting.sourceTicker }],
 });
 
+const observedWeek = (week: HiringCompanyMoves["week"]) => week && (week.measured || week.reads > 0 || week.newRoles !== null || week.closedRoles !== null || week.openRoles !== null) ? week : null;
+const lockedMoveWeeks = (data: HiringCompanyMoves) => data.preview ? Math.max(0, data.locked.history - (data.week ? 1 : 0)) : 0;
+
 export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
   const latest = data.latest;
+  const current = observedWeek(data.week);
   const moves = new Map(data.history.map((row) => [row.week, row]));
   // A free read keeps the latest week; the rest are history.
-  const weeks = data.weeks.length ? data.weeks : data.week ? [data.week] : [];
+  const weeks = (data.weeks.length ? data.weeks : current ? [current] : []).filter(observedWeek);
   const tone = (signal: HiringMove["signal"]) => signal === "accelerating" ? "positive" as const : signal === "slowing" ? "negative" as const : undefined;
   const figures: StatItem[] = latest ? [
     { label: "New roles", value: count(latest.newRoles), detail: `week of ${weekLabel(latest.week)}`, detailVariants: [`wk ${weekLabel(latest.week)}`, ""] },
@@ -183,7 +182,7 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
     { label: "Peers", value: pace(latest.peers.medianRatio), detail: latest.peers.group === "universe" ? "all covered" : latest.peers.label, detailVariants: [""] },
     // A flagged move says what to check where the driver would be; its drivers keep their view.
     { label: "Signal", value: signalLabel(latest.signal), detail: (latest.flags?.length ? `${flagText(latest)}, no alert` : driverText(latest)) ?? undefined, detailVariants: [""], tone: tone(latest.signal) },
-  ] : data.week && !data.week.measured ? [
+  ] : current && data.week && !data.week.measured ? [
     { label: "New roles", value: count(data.week.newRoles), detail: `week of ${weekLabel(data.week.week)}`, detailVariants: [`wk ${weekLabel(data.week.week)}`, ""] },
     { label: "Not measured", value: exclusionText(data.week.excluded) || MISSING_VALUE, wide: true },
   ] : data.week && data.preview && data.locked.move ? [
@@ -193,11 +192,11 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
     { label: "Open", value: count(data.week.openRoles) },
     { label: "Move", value: "Pro", detail: "pace, peers, why", detailVariants: [""] },
   ] : [];
-  const historyLocked = data.preview ? Math.max(0, data.locked.history - weeks.length) : 0;
+  const historyLocked = lockedMoveWeeks(data);
   const noMove = data.preview && data.locked.move ? "This company's move is in Pro." : "No measured move for this company yet.";
   return {
     asOf: latest?.computedAt ?? data.history[0]?.computedAt ?? null,
-    week: latest?.week ?? data.week?.week ?? null,
+    week: latest?.week ?? current?.week ?? null,
     preview: data.preview,
     figures,
     latest,
@@ -227,8 +226,8 @@ export function companyMovesModel(data: HiringCompanyMoves): MovesModel {
         locked: 0,
         empty: latest ? "No title repeats in this week's new roles." : noMove,
       },
-      added: { columns: POSTING_COLUMNS("First seen"), rows: data.evidence.added.map(postingRow(false)), locked: data.preview ? data.locked.added : 0, empty: "No posting was first seen this week." },
-      closed: { columns: POSTING_COLUMNS("Closed"), rows: data.evidence.closed.map(postingRow(true)), locked: data.preview ? data.locked.closed : 0, empty: "No posting closed this week." },
+      added: { columns: POSTING_COLUMNS("First seen"), rows: data.evidence.added.map(postingRow(false)), locked: data.preview ? data.locked.added : 0, empty: current?.measured ? "No posting was first seen this week." : "No first-seen posting evidence for this week." },
+      closed: { columns: POSTING_COLUMNS("Closed"), rows: data.evidence.closed.map(postingRow(true)), locked: data.preview ? data.locked.closed : 0, empty: current?.measured ? "No posting closed this week." : "No closure evidence for this week." },
     },
   };
 }
@@ -246,8 +245,10 @@ export function movesPreviewNote(data: HiringMovesBoard | HiringCompanyMoves, fi
     const shows = `${data.moves.length} of ${count(data.total)} moves${filter && filter !== "moves" ? `: ${previewCantFilter(["signal"])}` : ""}`;
     return data.locked > 0 ? freePreviewNote({ shows, adds: `the other ${count(data.locked)}` }) : null;
   }
-  const { history, added, closed, move = 0 } = data.locked;
+  const { added, closed, move = 0 } = data.locked;
+  const current = observedWeek(data.week);
+  const history = lockedMoveWeeks(data);
   if (history + added + closed + move <= 0) return null;
-  const adds = [move > 0 ? "its move" : "", history > 0 ? `${countOf(history, "week")} of history` : "", added + closed > 0 ? `${countOf(added + closed, "more posting")}` : ""].filter(Boolean);
-  return freePreviewNote({ shows: "the latest week and three postings each way", adds: list(adds) });
+  const adds = [move > 0 ? "its move analysis" : "", history > 0 ? `${countOf(history, "earlier week")} of posting moves` : "", added + closed > 0 ? `${countOf(added + closed, "more posting")}` : ""].filter(Boolean);
+  return current ? freePreviewNote({ shows: "this week's posting moves", adds: list(adds) }) : `Gloom Pro adds ${list(adds)}`;
 }

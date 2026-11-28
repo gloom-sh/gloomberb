@@ -6,10 +6,10 @@ import type { HiringBoard, HiringPayload } from "../../../api-client/hiring";
 import { fetchAppRank, fetchAttention, fetchBuilding, fetchMoves, fetchSignals, type BuildingPayload, type SignalsPayload } from "./client";
 import { companyDataNotes } from "../../../types/company-from";
 import { BUILDING_FILTERS, BUILDING_VIEWS, buildingBoardModel, buildingNumber, buildingPreviewNote, companyBuildingModel, isBuildingFilter, type BuildingSection } from "./building-model";
-import { appsModel, appsPreviewNote, attentionNumber, attentionSectionTitle, attentionTabs, hiringModel, hiringPreviewNote, remoteText, type AttentionKind } from "./model";
+import { appsModel, appsPreviewNote, attentionNumber, attentionSectionTitle, attentionTabs, hiringModel, hiringPreviewNote, OBSERVED_LABELS, remoteText, type AttentionKind } from "./model";
 import { companyMovesModel, isMovesFilter, movesBoardModel, movesNumber, movesPreviewNote, MOVES_FILTERS, MOVES_VIEWS, type MovesSection } from "./moves-model";
 import type { HiringMovesFilter, HiringSignalGroup } from "../../../api-client/hiring";
-import { companySignalsModel, holdText, isSignalsFilter, signalsBoardModel, signalsNumber, signalsPreviewNote, SIGNAL_FILTERS, SIGNAL_GROUPS, SIGNALS_VIEWS, type SignalsSection } from "./signals-model";
+import { companySignalsModel, isSignalsFilter, signalsBoardModel, signalsNumber, signalsPreviewNote, SIGNAL_FILTERS, SIGNAL_GROUPS, SIGNALS_VIEWS, type SignalsSection } from "./signals-model";
 import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
 
 /**
@@ -18,45 +18,45 @@ import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
  * is measured on. Exports keep the full value.
  */
 function reportColumn(column: DataTableColumn): HeadlessPaneColumn {
-  if (column.align !== "right") return { key: column.id, header: column.label, align: column.align };
+  if (column.align !== "right") return { key: column.id, header: column.label, align: column.align, ...(OBSERVED_LABELS.has(column.label) ? { omitWhenSame: true } : {}) };
   const format = (value: unknown) => typeof value === "number" ? attentionNumber(column.id, value) : value == null ? MISSING_VALUE : String(value);
   return { key: column.id, header: column.label, align: column.align, format,
     ...(column.id === "remote" ? { textFormat: (value: unknown, row: HeadlessPaneRow) => typeof value === "number"
       ? remoteText(value, typeof row.remoteKnown === "number" ? row.remoteKnown : null) ?? MISSING_VALUE : MISSING_VALUE } : {}) };
 }
 
-/** A moves view as a report section: paces as `3.4x`, scores signed, and on the board each move's why. */
-function movesSection(title: string, section: MovesSection, why: boolean) {
+function hiringSignalSection<R extends { values: Record<string, unknown>; url?: string | null }>(
+  title: string,
+  section: { columns: DataTableColumn[]; rows: R[]; empty: string; locked?: number | boolean },
+  formatNum: (id: string, value: number) => string,
+  includeWhy: boolean,
+  whyOf: (row: R) => string | undefined,
+) {
   return {
     title, empty: section.empty, ...(section.locked ? { locked: true } : {}),
     columns: [...section.columns.map((column): HeadlessPaneColumn => column.align !== "right" ? { key: column.id, header: column.label, align: column.align }
-      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? movesNumber(column.id, value) : value == null ? MISSING_VALUE : String(value) }),
-    ...(why ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
-    rows: section.rows.map((row) => ({ ...row.values, ...(row.move ? { why: row.move.why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) })),
+      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? formatNum(column.id, value) : value == null ? MISSING_VALUE : String(value) }),
+    ...(includeWhy ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
+    rows: section.rows.map((row) => {
+      const why = whyOf(row);
+      return { ...row.values, ...(why !== undefined ? { why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) };
+    }),
   };
 }
 
+/** A moves view as a report section: paces as `3.4x`, scores signed, and on the board each move's why. */
+const movesSection = (title: string, section: MovesSection, why: boolean) =>
+  hiringSignalSection(title, section, movesNumber, why, (row) => row.move?.why);
+
 /** A signals view as a report section: paces as `3.4x`, and each signal's why. */
-function signalsSection(title: string, section: SignalsSection) {
-  return {
-    title, empty: section.empty, ...(section.locked ? { locked: true } : {}),
-    columns: [...section.columns.map((column): HeadlessPaneColumn => column.align !== "right" ? { key: column.id, header: column.label, align: column.align }
-      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? signalsNumber(column.id, value) : value == null ? MISSING_VALUE : String(value) }),
-    ...(section.rows.some((row) => row.signal && !row.jobPosting) ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
-    rows: section.rows.map((row) => ({ ...row.values, ...(row.signal && !row.jobPosting ? { why: row.signal.why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) })),
-  };
-}
+const signalsSection = (title: string, section: SignalsSection) =>
+  hiringSignalSection(title, section, signalsNumber, section.rows.some((row) => row.signal && !row.jobPosting), (row) => (row.signal && !row.jobPosting ? row.signal.why : undefined));
+
 /** A building view as a report section: shares as percents, changes in points, and each shift's why. */
-function buildingSection(title: string, section: BuildingSection) {
+const buildingSection = (title: string, section: BuildingSection) => {
   const why = section.rows.some((row) => row.shift && !row.jobPosting && !row.mix);
-  return {
-    title, empty: section.empty, ...(section.locked ? { locked: true } : {}),
-    columns: [...section.columns.map((column): HeadlessPaneColumn => column.align !== "right" ? { key: column.id, header: column.label, align: column.align }
-      : { key: column.id, header: column.label, align: column.align, format: (value: unknown) => typeof value === "number" ? buildingNumber(column.id, value) : value == null ? MISSING_VALUE : String(value) }),
-    ...(why ? [{ key: "why", header: "Why", align: "left" as const }] : [])],
-    rows: section.rows.map((row) => ({ ...row.values, ...(why && row.shift && !row.jobPosting ? { why: row.shift.why } : {}), ...(row.url ? { sourceUrl: row.url } : {}) })),
-  };
-}
+  return hiringSignalSection(title, section, buildingNumber, why, (row) => (why && row.shift && !row.jobPosting ? row.shift.why : undefined));
+};
 /** The Building board, or a company's mix by family and theme, its shifts and the postings behind them. */
 function buildingSections(data: BuildingPayload, filter: string): ReturnType<typeof buildingSection>[] {
   if ("filter" in data) return [buildingSection("Building", buildingBoardModel(data, isBuildingFilter(filter) ? filter : "all").sections.board!)];
@@ -144,30 +144,27 @@ export function attentionHeadless(kind: AttentionKind): HeadlessPaneDefinition<"
       const signalsLocks = !signalsData || signalsData instanceof Error ? [] : signalsData.map((data) => signalsPreviewNote(data, "group" in data && isSignalsFilter(data.group, signalsKind) ? signalsKind : undefined));
       const buildingData = buildingRead ? await buildingRead : null;
       const buildingLock = buildingData && !(buildingData instanceof Error) ? buildingPreviewNote(buildingData, dimension) : null;
-      const buildingHeld = buildingData && !(buildingData instanceof Error) && !("filter" in buildingData) ? companyBuildingModel(buildingData).held : null;
       // A company's move says why in one sentence; the board's rows each carry theirs.
       const why = movesModel?.latest?.why;
-      const company = args.symbols[0] ? signalsReads[0]?.data : undefined;
-      const held = company && !("group" in company) && company.held ? holdText(company.held) : null;
       const notes = [...model.notices, ...companyDataNotes("companyFrom" in data ? data.companyFrom : null), ...(nextOffset !== null ? [`Additional observations available with --offset ${nextOffset}.`] : []),
         ...(movesData instanceof Error ? [movesData.message] : []), ...(why ? [why] : []),
-        ...(signalsData instanceof Error ? [signalsData.message] : []), ...(held ? [`No expansion or anomaly signal this week: ${held.toLowerCase()}.`] : []),
-        ...(buildingData instanceof Error ? [buildingData.message] : []), ...(buildingHeld ? [`No mix to compare this week: ${buildingHeld.toLowerCase()}.`] : [])];
+        ...(signalsData instanceof Error ? [signalsData.message] : []), ...(buildingData instanceof Error ? [buildingData.message] : [])];
       const movesSections = !movesModel ? [] : (args.symbols[0] ? ([["weeks", "Hiring moves"], ["drivers", "Move drivers"], ["added", "Postings first seen"]] as const) : ([["board", "Hiring moves"]] as const))
         .map(([id, title]) => movesSection(title, movesModel.sections[id]!, id === "board"));
+      const capture = kind === "hiring" && "series" in data && data.latest && !model.sections.table.rows.length && !model.sections.chart.rows.length ? data.latest : null;
       return {
         complete: !model.preview && !model.partial && nextOffset === null,
-        ...(lock || movesLock || buildingLock || signalsLocks.some(Boolean) ? { errors: [lock, movesLock, ...signalsLocks, buildingLock].filter((line): line is string => !!line) } : {}),
+        ...(lock || movesLock || buildingLock || signalsLocks.some(Boolean) ? { errors: [...new Set([lock, movesLock, ...signalsLocks, buildingLock].filter((line): line is string => !!line))] } : {}),
         ...(notes.length ? { notes } : {}),
         // A ticker no observed app is mapped to says so once, not under each empty view.
         ...(model.unmapped ? { empty: model.unmapped } : {}),
         // The views the pane has tabs for, each headed by what its rows are.
-        sections: attentionTabs(kind, args.symbols[0]).map((tab) => {
+        sections: [...(capture ? [{ title: "Latest capture", columns: [{ key: "observedAt", header: "Observed" }, { key: "open", header: "Open roles" }], rows: [{ observedAt: capture.observedAt, open: capture.openCount }] }] : []), ...attentionTabs(kind, args.symbols[0]).map((tab) => {
           const section = model.sections[tab];
           return { title: attentionSectionTitle(kind, tab, args.symbols[0]),
             columns: section.columns.map(reportColumn), empty: section.empty, ...(section.locked ? { locked: true } : {}),
             rows: section.rows.map((row) => ({ ...row.values, ...(row.url ? { sourceUrl: row.url } : {}), ...(row.details ? { evidence: row.details } : {}) })) };
-        }).concat(movesSections, signalsSections(signalsReads, signalsKind), buildingData && !(buildingData instanceof Error) ? buildingSections(buildingData, dimension) : []),
+        }).concat(movesSections, signalsSections(signalsReads, signalsKind), buildingData && !(buildingData instanceof Error) ? buildingSections(buildingData, dimension) : [])],
         metadata: { nextOffset, asOf: model.asOf, preview: model.preview, lockedRows: model.locked, unit: model.chart.unit, provenance: data },
       };
     },

@@ -45,6 +45,5 @@ export const powerModule: PluginModule = {
       if (input && !market && !carbon) throw new Error("Use a market such as DE, FR, GB or Spain, EUA, or GAS for gas storage");
       return { placement: "floating", settings: { tab: "prices" }, ...(market || carbon ? { params: { market: market?.code ?? CARBON_SELECTION } } : {}) };
     } }],
-  setup(ctx) { for (const cache of CACHES) cache.attach(ctx.persistence); },
-  dispose() { for (const cache of CACHES) cache.reset(); },
+  caches: CACHES,
 };

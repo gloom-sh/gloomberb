@@ -2,7 +2,7 @@ import type { ChatMessage, ChatReaction, ChatReactionUser } from "../../../api-c
 import { chatAuthorName } from "./ghost-user";
 
 /** The emoji the app offers, spelled as Discord spells them (the heart carries U+FE0F). */
-export const CHAT_REACTION_PALETTE = ["👍", "🔥", "😂", "👀", "❤️", "🚀"] as const;
+const CHAT_REACTION_PALETTE = ["👍", "🔥", "😂", "👀", "❤️", "🚀"] as const;
 
 const CUSTOM_EMOJI = /^:[A-Za-z0-9_~-]{1,32}:$/;
 const CUSTOM_EMOJI_TERMINAL_LIMIT = 16;

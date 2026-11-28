@@ -1,8 +1,10 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import type { DataTableColumn } from "../../../components";
 import type { SelectButtonOption } from "../../../components/ui/select-button";
 import type { SocialOutlierRow, SocialOutlierWindow } from "../../../api-client/social-mentions";
 import { formatShortDate } from "../../../utils/datetime-format";
-import { displayWidth, formatPercentRaw } from "../../../utils/format";
+import { formatPercentRaw } from "../../../utils/format";
+import { COLUMN_GAP, TABLE_PADDING, fitColumnWidth, sumColumnWidths } from "../shared/column-fit";
 import type { SortComparableValue } from "../../../utils/sort-values";
 import { MARKET_CAP_BAND_OPTIONS } from "../shared/market-cap-bands";
 import { NO_VALUE } from "../shared/research-cells";
@@ -64,7 +66,7 @@ export interface SocialOutlierColumn extends DataTableColumn {
 }
 
 /** The ranked day as the ticker's own table dates it. */
-export const outlierDay = (row: Pick<SocialOutlierRow, "day">) => row.day;
+export const outlierDay = (row: Pick<SocialOutlierRow, "day">) => formatDay(row.day);
 /** When today's count was read: the column header says UTC. */
 export const outlierCountedAt = (row: Pick<SocialOutlierRow, "countedAt">) => {
   const time = new Date(row.countedAt);
@@ -72,18 +74,8 @@ export const outlierCountedAt = (row: Pick<SocialOutlierRow, "countedAt">) => {
 };
 export const outlierPrice = (row: Pick<SocialOutlierRow, "price">) => row.price ? formatPercentRaw(row.price.changePct) : NO_VALUE;
 
-/** Cells left and right of the columns, and between two of them. */
-const TABLE_PADDING = 2;
-const COLUMN_GAP = 1;
-/** The kit widens a column to fit its header plus the sort arrow. */
-const HEADER_EXTRA = 2;
 /** Below this the company names read as stubs: the column goes instead. */
 const COMPANY_MIN = 12;
-
-function fitWidth(texts: readonly string[], label: string, max: number): number {
-  const widest = texts.reduce((width, value) => Math.max(width, displayWidth(value)), 0);
-  return Math.max(displayWidth(label) + HEADER_EXTRA, Math.min(max, widest));
-}
 
 /** What a narrow pane gives up, first to last: the median the multiple already measures against, then the company. */
 const NARROW_DROPS = ["baseline", "company", "stance"] as const;
@@ -95,18 +87,18 @@ const NARROW_DROPS = ["baseline", "company", "stance"] as const;
  */
 export function buildSocialOutlierColumns(width: number, rows: readonly SocialOutlierRow[], window: SocialOutlierWindow): SocialOutlierColumn[] {
   const widths = {
-    ticker: fitWidth(rows.map((row) => row.symbol), "Ticker", 8),
-    when: window === "today" ? fitWidth(rows.map(outlierCountedAt), "As of", 9) : fitWidth(rows.map(outlierDay), "Date", 10),
-    mentions: fitWidth(rows.map((row) => socialCount(row.mentions)), "Posts", 9),
-    baseline: fitWidth(rows.map((row) => socialCount(row.baseline)), "30D median", 9),
-    ratio: fitWidth(rows.map((row) => socialRatio(row.ratio)), "Vs median", 7),
-    stance: fitWidth(rows.map((row) => socialStance(row.stance)), "Stance", 6),
-    price: fitWidth(rows.map(outlierPrice), "Price %", 9),
+    ticker: fitColumnWidth(rows.map((row) => row.symbol), "Ticker", 8),
+    when: window === "today" ? fitColumnWidth(rows.map(outlierCountedAt), "As of", 9) : fitColumnWidth(rows.map(outlierDay), "Date", 10),
+    mentions: fitColumnWidth(rows.map((row) => socialCount(row.mentions)), "Posts", 9),
+    baseline: fitColumnWidth(rows.map((row) => socialCount(row.baseline)), "30D median", 9),
+    ratio: fitColumnWidth(rows.map((row) => socialRatio(row.ratio)), "Vs median", 7),
+    stance: fitColumnWidth(rows.map((row) => socialStance(row.stance)), "Stance", 6),
+    price: fitColumnWidth(rows.map(outlierPrice), "Price %", 9),
   };
   const show = { baseline: true, company: true, stance: true };
   const available = Math.max(0, Math.floor(width) - TABLE_PADDING);
-  const fixed = () => [widths.ticker, widths.when, widths.mentions, show.baseline ? widths.baseline : 0, widths.ratio,
-    show.stance ? widths.stance : 0, widths.price].reduce((sum, columnWidth) => sum + (columnWidth > 0 ? columnWidth + COLUMN_GAP : 0), 0) - COLUMN_GAP;
+  const fixed = () => sumColumnWidths([widths.ticker, widths.when, widths.mentions, show.baseline ? widths.baseline : 0, widths.ratio,
+    show.stance ? widths.stance : 0, widths.price]) - COLUMN_GAP;
   const room = () => available - fixed() - (show.company ? COLUMN_GAP : 0);
   for (const drop of NARROW_DROPS) {
     if (room() >= (show.company ? COMPANY_MIN : 0)) break;

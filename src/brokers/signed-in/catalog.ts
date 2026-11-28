@@ -31,7 +31,7 @@ function readBrokers(value: unknown): SignedInBroker[] | null {
   return Array.isArray(value) ? value.filter(isSignedInBroker) : null;
 }
 
-export interface SignedInBrokerCatalog {
+interface SignedInBrokerCatalog {
   attach(persistence: PluginPersistence): void;
   reset(): void;
   get(): SignedInBroker[];
@@ -43,7 +43,7 @@ export interface SignedInBrokerCatalog {
   subscribe(listener: () => void): () => void;
 }
 
-export function createSignedInBrokerCatalog(
+function createSignedInBrokerCatalog(
   load: () => Promise<{ connectors: SignedInBroker[] }>,
   now: () => number = Date.now,
 ): SignedInBrokerCatalog {

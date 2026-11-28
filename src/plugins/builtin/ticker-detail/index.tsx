@@ -10,7 +10,7 @@ import { futuresContractCache } from "./overview/futures-contract";
 import { offeringFilingsCache } from "./financials/offerings";
 import { TICKER_RESEARCH_BUILTIN_TABS } from "./research-tabs";
 import { financialStatementsHeadless, historicalPricesHeadless, quoteComparisonHeadless, returnsHeadless } from "./headless";
-import { FINANCIAL_STATEMENT_VALUES } from "./headless-schema";
+import { FINANCIAL_STATEMENT_OPTION } from "./headless-schema";
 import { FINANCIAL_PERIOD_OPTION } from "../shared/headless-options";
 import {
   buildQuoteMonitorSettingsDef,
@@ -38,23 +38,27 @@ const RESEARCH_VIEW_REPORT_OPTIONS: PaneReportOptionDef[] = [
   { key: "tab", aliases: ["activeTab", "activeTabId", "paneTab"], type: "string", placeholder: "view",
     description: "Tab or view to open, by label or id (Events, Corporate Actions, risk-factors); an unknown tab lists the available choices.",
     example: "--tab risk-factors" },
-  { key: "statement", aliases: ["financialStatement"], type: "enum", values: FINANCIAL_STATEMENT_VALUES,
+  { ...FINANCIAL_STATEMENT_OPTION,
     description: "Financials statement or ratio tab to open; opens the financials tab." },
   { key: "period", aliases: ["financialPeriod"], type: "enum", values: FINANCIAL_PERIOD_OPTION.values,
     description: "Financials period; opens the financials tab." },
 ];
 
+const floatingTickerPane = (width: number, height: number) => ({
+  defaultPosition: "right",
+  shareItem: { ticker: true },
+  tickerFollower: true,
+  defaultMode: "floating",
+  defaultFloatingSize: { width, height },
+  tableExport: true,
+} as const);
+
 export const tickerDetailModule: PluginModule = {
+  caches: [futuresContractCache, offeringFilingsCache],
   setup(ctx) {
-    futuresContractCache.attach(ctx.persistence);
-    offeringFilingsCache.attach(ctx.persistence);
     for (const tab of TICKER_RESEARCH_BUILTIN_TABS) {
       ctx.registerTickerResearchTab(tab);
     }
-  },
-  dispose() {
-    futuresContractCache.reset();
-    offeringFilingsCache.reset();
   },
 
   panes: [
@@ -85,17 +89,12 @@ export const tickerDetailModule: PluginModule = {
       ),
     },
     {
+      ...floatingTickerPane(98, 30),
       id: "financial-analysis",
       name: "Financials",
       icon: "F",
       get component(): typeof import("./financials/pane").FinancialAnalysisPane { const { FinancialAnalysisPane } = require("./financials/pane"); return FinancialAnalysisPane; },
       headless: financialStatementsHeadless,
-      defaultPosition: "right",
-      shareItem: { ticker: true },
-      tickerFollower: true,
-      defaultMode: "floating",
-      defaultFloatingSize: { width: 98, height: 30 },
-      tableExport: true,
     },
     {
       id: "quote-monitor",
@@ -107,7 +106,7 @@ export const tickerDetailModule: PluginModule = {
       defaultMode: "floating",
       defaultFloatingSize: { width: 72, height: 10 },
       // The board's quotes as `fn QQ --csv` writes them.
-      tableExport: true,
+      tableExport: true as const,
       quickSettings: [LIVE_STREAMING_QUICK_SETTING],
       settings: (context) => withLiveStreamingSetting(
         buildQuoteMonitorSettingsDef(context.settings),
@@ -115,31 +114,21 @@ export const tickerDetailModule: PluginModule = {
       ),
     },
     {
+      ...floatingTickerPane(92, 26),
       id: "historical-prices",
       name: "Historical Prices",
       icon: "H",
       get component(): typeof import("./data-panes/historical-prices").HistoricalPricesPane { const { HistoricalPricesPane } = require("./data-panes/historical-prices"); return HistoricalPricesPane; },
       headless: historicalPricesHeadless,
-      defaultPosition: "right",
-      shareItem: { ticker: true },
-      tickerFollower: true,
-      defaultMode: "floating",
-      defaultFloatingSize: { width: 92, height: 26 },
-      tableExport: true,
     },
     {
+      ...floatingTickerPane(100, 28),
       id: "returns",
       reportFreshness: { status: "not-a-feed", basis: "price history" },
       name: "Returns",
       icon: "R",
       get component(): typeof import("./data-panes/returns-pane").ReturnsPane { const { ReturnsPane } = require("./data-panes/returns-pane"); return ReturnsPane; },
       headless: returnsHeadless,
-      defaultPosition: "right",
-      shareItem: { ticker: true },
-      tickerFollower: true,
-      defaultMode: "floating",
-      defaultFloatingSize: { width: 100, height: 28 },
-      tableExport: true,
     },
   ],
   paneTemplates: [

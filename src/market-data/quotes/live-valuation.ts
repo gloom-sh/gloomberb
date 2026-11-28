@@ -8,6 +8,7 @@ import { cashDistribution, dividendReferencePrice, trailingDividendYield, type C
 import { priceEarningsEps } from "../../utils/fundamentals";
 import { selectMarketCapitalization, type MarketCapitalization } from "../../utils/market-capitalization";
 import { NOT_MEANINGFUL, priceEarningsOnEarnings, type PriceEarnings } from "../../utils/price-earnings";
+import { isPositiveNumber as positive } from "../../utils/guards";
 
 /**
  * Price-derived statistics repriced at the quote's regular session price
@@ -28,10 +29,6 @@ const PRICE_BASIS = 0.005;
 interface LiveMarketCapitalization extends MarketCapitalization {
   /** Shares outstanding times the current price rather than a stored figure. */
   live: boolean;
-}
-
-function positive(value: number | null | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 /** The price valuations follow: the regular session's, live while it trades
@@ -73,7 +70,9 @@ function repriceMultiple(
 export function liveTrailingPE(quote: Quote | null | undefined, fundamentals: Fundamentals | undefined): PriceEarnings | undefined {
   // Withdrawn as no multiple of the share (utils/share-multiples).
   if (fundamentals?.notMeaningful?.trailingPE) return NOT_MEANINGFUL;
-  const stored = pricedFundamentals(quote, fundamentals)?.trailingPE;
+  const priced = pricedFundamentals(quote, fundamentals);
+  if (fundamentals?.scopedEarnings !== undefined) return priceEarningsOnEarnings(priced?.trailingPE, priced?.eps);
+  const stored = priced?.trailingPE;
   return priceEarningsOnEarnings(repriceMultiple(stored, priceEarningsEps(fundamentals, quote?.currency), quote, fundamentals), fundamentals?.eps);
 }
 
@@ -92,7 +91,7 @@ export function liveForwardPE(quote: Quote | null | undefined, fundamentals: Fun
 export function atLivePriceEarnings<T extends Pick<TickerFinancials, "quote" | "fundamentals">>(financials: T): T {
   const priced = atRegularSessionPrice(financials);
   if (!priced.fundamentals) return priced;
-  const trailing = liveTrailingPE(financials.quote, financials.fundamentals);
+  const trailing = priced.fundamentals.scopedEarnings === undefined ? liveTrailingPE(financials.quote, financials.fundamentals) : priced.fundamentals.trailingPE;
   const forward = liveForwardPE(financials.quote, financials.fundamentals);
   return {
     ...priced,

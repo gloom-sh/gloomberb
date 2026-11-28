@@ -47,7 +47,7 @@ const LOOSE_END = /^[\s·,;:]+|[\s·,;:]+$/gu;
  * in all, in whole words ("US trading day Mon … 15 min delayed"), never a
  * word cut ("Mon 1…ose"); by characters only where not a word fits either end.
  */
-export function middleEllipsis(text: string, keep: number): string {
+function middleEllipsis(text: string, keep: number): string {
   if (keep >= text.length) return text;
   const headRoom = Math.ceil(keep / 2);
   const tailRoom = Math.max(0, keep - headRoom);

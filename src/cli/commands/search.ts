@@ -20,6 +20,7 @@ import {
   otherLegalFormRows,
   primaryCompanyLine,
   searchTickerCandidates,
+  withExactCoinNameLead,
   type TickerSearchCandidate,
 } from "../../tickers/search";
 import { initMarketData, withMarketData } from "../context";
@@ -78,7 +79,7 @@ export interface SearchFunctionMatch {
  * weights rebalance" names no company, but PF does that. None when only some
  * of the words match.
  */
-export async function searchFunctionsForCli(query: string, plugins: GloomPlugin[], context: MarketContext): Promise<SearchFunctionMatch[]> {
+async function searchFunctionsForCli(query: string, plugins: GloomPlugin[], context: MarketContext): Promise<SearchFunctionMatch[]> {
   let registry: Awaited<ReturnType<typeof createPaneCatalog>> | null = null;
   try {
     registry = await createPaneCatalog(context, plugins);
@@ -144,7 +145,7 @@ export async function searchCandidatesForCli({
     const ordered = withLiveCompanyPrimary(symbol,
       withQuotedNames(symbol, withUsLineOfPrimary(withHomeListingPrimary(trimmedQuery, withPrimaryListingFirst(symbol, candidates, named ? null : quote))), quote),
       quote);
-    return cutKeepingCompanies(withOtherCompaniesApart(ordered, symbol, named ? trimmedQuery : null), totalLimit, symbol);
+    return cutKeepingCompanies(withExactCoinNameLead(trimmedQuery, withOtherCompaniesApart(ordered, symbol, named ? trimmedQuery : null)), totalLimit, symbol);
   } catch (error) {
     // Not "No matches found": a script or a reader would take that for a name nothing lists.
     if (isProviderBusy(error)) failRetryable(SEARCH_BUSY_MESSAGE, SEARCH_BUSY_CODE);
@@ -621,7 +622,7 @@ function renderStoppedListing(stopped: StoppedListing): string {
  * A line as `quote` takes it. A code of digits names listings on several Asian venues (9042 is a JPX stock and an
  * HKEX fund, and `quote 9042` asks which), so it carries its venue: 9042:HKEX. Any other symbol is printed as listed.
  */
-export function quotableSearchSymbol(candidate: Pick<TickerSearchCandidate, "label" | "result" | "ticker" | "right">): string {
+function quotableSearchSymbol(candidate: Pick<TickerSearchCandidate, "label" | "result" | "ticker" | "right">): string {
   const exchange = candidateExchange(candidate as TickerSearchCandidate);
   return /^\d+$/.test(candidate.label) && isKnownExchangeCode(exchange) && !isUsListingExchange(exchange) ? `${candidate.label}:${exchange}` : candidate.label;
 }

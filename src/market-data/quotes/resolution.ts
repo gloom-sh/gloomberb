@@ -36,8 +36,6 @@ const PRICE_FIELD_KEYS = [
   "currency",
   "changeSessionDate",
   "open",
-  "high",
-  "low",
   "mark",
   "lastUpdated",
   "receivedAt",
@@ -75,30 +73,15 @@ function isBrokerProvider(providerId?: string): boolean {
   return providerId === "ibkr";
 }
 
+const PROVIDER_KIND_RANK: Record<string, number> = { "gloomberb-cloud": 0, gloom: 1, ibkr: 2 };
+const DAILY_REFERENCE_RANK: Record<string, number> = { gloom: 0, "gloomberb-cloud": 1, ibkr: 2 };
+
 function providerKindRank(providerId?: string): number {
-  switch (providerId) {
-    case "gloomberb-cloud":
-      return 0;
-    case "gloom":
-      return 1;
-    case "ibkr":
-      return 2;
-    default:
-      return 3;
-  }
+  return PROVIDER_KIND_RANK[providerId ?? ""] ?? 3;
 }
 
 function dailyReferenceRank(providerId?: string): number {
-  switch (providerId) {
-    case "gloom":
-      return 0;
-    case "gloomberb-cloud":
-      return 1;
-    case "ibkr":
-      return 2;
-    default:
-      return 3;
-  }
+  return DAILY_REFERENCE_RANK[providerId ?? ""] ?? 3;
 }
 
 /**
@@ -113,18 +96,7 @@ function priceRank(quote: QuoteContribution, now: number): number {
   return isQuoteContributionStaleForCurrentSession(quote, now) ? 2 : 1;
 }
 
-function priceProviderTieRank(providerId?: string): number {
-  switch (providerId) {
-    case "gloomberb-cloud":
-      return 0;
-    case "gloom":
-      return 1;
-    case "ibkr":
-      return 2;
-    default:
-      return 3;
-  }
-}
+const priceProviderTieRank = providerKindRank;
 
 function quoteUpdateTime(quote: QuoteContribution): number {
   return quote.lastUpdated ?? quote.receivedAt ?? 0;
@@ -140,19 +112,6 @@ function sessionConfidenceRank(confidence?: SessionConfidence): number {
     default:
       return 2;
   }
-}
-
-/**
- * What a coin's day range measures, said of the range, so it comes with the
- * provider whose range it is; and whether the service widened it to take in
- * its exchange's price.
- */
-function dayRangeBasis(contributions: readonly QuoteContribution[], resolved: Partial<Quote>): Pick<Quote, "statsBasis" | "rangeWidened"> {
-  const source = contributions.find((quote) => quote.high === resolved.high && quote.low === resolved.low);
-  return {
-    ...(source?.statsBasis ? { statsBasis: source.statsBasis } : {}),
-    ...(source?.rangeWidened ? { rangeWidened: true } : {}),
-  };
 }
 
 function toProvenance(quote: QuoteContribution | undefined): QuoteFieldProvenance | undefined {
@@ -303,9 +262,10 @@ export function isQuoteContributionStaleForCurrentSession(contribution: Quote, n
   if (contribution.stale === true || !hasValidQuoteObservationTime(contribution, now)) return true;
   // A tolerated future stamp belongs to the session in progress, not the next one.
   const timestamp = Math.min(contribution.lastUpdated, now);
-  const activeSession = isExtendedHoursExchange(contribution) ? activeUsExtendedHoursSession(now) : null;
-  if (activeSession && activeUsExtendedHoursSession(timestamp) !== activeSession) return true;
-  return isTimestampStaleForExchangeSession(timestamp, contribution.listingExchangeName || contribution.exchangeName, now);
+  const exchange = contribution.listingExchangeName || contribution.exchangeName;
+  const activeSession = isExtendedHoursExchange(contribution) ? activeUsExtendedHoursSession(now, exchange) : null;
+  if (activeSession && activeUsExtendedHoursSession(timestamp, exchange) !== activeSession) return true;
+  return isTimestampStaleForExchangeSession(timestamp, exchange, now);
 }
 
 function filterFreshQuoteCandidates(
@@ -366,29 +326,25 @@ function matchesPostMarketState(state?: QuoteContribution["marketState"]): boole
   return state === "POST" || state === "POSTPOST";
 }
 
+function compareByProviderAndTime(left: QuoteContribution, right: QuoteContribution): number {
+  return (providerKindRank(left.providerId) - providerKindRank(right.providerId))
+    || ((right.lastUpdated ?? 0) - (left.lastUpdated ?? 0));
+}
+
 function buildListingCandidates(contributions: QuoteContribution[]): QuoteContribution[] {
-  return [...contributions]
+  return contributions
     .filter((quote) => quote.listingExchangeName || quote.listingExchangeFullName)
-    .sort((left, right) => {
-      const providerDelta = providerKindRank(left.providerId) - providerKindRank(right.providerId);
-      if (providerDelta !== 0) return providerDelta;
-      return (right.lastUpdated ?? 0) - (left.lastUpdated ?? 0);
-    });
+    .sort(compareByProviderAndTime);
 }
 
 function buildRoutingCandidates(contributions: QuoteContribution[]): QuoteContribution[] {
-  return [...contributions]
+  return contributions
     .filter((quote) => isBrokerProvider(quote.providerId) && (quote.routingExchangeName || quote.routingExchangeFullName))
     .sort((left, right) => (right.lastUpdated ?? 0) - (left.lastUpdated ?? 0));
 }
 
 function buildDescriptiveCandidates(contributions: QuoteContribution[]): QuoteContribution[] {
-  return [...contributions]
-    .sort((left, right) => {
-      const providerDelta = providerKindRank(left.providerId) - providerKindRank(right.providerId);
-      if (providerDelta !== 0) return providerDelta;
-      return (right.lastUpdated ?? 0) - (left.lastUpdated ?? 0);
-    });
+  return [...contributions].sort(compareByProviderAndTime);
 }
 
 export function resolveCanonicalQuote(
@@ -436,6 +392,11 @@ export function resolveCanonicalQuote(
     if (field === "price") continue;
     pickField(resolved, provenance, field, compatiblePriceCandidates);
   }
+  const highProvider = pickField(resolved, provenance, "high", compatiblePriceCandidates);
+  const lowProvider = pickField(resolved, provenance, "low", compatiblePriceCandidates);
+  const rangeProvider = highProvider === lowProvider ? highProvider : undefined;
+  assignField(resolved, provenance, "dayRangeBasis", rangeProvider);
+  assignField(resolved, provenance, "dayRangeSessionDate", rangeProvider);
   const bookProvider = compatiblePriceCandidates.find((candidate) => candidate.bid != null || candidate.ask != null);
   for (const field of ["bid", "ask", "bidSize", "askSize", "bidAskTime"] as const) {
     if (field !== "bidAskTime" || finitePositiveNumber(bookProvider?.bidAskTime)) assignField(resolved, provenance, field, bookProvider);
@@ -526,7 +487,10 @@ export function resolveCanonicalQuote(
     low52w: resolved.low52w as Quote["low52w"],
     // Said of the range, so it comes with the provider whose range it is.
     yearRangeBasis: contributions.find((quote) => quote.high52w === resolved.high52w && quote.low52w === resolved.low52w)?.yearRangeBasis,
-    ...dayRangeBasis(contributions, resolved),
+    dayRangeBasis: resolved.dayRangeBasis,
+    dayRangeSessionDate: resolved.dayRangeSessionDate ?? null,
+    ...(rangeProvider?.statsBasis ? { statsBasis: rangeProvider.statsBasis } : {}),
+    ...(rangeProvider?.rangeWidened ? { rangeWidened: true } : {}),
     // Said of the price, so it comes with it.
     dailyClose: priceProvider?.dailyClose,
     marketCap: resolved.marketCap as Quote["marketCap"],

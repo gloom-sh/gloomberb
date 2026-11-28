@@ -2,7 +2,7 @@ import type { DataTableColumn, PaneFooterSegment } from "../../../components";
 import type { AnalystRatingRecord, AnalystResearchData, Quote } from "../../../types/financials";
 import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { formatRelativeTime } from "../../../utils/datetime-format";
-import { MISSING_VALUE, displayWidth, formatCurrency, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE, displayWidth, formatCurrency, formatNumber, formatPercent } from "../../../utils/format";
 import { compareSortValues, type SortDirection } from "../../../utils/sort-values";
 import { loadingErrorFooterInfo } from "../../../components/data-table/table-pane";
 import { delayedFooterSegment } from "../../../components/layout/pane/footer/model";
@@ -115,7 +115,7 @@ function analystReferenceWhen(reference: AnalystReferencePrice, now: number): st
  * 14:05 UTC (15m delayed)" while the session trades, or the provider's reference, "$137.32, provider reference at
  * retrieval Wed 21 Oct 21:30 UTC".
  */
-export function formatAnalystReference(reference: AnalystReferencePrice, currency: string | undefined, now = Date.now()): string {
+function formatAnalystReference(reference: AnalystReferencePrice, currency: string | undefined, now = Date.now()): string {
   if (reference.price == null || !Number.isFinite(reference.price)) return MISSING_VALUE;
   const price = formatAnalystPrice(reference.price, currency);
   const when = analystReferenceWhen(reference, now);
@@ -127,7 +127,7 @@ function isCurrentMonthPeriod(period: string | undefined): boolean {
   return ["current month", "0m"].includes((period ?? "").trim().toLowerCase().replace(/_/g, " "));
 }
 
-export function latestRecommendation(data: AnalystResearchData | null) {
+function latestRecommendation(data: AnalystResearchData | null) {
   const rows = data?.recommendations ?? [];
   return rows.find((row) => isCurrentMonthPeriod(row.period)) ?? rows[0] ?? null;
 }
@@ -136,7 +136,7 @@ function recommendationCount(value: number | undefined): number | null {
   return value != null && Number.isSafeInteger(value) && value >= 0 ? value : null;
 }
 
-export function recommendationMix(data: AnalystResearchData | null) {
+function recommendationMix(data: AnalystResearchData | null) {
   const rec = latestRecommendation(data);
   return rec ? {
     period: rec.period,
@@ -176,7 +176,7 @@ export function ratingSplit(data: AnalystResearchData | null) {
  * names them: "4 Strong Buy · 9 Buy · 9 Hold · 4 Sell", strong sells in Sell.
  * A missing count reads "-", so a partial mix never reads as a whole one.
  */
-export function formatRecommendationMix(data: AnalystResearchData | null): string {
+function formatRecommendationMix(data: AnalystResearchData | null): string {
   const rec = recommendationMix(data);
   if (!rec) return MISSING_VALUE;
   const sells = rec.sell != null && rec.strongSell != null ? rec.sell + rec.strongSell : null;
@@ -184,8 +184,40 @@ export function formatRecommendationMix(data: AnalystResearchData | null): strin
     .map(([count, label]) => `${count ?? MISSING_VALUE} ${label}`).join(" · ");
 }
 
-export function formatRatingLabel(value: number | undefined): string {
+function formatRatingLabel(value: number | undefined): string {
   return value == null || !Number.isFinite(value) ? MISSING_VALUE : `${formatNumber(value, 1)}/10`;
+}
+
+export function formatRatingReason(reason: AnalystRatingRecord["reason"] | null | undefined): string | null {
+  return reason ? `${reason.text} · ${reason.url}` : null;
+}
+
+/** Shared summary figures for `analyst` CLI and `fn ANR` headless reports. */
+export function buildAnalystOverview(data: AnalystResearchData, quote: Quote | null) {
+  const target = data.priceTarget;
+  const currency = analystTargetCurrency(data);
+  const { upside, reference } = analystUpside(data, quote);
+  const analysts = recommendationTotal(data);
+  const mix = recommendationMix(data);
+  const hasRange = target != null && [target.low, target.median, target.high].some((value) => value != null);
+  const rangeFormatted = target
+    ? [target.low, target.median, target.high].map((value) => formatAnalystPrice(value, currency)).join(" / ")
+    : MISSING_VALUE;
+  return {
+    target,
+    currency,
+    upside,
+    reference,
+    analysts,
+    mix,
+    averageFormatted: formatAnalystPrice(target?.average, currency),
+    upsideFormatted: upside == null ? MISSING_VALUE : formatPercent(upside),
+    referenceFormatted: formatAnalystReference(reference, currency),
+    hasRange,
+    rangeFormatted,
+    ratingFormatted: formatRatingLabel(data.recommendationRating),
+    mixFormatted: formatRecommendationMix(data),
+  };
 }
 
 export function analystTargetCurrency(data: AnalystResearchData | null): string | undefined {
@@ -268,7 +300,7 @@ const DEFAULT_RATING_SORT_DIRECTIONS: Record<RatingColumnId, SortDirection> = {
 };
 
 const BASE_RATING_COLUMNS: RatingColumn[] = [
-  { id: "date", label: "DATE", width: 10, align: "left" },
+  { id: "date", label: "DATE", width: 11, align: "left" },
   { id: "firm", label: "FIRM", width: 20, align: "left" },
   { id: "action", label: "ACTION", width: 10, align: "left" },
   { id: "current", label: "RATING", width: 13, align: "left" },
@@ -443,7 +475,7 @@ export function buildAnalystFooterInfo(
   ];
 }
 
-export function buildAnalystStatusSegments(
+function buildAnalystStatusSegments(
   data: AnalystResearchData | null,
   reference: AnalystReferencePrice = analystReferencePrice(data, null),
   now = Date.now(),
@@ -538,7 +570,7 @@ function publishedTarget(row: AnalystRatingRecord): number | null {
  * source that reaches back years on a handful of firms would otherwise spend
  * the whole chart on a decade nobody is reading it for.
  */
-export function buildAnalystTargetHistory(
+function buildAnalystTargetHistory(
   ratings: readonly AnalystRatingRecord[],
   options: { windowDays?: number; spanDays?: number; minFirms?: number } = {},
 ): AnalystTargetHistoryPoint[] {

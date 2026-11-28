@@ -94,7 +94,7 @@ const isNoteSupplementForm = (form: string) => {
  * merger or resale prospectus, which stays, unless a note shelf files it
  * among its supplements (pricingSupplementTest).
  */
-export function isPricingSupplement(filing: Pick<SecFilingItem, "form" | "primaryDocDescription">): boolean {
+function isPricingSupplement(filing: Pick<SecFilingItem, "form" | "primaryDocDescription">): boolean {
   if (isNoteSupplementForm(filing.form)) return true;
   return /^424B\d$/.test(formBase(filing.form)) && /\b(?:PRICING SUPPLEMENT|TERM SHEET)\b/i.test(filing.primaryDocDescription ?? "");
 }
@@ -171,7 +171,7 @@ function isOwnershipSchedule(form: string): boolean {
  * number. Who submitted it does not tell: an agent files both kinds. A
  * filing whose file number the source did not give is kept.
  */
-export function isScheduleAboutAnotherCompany(filing: Pick<SecFilingItem, "form" | "fileNumber">): boolean {
+function isScheduleAboutAnotherCompany(filing: Pick<SecFilingItem, "form" | "fileNumber">): boolean {
   return typeof filing.fileNumber === "string" && isOwnershipSchedule(filing.form) && !/^005-/.test(filing.fileNumber.trim());
 }
 

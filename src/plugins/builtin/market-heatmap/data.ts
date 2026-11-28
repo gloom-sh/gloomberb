@@ -1,7 +1,7 @@
 import { apiClient } from "../../../api-client";
 import { cloudDisplayScope } from "../../../api-client/plan-access";
 import { createTtlCache } from "../../../data/ttl-cache";
-import type { MarketHeatmapResult, MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
+import type { MarketHeatmapAsset, MarketHeatmapResult, MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
 export type { MarketHeatmapUniverseId } from "../../../api-client/market-discovery";
 
 export const MARKET_HEATMAP_UNIVERSES = [
@@ -48,7 +48,7 @@ const boards = createTtlCache<MarketHeatmapBoard>({ ttlMs: heatmapCheckIntervalM
  * NYSE) arrives twice; drawing both would collide tile ids and count its
  * sector twice, so the larger listing stays where it ranked.
  */
-export function dedupeHeatmapAssets<T extends { symbol: string; size: number | null }>(assets: readonly T[]): T[] {
+function dedupeHeatmapAssets<T extends { symbol: string; size: number | null }>(assets: readonly T[]): T[] {
   const kept = new Map<string, number>();
   const result: T[] = [];
   for (const asset of assets) {
@@ -63,6 +63,21 @@ export function dedupeHeatmapAssets<T extends { symbol: string; size: number | n
   return result;
 }
 
+/**
+ * A real-time board's tile the server's live read did not price comes as a
+ * tile with no move and no price, the shape older clients draw blank, with
+ * its delayed figures in `delayedQuote`. This client holds it as a name that
+ * has moved in the session but has no live move yet (`hasChange` true,
+ * `changePercent` null), whatever `hasChange` the server sent: the tile then
+ * shows its delayed figures, marked, until the stream's live quote of the
+ * name gives it a move of its own. Every other tile is left as it came.
+ */
+function holdDelayedHeatmapTiles<T extends MarketHeatmapAsset>(assets: readonly T[]): T[] {
+  return assets.map((asset) => (asset.delayedQuote && typeof asset.delayedQuote === "object"
+    ? { ...asset, hasChange: true, change: null, changePercent: null, price: 0, volume: null, regularChangePercent: null }
+    : asset));
+}
+
 async function loadMarketHeatmap(universe: MarketHeatmapUniverseId, count: number, sources?: MarketHeatmapSources): Promise<MarketHeatmapBoard> {
   const response = await (sources?.client ?? apiClient).getMarketHeatmap(universe, count);
   if (!response.data || !Array.isArray(response.data.assets) || response.data.universe !== universe
@@ -70,7 +85,7 @@ async function loadMarketHeatmap(universe: MarketHeatmapUniverseId, count: numbe
   return {
     ...response.data,
     stale: response.stale === true || response.data.stale === true,
-    assets: dedupeHeatmapAssets(response.data.assets).slice(0, count),
+    assets: holdDelayedHeatmapTiles(dedupeHeatmapAssets(response.data.assets).slice(0, count)),
     checkedAt: Date.now(),
     topCount: Math.min(count, response.data.assets.length),
   };

@@ -18,6 +18,15 @@ export function compareSortValues(
   return direction === "asc" ? comparison : -comparison;
 }
 
+/** Returns a new array sorted stably by `getValue` using `compareSortValues` (nulls/NaN always last). */
+export function sortRowsBy<T>(
+  rows: readonly T[],
+  direction: SortDirection,
+  getValue: (row: T) => SortComparableValue,
+): T[] {
+  return [...rows].sort((left, right) => compareSortValues(getValue(left), getValue(right), direction));
+}
+
 export interface SortPreference<Id extends string> {
   columnId: Id | null;
   direction: SortDirection;

@@ -2,7 +2,6 @@ import { publicTickerKey } from "../../../utils/exchanges";
 import { getSharedRegistry } from "../../registry/shared";
 import { useCallback, useMemo, useState } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { SupplyChainPayload, SupplyOptions, SupplyRole, SupplyRow, SupplyTierFilter } from "../../../api-client/supply-chain";
 import {
   Badge, buildSectionedRows, ChartTableHeader, DataTableView, EmptyState, formatPercentAxis, isSectionedItemRow, PageStackView, renderSectionedRowHeader, PaneStatusBody, QueryBar, StatGrid,
@@ -13,13 +12,14 @@ import { ClippedText } from "../../../components/ui/display";
 import { RatioBar } from "../../../components/ui/ratio-bar";
 import { getTableWidth, hiddenTableColumnRows, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { chromeBarRows } from "../../../components/layout/pane/sizing";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
+import { usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
 import { MISSING_VALUE, displayWidth } from "../../../utils/format";
+import { formatFilingDate } from "../../../utils/datetime-format";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { useOpenDescription } from "../shared/open-description";
@@ -30,7 +30,7 @@ import { directoryColumns, directoryRows } from "./directories";
 import { useSupplyEvidence } from "./evidence";
 import { SupplyFlow } from "./flow";
 import { SupplyGraphPane } from "./graph-pane";
-import { entityTicker } from "./graph-model";
+import { entityTicker, supplyDisplayName } from "./graph-model";
 import {
   cellText, counterpartyKind, disclosureText, isTaggedFact, counterpartyKindLabel, counterpartyLabel, counterpartyLabelEnd, counterpartyName, disclosedValue, earlierRows, fitShareBasis, focusCompanyLabel, focusCompanyName, receivablesConcentration, lockedDisclosures, nativeValue, percentage, relationshipLabel, ROLE_COLORS, openingSupplyView, rowRoleLabel,
   periodDate, shareParts, sortRows, supplyEmptyText, supplyPreviewNote, supplyRoleCounts, type SupplySort,
@@ -95,7 +95,7 @@ const PERIOD_DATE_CELLS = 11;
  * Value shows only when some row discloses a value, retaining its original
  * currency and units.
  */
-export function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: BasisForms, periodWidth = PERIOD_DATE_CELLS, nameCells = 0): DataTableColumn[] {
+function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: BasisForms, periodWidth = PERIOD_DATE_CELLS, nameCells = 0): DataTableColumn[] {
   const wide = width >= 150, medium = width >= 110;
   const name: DataTableColumn = { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" };
   // Wide enough for the longest whole wording beside its bar and figure ("27% of total revenue (gold sales)"), within a cap;
@@ -107,7 +107,8 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
   const share: DataTableColumn = { id: "pct", label: "Share", width: shareWidth, align: "left" };
   let columns: DataTableColumn[] = [
     name,
-    { id: "evidence", label: "Evidence", width: 12, align: "left" },
+    // One kind of evidence for every row (filings alone) is no column; the filter names the kinds shown.
+    { id: "evidence", label: "Evidence", width: 12, align: "left", omitWhenSame: true },
     // A listing as every function writes it: 000063:SZSE whole.
     ...(medium ? [{ id: "ticker", label: "Ticker", width: 11, align: "left" as const }] : []),
     { id: "role", label: "Role", width: 11, align: "left" },
@@ -115,9 +116,11 @@ export function tableColumns(width: number, desktop: boolean, locked: boolean, v
     ...(valueWidth !== null ? [{ id: "usd", label: "Value", width: Math.max(medium ? 10 : 8, valueWidth), align: "right" as const }] : []),
     { id: "fy", label: "Period", width: periodWidth, align: "left" },
     ...(wide ? [
-      { id: "filed", label: "Published", width: 10, align: "left" as const },
-      { id: "publisher", label: "Publisher", width: 16, align: "left" as const },
-      { id: "corroboration", label: "Origins", width: 8, align: "right" as const },
+      // A day as the Period column writes it: 03 Nov 2026.
+      { id: "filed", label: "Published", width: 11, align: "left" as const },
+      // One publisher (the company's own filings) or one origin for every row is no column either.
+      { id: "publisher", label: "Publisher", width: 16, align: "left" as const, omitWhenSame: true },
+      { id: "corroboration", label: "Origins", width: 8, align: "right" as const, omitWhenSame: true },
     ] : []),
   ];
   const preferred = { share: share.width, name: name.width };
@@ -229,11 +232,9 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const { createPaneFromTemplate } = usePluginAppActions();
   const openDescription = useOpenDescription();
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   const openUpgrade = useCloudUpgradeAction("splc");
   const [snapshotSetting] = usePaneSettingValue<SupplyChainPayload | null>("supplySnapshot", null);
-  const snapshot = useMemo(() => { try { return snapshotSetting ? validateSupplyChain(snapshotSetting) : null; } catch (error) { return logFailure("supply-chain.pane", "Validate supply chain snapshot failed", null)(error); } }, [snapshotSetting]);
   const [openingTab] = usePaneSettingValue("tab", "table");
   const [savedTab, setTab] = usePluginPaneState<string>("supply:tab", openingTab);
   const graphTab = savedTab === "graph" || savedTab === "path";
@@ -243,9 +244,11 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   const options = useMemo(() => supplyOptions(savedTiers), [savedTiers]);
   // `--as-of`: the disclosures known by that day, read by the server and never shown past it.
   const [asOfSetting] = usePaneSettingValue<string>("asOf", "");
+  const snapshot = useMemo(() => { try { return snapshotSetting ? validateSupplyChain(snapshotSetting, asOfSetting) : null; } catch (error) { return logFailure("supply-chain.pane", "Validate supply chain snapshot failed", null)(error); } }, [snapshotSetting, asOfSetting]);
   const read = useMemo(() => ({ ...options, ...asOfSetting ? { asOf: asOfSetting } : {} }), [options, asOfSetting]);
   const loader = useCallback((force: boolean) => snapshot ? Promise.resolve({ payload: snapshot, stale: false, refreshError: null }) : loadSupplyChain(symbol!, accessKey, force, read), [symbol, accessKey, snapshot, read]);
-  const resource = useAsyncResource(symbol && !graphTab ? loader : null, {
+  const resource = usePaneResource(symbol && !graphTab ? loader : null, {
+    focused: focused && !graphTab,
     initialData: () => symbol ? cachedSupplyChain(symbol, accessKey, read) : null, clearOnError: isAccessDenied,
   });
   const data = resource.data?.payload ?? null;
@@ -282,8 +285,6 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     { label: "Pro", items: Array.from({ length: Math.min(3, locked) }, (_, i) => ({ kind: "locked", id: `locked:${i}` })) },
   ], itemId), [rows, earlier, locked]);
   const { strip, rows: tabRows } = usePaneTabs(symbol ? { tabs: [...(directories?.length && !data?.totalRows ? [] : [{ value: "table", label: "Table" }]), ...(directories?.length ? [{ value: "directories", label: "Supplier lists" }] : []), { value: "flow", label: "Flow", disabled: tooSmall }, { value: "graph", label: "Graph" }, { value: "path", label: "Path" }], activeValue: tab, onSelect: setTab, focused, dense: true } : null);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused: focused && !graphTab });
   const navigate = (row: SupplyRow, template = "supply-chain-pane") => {
     if (row.counterparty.ticker) createPaneFromTemplate(template, { symbol: publicTickerKey(row.counterparty.ticker, row.counterparty.exchange ?? undefined) });
     else setOpen(row.id);
@@ -356,7 +357,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
     const ink = state.selected ? colors.selectedText : isUnconfirmed(row) ? colors.textDim : undefined;
     switch (column.id) {
       case "evidence": return { text: evidenceLabel(row), content: <Badge label={evidenceLabel(row)} tone={isUnconfirmed(row) ? "neutral" : "accent"} /> };
-      case "filed": return { text: evidenceDate(row), color: colors.textDim };
+      case "filed": return { text: formatFilingDate(evidenceDate(row), MISSING_VALUE), value: evidenceDate(row), color: colors.textDim };
       case "publisher": return { text: cellText(row, "publisher"), color: colors.textDim };
       case "corroboration": return { text: String(row.corroboration ?? 1), value: row.corroboration ?? 1, color: colors.textDim, content: <Text fg={colors.textDim}>{row.corroboration ?? 1}</Text> };
       case "name": {
@@ -431,7 +432,7 @@ function SupplyView({ symbol, listingName, width, height, focused }: Pick<PanePr
   // A short flow keeps one row of figures, dropping the last roles, so the cards keep their room.
   const flowFigures = bodyHeight < 26 ? figures.slice(0, flowFigureColumns) : figures;
   const selectedShare = selected ? shareParts(selected, focusId) : null;
-  const flowMeta = selected ? `${entityTicker(selected.reportingEntity) ?? selected.reportingEntity.name} ${evidenceLabel(selected)} · ${selectedShare ? `${selectedShare.value} ${selectedShare.basis}`
+  const flowMeta = selected ? `${entityTicker(selected.reportingEntity) ?? supplyDisplayName(selected.reportingEntity.name)} ${evidenceLabel(selected)} · ${selectedShare ? `${selectedShare.value} ${selectedShare.basis}`
     : nativeValue(selected) !== null || selected.usd !== null ? disclosedValue(selected) : `${relationshipLabel(selected)}, no figure disclosed`}` : undefined;
   return <Box width={width} height={height} flexDirection="column">
     {strip}

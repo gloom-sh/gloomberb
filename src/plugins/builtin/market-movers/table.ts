@@ -60,7 +60,7 @@ export function buildMarketMoverColumns(
     { id: "volume", label: "VOL", width: 8, align: "right" },
     ...(options.trending ? [] : [{ id: "volumeRatio" as const, label: "V/AVG", width: 6, align: "right" as const }]),
     { id: "range", label: "52W%", width: 6, align: "right" },
-    ...(options.trending ? [] : [{ id: "marketCap" as const, label: "MCAP", width: 8, align: "right" as const }]),
+    ...(options.trending ? [] : [{ id: "marketCap" as const, label: "MCAP", width: 8, align: "right" as const, omitWhenEmpty: true }]),
     ...(options.float ? [{ id: "floatShares" as const, label: "FLOAT", width: 7, align: "right" as const }] : []),
   ];
   // Measured the way the table draws them (a header and its sort mark widen a

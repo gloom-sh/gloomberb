@@ -4,8 +4,7 @@ import { useCallback, useState } from "react";
 import { apiClient } from "../../../api-client";
 import type { BalanceVenue } from "../../../api-client/exchange-short-balances";
 import { DataTableView, PaneStatusBody, usePaneStatusLinkFooter } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource } from "../../../react/async-resource";
+import { usePaneResource } from "../shared/pane-resource";
 import type { PaneProps } from "../../../types/plugin";
 import { sfcColumns, sfcEmpty, sfcValue } from "./sfc";
 import { balanceColumns, balanceEmpty, readExchangeBalances } from "./exchange-balances";
@@ -33,7 +32,7 @@ async function loadReport(symbol: string, venue: Venue) {
 
 export function ExchangePositionsPane({ symbol, venue, focused, width, height }: Pick<PaneProps, "focused" | "width" | "height"> & {symbol: string; venue: Venue}) {
   const read = useCallback(() => loadReport(symbol, venue), [symbol, venue]);
-  const resource = useAsyncResource(read);
+  const resource = usePaneResource(read, { focused, autoRefresh: false });
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const data = resource.data;
   const rows: ReportRow[] = data?.rows ?? [];
@@ -42,7 +41,6 @@ export function ExchangePositionsPane({ symbol, venue, focused, width, height }:
   const columns = (hk ? sfcColumns : venue === "SGX" ? sgxVolumeColumns : venue === "JPX" ? jpxColumns : balanceColumns(venue)).map(column => ({
     id: column.key, label: column.header, width: column.width, align: "align" in column ? column.align : "left" as const,
   }));
-  usePaneRefreshKey(resource.reload, { focused });
   usePaneStatusLinkFooter({ registrationId: "exchange-short-positions", focused, loading: resource.loading, error: resource.error,
     label: hk ? "weekly report" : "daily report", source: data?.source, url: current?.sourceUrl ?? data?.page, showOpenHint: !!(current || data?.page) });
   return <PaneStatusBody loading={resource.loading && !data} error={data ? null : resource.error} subject={venue === "SGX" ? "SGX executed short sales" : hk ? "SFC reportable short positions" : venue === "JPX" ? "JPX short seller disclosures" : "Short sale balances"}

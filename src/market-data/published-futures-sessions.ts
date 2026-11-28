@@ -34,7 +34,7 @@ const CBOE_FUTURES_CLOSURES: Record<number, readonly string[]> = {
 };
 
 /** Closures by canonical venue code. */
-export const PUBLISHED_FUTURES_CLOSURES: Readonly<Record<string, Record<number, readonly string[]>>> = {
+const PUBLISHED_FUTURES_CLOSURES: Readonly<Record<string, Record<number, readonly string[]>>> = {
   CME: CME_GROUP_CLOSURES,
   CBT: CME_GROUP_CLOSURES,
   NYM: CME_GROUP_CLOSURES,

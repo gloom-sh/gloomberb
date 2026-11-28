@@ -153,7 +153,7 @@ function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): 
  * are quads; at the outer boundary a triangle fan joins the wider row to the
  * narrower row's endpoint, using only existing nodes. Internal gaps stay open.
  */
-export function surfaceBoundaryFans(available: readonly (readonly boolean[])[]): Surface3DCell[][] {
+function surfaceBoundaryFans(available: readonly (readonly boolean[])[]): Surface3DCell[][] {
   const faces: Surface3DCell[][] = [];
   const contiguous = (row: readonly boolean[]) => {
     const first = row.indexOf(true), last = row.lastIndexOf(true);

@@ -31,7 +31,7 @@ function tickerListing(ticker: string): { symbol: string; exchange: string } {
  * share trades under it. A quote that could not be read (unreachable, busy,
  * timed out) rejects: it says nothing about the company.
  */
-export async function tickerCompanyName(dataProvider: Pick<DataProvider, "getQuote"> | null, ticker: string): Promise<string | null> {
+async function tickerCompanyName(dataProvider: Pick<DataProvider, "getQuote"> | null, ticker: string): Promise<string | null> {
   const { symbol, exchange } = tickerListing(ticker);
   if (!dataProvider || !symbol) return null;
   const quote = await (exchange ? dataProvider.getQuote(symbol, exchange) : dataProvider.getQuote(symbol)).catch((error: unknown) => {
@@ -70,7 +70,7 @@ const HEALTHCARE_NAME = /\b(?:therapeutics|pharma\w*|bio\w*|medic\w*|oncology|ge
  * and with no profile its name. AMD, Morgan Stanley, Home Depot, CF Industries
  * and PagerDuty are not, so `TRIAL AMD` is the eye disease.
  */
-export function isHealthcareCompany(profile: Pick<CompanyProfile, "sector" | "industry" | "sic"> | null | undefined, name: string): boolean {
+function isHealthcareCompany(profile: Pick<CompanyProfile, "sector" | "industry" | "sic"> | null | undefined, name: string): boolean {
   if (/health/i.test(profile?.sector ?? "")) return true;
   if (/biotech|pharma|drug|medical|diagnost|health|life sciences/i.test(profile?.industry ?? "")) return true;
   if (healthcareSic(profile?.sic)) return true;

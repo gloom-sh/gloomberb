@@ -1,10 +1,10 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableView, EmptyState, PaneStatusBody, usePaneFooter, usePaneNoticeFooter, usePaneTabs,
   type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { getTableWidth, markHiddenTableColumns } from "../../../components/ui/table-layout";
-import { usePlanAccess } from "../../../api-client/plan-access";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActions, usePluginPaneState, useTickers } from "../../../public/react";
+import { usePaneSettingValue, usePluginAppActions, usePluginPaneState, useTickers } from "../../../public/react";
 import type { PaneProps } from "../../../types/plugin";
 import { Box } from "../../../ui";
 import { isUsListingExchange } from "../../../utils/exchanges";
@@ -32,7 +32,7 @@ const COLUMNS: DataTableColumn[] = [
 ];
 
 const SECOND_HOP_COLUMNS: DataTableColumn[] = [
-  { id: "date", label: "Date", width: 10, align: "left" },
+  { id: "date", label: "Date", width: 11, align: "left" },
   { id: "timing", label: "Time", width: 5, align: "left" },
   { id: "company", label: "Reports", width: 14, flexGrow: 1, align: "left" },
   { id: "link", label: "Link", width: 19, align: "left" },
@@ -99,7 +99,7 @@ const move = (row: RippleRow | SecondHopRow): DataTableCell =>
 
 function renderCell(row: RippleRow, column: DataTableColumn): DataTableCell {
   switch (column.id) {
-    case "date": return { text: row.date };
+    case "date": return dayCell(row.date);
     case "timing": return { text: row.timing?.toUpperCase() ?? MISSING_VALUE };
     case "company": return { text: `${row.company} ${row.companyName}` };
     case "link": return { text: row.link === "customer" ? "customer of" : "supplier to" };
@@ -112,7 +112,7 @@ function renderCell(row: RippleRow, column: DataTableColumn): DataTableCell {
 
 function renderSecondHopCell(row: SecondHopRow, column: DataTableColumn, firstHopWidth: number): DataTableCell {
   switch (column.id) {
-    case "date": return { text: row.date };
+    case "date": return dayCell(row.date);
     case "timing": return { text: row.timing?.toUpperCase() ?? MISSING_VALUE };
     case "company": return { text: `${row.company} ${row.companyName}` };
     case "link": return { text: row.link === "customer" ? "customer's customer" : "supplier's supplier" };
@@ -134,8 +134,7 @@ export function EarningsRipplePane({ width, height, focused }: PaneProps) {
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("selectedRow", null);
   const [selectedSecondId, setSelectedSecondId] = usePluginPaneState<string | null>("selectedSecondHop", null);
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   // Named tickers, or every US listing in the user's portfolios and watchlists, positions first.
   const scope = useMemo(() => {
     const named = symbolsText.split(/[\s,]+/).map((symbol) => symbol.trim().toUpperCase()).filter(Boolean);
@@ -152,16 +151,14 @@ export function EarningsRipplePane({ width, height, focused }: PaneProps) {
   // Once a Pro account opens 2 hops the graph stays in the load, so going back and forth between tabs never reloads.
   // A refresh on 1 hop reads the graphs from the cache instead of asking for them again.
   const [graphOpened, setGraphOpened] = useState(false);
-  useEffect(() => { if (secondHop && access.hasProAccess) setGraphOpened(true); }, [secondHop, access.hasProAccess]);
-  const graphHop = access.hasProAccess && (secondHop || graphOpened);
+  useEffect(() => { if (secondHop && session.hasProAccess) setGraphOpened(true); }, [secondHop, session.hasProAccess]);
+  const graphHop = session.hasProAccess && (secondHop || graphOpened);
   const secondHopShown = useRef(secondHop);
   secondHopShown.current = secondHop;
   const loader = useCallback((force: boolean) => loadRipple(holdings,
     cachedRippleSources(accessKey, force, !graphHop ? "off" : secondHopShown.current ? "load" : "cached"), undefined, { secondHop: graphHop }),
   [holdingsKey, accessKey, graphHop]);
-  const ripple = useAsyncResource(holdings.length ? loader : null);
-  useAutoRefresh(ripple.updatedAt, ripple.load);
-  usePaneRefreshKey(() => { ripple.reload(); }, { focused });
+  const ripple = usePaneResource(holdings.length ? loader : null, { focused });
   const { strip, rows: tabRows } = usePaneTabs(holdings.length ? { tabs: TABS, activeValue: tab, onSelect: setTab, focused, dense: true } : null);
 
   const rows = ripple.data?.rows ?? [];
@@ -172,7 +169,7 @@ export function EarningsRipplePane({ width, height, focused }: PaneProps) {
   const current = secondHop ? selectedSecond : selected;
   const failures = ripple.data?.failures ?? [];
   const truncated = ripple.data?.truncated ?? [];
-  const locked = secondHop && (!access.hasProAccess || !!second?.locked);
+  const locked = secondHop && (!session.hasProAccess || !!second?.locked);
   const openUpgrade = useCloudUpgradeAction("ripl");
   usePaneNoticeFooter({ registrationId: "earnings-ripple-notices", focused, notices: [
     ...(scope.total > holdings.length ? [`Checking ${holdings.length} of ${scope.total} holdings${scope.named ? "" : ", positions first. Name tickers in pane settings to pick others"}`] : []),

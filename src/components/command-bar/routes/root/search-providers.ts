@@ -51,7 +51,7 @@ export function getAvailableCommandBarSearchProviders(
  * Turns one provider row into a list row. The command bar owns the row model, so
  * a provider never gets to decide selection, kind, or what closing means.
  */
-export function toProviderResultItem(
+function toProviderResultItem(
   provider: CommandBarSearchProvider,
   result: CommandBarResultDef,
   onExecuted: () => void,

@@ -33,6 +33,7 @@ import { composeBuiltinPlugin } from "../builtin/plugin-module";
 import { useAssetData, usePluginAppActions } from "../runtime";
 import { usePluginRenderContext } from "../runtime/context";
 import { PluginRegistry } from "./index";
+import { getLanguage, registerTranslations, setLanguage, tPlugin } from "../../i18n";
 import { createTestDataProvider, createTestFinancials, createTestQuote } from "../../test-support/data-provider";
 
 const dataProvider: DataProvider = createTestDataProvider({
@@ -137,6 +138,36 @@ afterEach(() => {
 });
 
 describe("PluginRegistry lifecycle", () => {
+  test("plugin translation disposal runs on unregister and setup failure", async () => {
+    const registry = createRegistry();
+    const previousLanguage = getLanguage();
+    const pluginId = "translation-owner";
+    const read = () => tPlugin(pluginId, "status", "Ready");
+    let dispose: (() => void) | undefined;
+    const translatedPlugin = {
+      id: pluginId,
+      name: "Translation Owner",
+      version: "1.0.0",
+      setup() { dispose = registerTranslations(pluginId, "es", { status: "Listo" }); },
+      dispose() { dispose?.(); },
+    };
+    setLanguage("es");
+    try {
+      await registry.register(translatedPlugin);
+      expect(read()).toBe("Listo");
+      registry.unregister(pluginId);
+      expect(read()).toBe("Ready");
+      await expect(registry.register({ ...translatedPlugin, setup() {
+        translatedPlugin.setup();
+        throw new Error("setup failed after translation registration");
+      } })).rejects.toThrow("setup failed after translation registration");
+      expect(read()).toBe("Ready");
+    } finally {
+      dispose?.();
+      setLanguage(previousLanguage);
+    }
+  });
+
   test("rejects retired built-in module ids", async () => {
     const registry = createRegistry();
 
@@ -534,6 +565,20 @@ describe("PluginRegistry capabilities", () => {
     });
 
     expect(registry.getEnabledCapabilities("asset-data").map((entry) => entry.sourceId)).toEqual(["source-b"]);
+  });
+
+  test("refuses a capability without an id and leaves the plugin unregistered", async () => {
+    const registry = createRegistry();
+    await expect(registry.register({
+      id: "source-plugin",
+      name: "Source Plugin",
+      version: "1.0.0",
+      capabilities: [source("source-a"), { ...source("source-b"), id: undefined } as never],
+    })).rejects.toThrow('Plugin "source-plugin" registered a capability');
+
+    expect(registry.allPlugins.has("source-plugin")).toBe(false);
+    expect(registry.getCapability("asset-data.source-a")).toBeNull();
+    expect(registry.getEnabledCapabilities("asset-data")).toEqual([]);
   });
 
   test("can skip plugin capability handlers in renderer registries", async () => {

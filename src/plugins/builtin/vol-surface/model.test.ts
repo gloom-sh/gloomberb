@@ -129,6 +129,23 @@ describe("surface cleaning and midpoint model", () => {
     expect(result.state).not.toBe("ready");
   });
 
+  test("names crossed quotes as why an expiry has none near the forward, after the close and in session", () => {
+    // A crossed quote arrives with bid and ask 0, marked: some exchanges quote
+    // past the 16:00 close while the others' closing quotes stand, and a move
+    // crosses them, the strikes near the money first. Monday 16:14:59 New York.
+    const input = chain(expiration, 0.3, Array.from({ length: 33 }, (_, index) => 60 + index * 2.5));
+    const crossed = (contract: OptionContract) => contract.strike > 80 && contract.strike < 120
+      ? { ...contract, bid: 0, ask: 0, quoteStale: true, quoteCrossed: true } : contract;
+    const afterClose = { ...input, asOf: "2026-09-21T20:14:59Z", calls: input.calls.map(crossed), puts: input.puts.map(crossed) };
+    const result = buildSurfaceExpiry({ chain: afterClose, expiration, spot: 100, curve, now });
+    expect(result.state).toBe("empty");
+    expect(result.warnings).toContain("Quotes near the forward crossed after the close");
+    expect(result.warnings).not.toContain("No usable quotes near the forward");
+    expect(result.filterCounts).toMatchObject({ crossed: 30, "zero-bid": 0 });
+    const inSession = buildSurfaceExpiry({ chain: { ...afterClose, asOf: input.asOf }, expiration, spot: 100, curve, now });
+    expect(inSession.warnings).toContain("Quotes near the forward are crossed");
+  });
+
   test("records cleaning reasons, rejects mismatched expiries and prefers fresh duplicate quotes", () => {
     const template = chain().calls[4]!;
     const quote = (strike: number, patch: Partial<OptionContract> = {}): OptionContract => ({ ...template, strike, bid: 2, ask: 2.1, ...patch });

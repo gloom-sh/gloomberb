@@ -10,6 +10,7 @@ import { nextHeaderSort } from "../../../utils/sort-values";
 import { useQuoteBoard, useVisibleBoardSymbols } from "../shared/use-quote-board";
 import { WORLD_INDICES, REGION_LABELS, getIndicesByRegion, resolveIndexEntries } from "./indices";
 import { useWorldIndicesFooter } from "./footer";
+import { DOLLAR_INDEX_SYMBOL, dollarIndexQuoteStatus } from "./dollar-index";
 import { createPublicPaneShare } from "../shared/public-pane";
 import { worldIndicesHeadless } from "./headless";
 import {
@@ -64,7 +65,11 @@ function WorldIndicesPane({ focused, width, height }: PaneProps) {
     [indicesByRegion, sortPreference],
   );
   const visibleSymbols = useVisibleBoardSymbols(windowSymbols, liveSort ? null : visibleRange);
-  const { quotes, refresh } = useQuoteBoard(symbols, { liveStreaming, visibleSymbols, selectedSymbol });
+  const { quotes: boardQuotes, refresh } = useQuoteBoard(symbols, { liveStreaming, visibleSymbols, selectedSymbol });
+  const indexQuote = boardQuotes.get(DOLLAR_INDEX_SYMBOL);
+  const indexStale = dollarIndexQuoteStatus(DOLLAR_INDEX_SYMBOL, indexQuote?.quote)?.stale;
+  const quotes = useMemo(() => indexStale && indexQuote && !indexQuote.stale
+    ? new Map(boardQuotes).set(DOLLAR_INDEX_SYMBOL, { ...indexQuote, stale: true }) : boardQuotes, [boardQuotes, indexQuote, indexStale]);
 
   const flatRows = useMemo(
     () => buildFlatRows(indicesByRegion, sortPreference, quotes),

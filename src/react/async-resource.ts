@@ -48,6 +48,8 @@ export function useAsyncResource<T>(
      * depends on, so a copy is only ever shown for the same question.
      */
     savedCopy?: SavedCopyKey | null;
+    /** A pane with multiple resources can label its own section-specific saved data. */
+    showSavedCopyFooter?: boolean;
     shouldSave?: (data: T) => boolean;
     /** The request is identified, but its live inputs are not ready yet. */
     deferLoad?: boolean;
@@ -148,7 +150,7 @@ export function useAsyncResource<T>(
   const reloadAndWait = useCallback(() => settle(true), [settle]);
   const { data, error, updatedAt, savedAt } = view;
   const loading = view.loading && !deferLoad;
-  useSavedCopyFooter(savedAt, loading || deferLoad);
+  useSavedCopyFooter(options.showSavedCopyFooter === false ? null : savedAt, loading || deferLoad);
   useEffect(() => {
     if (deferLoad || !loader) return;
     const invalidate = () => { generation.current += 1; };

@@ -30,6 +30,5 @@ export const futuresCurveModule: PluginModule = {
       return { title: root ? curveTitle(root) : standIn ? curveTitle(standIn.root) : `CTM ${input}`, params: { root: root ?? input ?? "ES" }, placement: "floating" };
     },
   }],
-  setup(ctx) { futuresCurveCache.attach(ctx.persistence); },
-  dispose() { futuresCurveCache.reset(); },
+  caches: [futuresCurveCache],
 };

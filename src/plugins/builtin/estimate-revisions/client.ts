@@ -9,6 +9,7 @@ import {
   unavailableOnServer,
 } from "../shared/cloud-resource";
 import { canonicalExchange, normalizeSymbol, parsePublicTickerKey } from "../../../utils/exchanges";
+import { isCalendarDay, isCurrencyCode, isIsoInstant, isNonEmptyText, isNonNegativeInt, isNullableFinite, isNullableIsoInstant, isNullableString, isStringArray } from "../../../utils/guards";
 import { AmbiguousContractError, AmbiguousTickerError } from "../../../tickers/search";
 import { bareListingExchange } from "../../../tickers/listing-venues";
 import type { DataProvider } from "../../../types/data-provider";
@@ -20,19 +21,8 @@ export const estimateRevisionsCache =
     schemaVersion: 2,
     policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 },
   });
-const number = (value: unknown) =>
-  value === null || (typeof value === "number" && Number.isFinite(value));
-const day = (value: unknown): value is string =>
-  typeof value === "string" &&
-  /^\d{4}-\d{2}-\d{2}$/.test(value) &&
-  Number.isFinite(Date.parse(value)) &&
-  new Date(value).toISOString().slice(0, 10) === value;
-const timestamp = (value: unknown) =>
-  value === null ||
-  (typeof value === "string" && Number.isFinite(Date.parse(value)));
-const currency = (value: unknown) =>
-  value === null || (typeof value === "string" && /^[A-Z]{3}$/.test(value));
-export function validateEstimates(
+const currency = (value: unknown) => value === null || isCurrencyCode(value);
+function validateEstimates(
   data: EstimateRevisionsPayload,
   symbol: string,
   exchange: string,
@@ -44,14 +34,12 @@ export function validateEstimates(
     !data ||
     data.symbol !== normalizeSymbol(symbol) ||
     canonicalExchange(data.exchange) !== canonicalExchange(exchange) ||
-    !data.generatedAt ||
-    !timestamp(data.generatedAt) ||
+    !isIsoInstant(data.generatedAt) ||
     !["available", "partial", "unavailable"].includes(data.status) ||
     !Array.isArray(data.periods) ||
     data.periods.length > 200 ||
     !Array.isArray(data.surprises) ||
-    !Array.isArray(data.gaps) ||
-    data.gaps.some((x) => typeof x !== "string") ||
+    !isStringArray(data.gaps) ||
     !data.sources ||
     !data.historyCoverage
   )
@@ -61,15 +49,15 @@ export function validateEstimates(
     if (
       !source ||
       !["available", "partial", "unavailable"].includes(source.status) ||
-      !timestamp(source.fetchedAt) ||
+      !isNullableIsoInstant(source.fetchedAt) ||
       typeof source.stale !== "boolean" ||
-      (source.reason !== null && typeof source.reason !== "string")
+      !isNullableString(source.reason)
     )
       return invalid();
   }
   if (
-    !day(data.historyCoverage.since) ||
-    !day(data.historyCoverage.until) ||
+    !isCalendarDay(data.historyCoverage.since) ||
+    !isCalendarDay(data.historyCoverage.until) ||
     typeof data.historyCoverage.truncated !== "boolean" ||
     ![
       data.historyCoverage.excludedRows,
@@ -83,7 +71,7 @@ export function validateEstimates(
     if (
       !period ||
       !["annual", "quarterly"].includes(period.frequency) ||
-      !day(period.periodEnd) ||
+      !isCalendarDay(period.periodEnd) ||
       !currency(period.currency) ||
       period.id !==
         `${period.frequency}:${period.periodEnd}:${period.currency ?? "unknown"}` ||
@@ -106,9 +94,9 @@ export function validateEstimates(
       for (const point of rows) {
         if (
           !point ||
-          !day(point.date) ||
+          !isCalendarDay(point.date) ||
           point.date > data.generatedAt.slice(0, 10) ||
-          !timestamp(point.recordedAt) ||
+          !isNullableIsoInstant(point.recordedAt) ||
           point.source !== source ||
           dates.has(point.date) ||
           ![
@@ -118,10 +106,9 @@ export function validateEstimates(
             point.range,
             point.relativeRange,
             point.analysts,
-          ].every(number) ||
+          ].every(isNullableFinite) ||
           (point.range != null && point.range < 0) ||
-          (point.analysts != null &&
-            (!Number.isInteger(point.analysts) || point.analysts < 0))
+          (point.analysts != null && !isNonNegativeInt(point.analysts))
         )
           return invalid();
         dates.add(point.date);
@@ -129,7 +116,7 @@ export function validateEstimates(
     }
     if (
       period.current &&
-      (!day(period.current.date) ||
+      (!isCalendarDay(period.current.date) ||
         period.current.date > data.generatedAt.slice(0, 10) ||
         ![
           period.current.average,
@@ -138,7 +125,7 @@ export function validateEstimates(
           period.current.range,
           period.current.relativeRange,
           period.current.analysts,
-        ].every(number))
+        ].every(isNullableFinite))
     )
       return invalid();
     if (
@@ -149,8 +136,8 @@ export function validateEstimates(
           period.revenue.low,
           period.revenue.high,
           period.revenue.analysts,
-        ].every(number) ||
-        (period.revenue.asOf !== null && !day(period.revenue.asOf)))
+        ].every(isNullableFinite) ||
+        (period.revenue.asOf !== null && !isCalendarDay(period.revenue.asOf)))
     )
       return invalid();
     if (
@@ -161,7 +148,7 @@ export function validateEstimates(
         period.percentile.min,
         period.percentile.max,
         period.percentile.mean,
-      ].every(number) ||
+      ].every(isNullableFinite) ||
       !Number.isSafeInteger(period.percentile.samples) ||
       period.percentile.samples < 0 ||
       period.percentile.samples > period.recorded.length
@@ -177,15 +164,15 @@ export function validateEstimates(
     for (const row of period.breadth)
       if (
         ![7, 30].includes(row.days) ||
-        ![row.up, row.down, row.net, row.ratio].every(number) ||
-        (row.up != null && (!Number.isInteger(row.up) || row.up < 0)) ||
-        (row.down != null && (!Number.isInteger(row.down) || row.down < 0))
+        ![row.up, row.down, row.net, row.ratio].every(isNullableFinite) ||
+        (row.up != null && !isNonNegativeInt(row.up)) ||
+        (row.down != null && !isNonNegativeInt(row.down))
       )
         return invalid();
   }
   for (const row of data.surprises)
     if (
-      !day(row.date) ||
+      !isCalendarDay(row.date) ||
       !["announcement", "fiscal-period-end", "unspecified"].includes(
         row.dateType,
       ) ||
@@ -198,18 +185,16 @@ export function validateEstimates(
         row.difference,
         row.percent,
         row.percentile,
-      ].every(number)
+      ].every(isNullableFinite)
     )
       return invalid();
   if (
     data.guidance &&
-    (typeof data.guidance.text !== "string" ||
-      !data.guidance.text.trim() ||
+    (!isNonEmptyText(data.guidance.text) ||
       typeof data.guidance.transcriptURL !== "string" ||
       !/^https:\/\/gloom\.sh\//.test(data.guidance.transcriptURL) ||
-      typeof data.guidance.publishedAt !== "string" ||
-      !timestamp(data.guidance.publishedAt) ||
-      !timestamp(data.guidance.callDate) ||
+      !isIsoInstant(data.guidance.publishedAt) ||
+      !isNullableIsoInstant(data.guidance.callDate) ||
       !Number.isSafeInteger(data.guidance.fiscalYear) ||
       !Number.isInteger(data.guidance.fiscalQuarter) ||
       data.guidance.fiscalQuarter < 1 ||

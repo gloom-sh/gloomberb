@@ -15,6 +15,7 @@ import {
   type ScreenerCategory,
 } from "../../plugins/builtin/market-movers/screener";
 import {
+  flattenMoverQuote,
   formatMoverPrice,
   MOVER_RANK_BASES,
   MOVER_RANKING_LABELS,
@@ -64,18 +65,18 @@ import { hasNoReleaseTime, hasNoStatedTime, type EconEvent } from "../../plugins
 import { econRowFigures, figureWithCurrency } from "../../plugins/builtin/econ/figures";
 import { cpiCalendarYearGapReason } from "../../plugins/builtin/shared/cpi-year-gap";
 import { fredSeriesIdForName } from "../../plugins/builtin/econ/fred-catalog";
-import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeOption } from "./command-utils";
+import { isoDate, rejectExtraArgs, requireArg, requireOneArg, takeFlag, takeFlagOption, takeOption } from "./command-utils";
 import { buildCorrelationSeries } from "../../plugins/builtin/correlation/matrix/model";
-import { alignDailyCloses, correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
+import { correlateDailyCloses } from "../../plugins/builtin/correlation/compute";
 import { mixedSessionCloseNote } from "../../market-data/market/session-close-note";
 import { contradictoryBarsNote, CORRELATION_RETURN_BASIS, loadCorrelationHistory, thinCorrelationNote } from "../../plugins/builtin/correlation/history";
-import { coinListingNotes, EXCHANGE_OPTION, listingIdentity, listingReadNotes, loadForListing, loadListingQuote, requireCliListing, type CliListing } from "../listing-arg";
+import { EXCHANGE_OPTION, failUnchosenListing, listingChoiceNotes, listingIdentity, loadBareVenues, loadForListing, loadListingQuoteAnswer, requireCliListing, type CliListing } from "../listing-arg";
 import { CLI_COMMAND_GROUPS } from "../help";
-import { formatChangePercentCell, formatCompactCell } from "../helpers";
+import { formatChangePercentCell, formatCompactCell, roundedPercent } from "../helpers";
 import { WORLD_INDICES } from "../../plugins/builtin/world-indices/indices";
 import { getSectorCollection, SECTOR_COLLECTIONS } from "../../plugins/builtin/sectors/sector-data";
 import { DAILY_CLOSES } from "../../plugins/builtin/shared/report-freshness";
-import { canonicalTimeZone, localTimeSuffix, newestReportTime, oldestReportTime, timeZoneCity, zonedClock } from "../../utils/utc-time";
+import { canonicalTimeZone, localTimeSuffix, timeZoneCity, zonedClock } from "../../utils/utc-time";
 import { zonedDayStart } from "../../utils/zoned-date-time";
 import { quotesFreshness, rowsFreshness } from "../freshness";
 import type { Quote } from "../../types/financials";
@@ -206,11 +207,6 @@ function rejectArgs(args: readonly string[], usage: string, ctx: Parameters<CliC
   rejectExtraArgs(args, 0, { usage, takes: "no arguments", advice }, ctx);
 }
 
-/** A percent to two decimals, as the table prints it. */
-function roundedPercent(value: number | null): number | null {
-  return value == null ? null : Number(value.toFixed(2));
-}
-
 /** How current the quotes a batch read gave are, their source named as the router names the providers behind them. */
 function resultsFreshness(
   results: ReadonlyArray<{ quote: Quote | null | undefined }>,
@@ -319,17 +315,7 @@ async function runMoverCommand(rawArgs: string[], ctx: Parameters<CliCommandDef[
   // the regular session's move (its close's after the close), or with
   // --session extended by the extended print's move from that close.
   const { quotes, rankedBy } = rankMoverQuotes(category, movers.quotes.map(moverRegularSession), basis);
-  const rows = quotes.filter((quote) => meetsMinFloat(quote.floatShares, minFloat)).slice(0, limit).map((quote) => {
-    // closedSession only tells the live overlay which session the row's volume is.
-    const { extended, closedSession: _closedSession, ...row } = quote;
-    return {
-      ...row,
-      extendedSession: extended?.session ?? null,
-      extendedPrice: extended?.price ?? null,
-      extendedChange: extended?.change ?? null,
-      extendedChangePercent: extended?.changePercent ?? null,
-    };
-  });
+  const rows = quotes.filter((quote) => meetsMinFloat(quote.floatShares, minFloat)).slice(0, limit).map(flattenMoverQuote);
   const fellBack = basis === "extended" && rankedBy === "regular";
   // As the MOST report reads it: real-time for a Pro account, delayed otherwise, dated by the list's own time.
   ctx.printResult({
@@ -871,8 +857,7 @@ async function runFred(rawArgs: string[], ctx: Parameters<CliCommandDef["execute
   const list = takeFlag(args, "--list");
   const start = takeOption(args, "--start");
   const sort = takeOption(args, "--sort");
-  const changeGiven = args.some((arg) => arg === "--change" || arg.startsWith("--change="));
-  const change = changeGiven ? takeOption(args, "--change") : undefined;
+  const { given: changeGiven, value: change } = takeFlagOption(args, "--change");
   // Bare `fred` lists the series it can fetch, grouped by topic, as `fred --list` does.
   if (list || rawArgs.length === 0) {
     if (start != null || sort != null || changeGiven) {
@@ -1140,20 +1125,23 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
     const right = rightListing!.key;
     // Same daily-return model as the CORR pane: price levels of two trending
     // assets correlate spuriously, often with the opposite sign.
-    // Each symbol's quote, read once: whether its line can have moved, and where its daily close is taken below.
-    const quotes = new Map([leftListing!, rightListing!].map((listing) => [listing, loadListingQuote(services.dataProvider, listing)] as const));
     const loadSeries = async (listing: CliListing) => {
       // A symbol whose company moved is asked again under its new symbol, the other one kept.
       const retry = (key: string) => `gloom correlation ${listing === leftListing ? `${key} ${commandWord(right)}` : `${commandWord(left)} ${key}`}`;
-      const bars = await loadForListing(
-        listing, services, ctx,
-        () => loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
-        undefined, { command: "correlation", noun: "history", retry, quote: quotes.get(listing)! },
-      );
-      return { ...buildCorrelationSeries(listing.key, bars), bars: bars.length };
+      const { quote, error } = await loadListingQuoteAnswer(services.dataProvider, listing);
+      const request = { command: "correlation", noun: "history", retry, quote: Promise.resolve(quote) };
+      await failUnchosenListing(listing, services, ctx, request, error);
+      const [bars, notes] = await Promise.all([
+        loadForListing(listing, services, ctx,
+          () => loadCorrelationHistory(services.dataProvider, listing.request.symbol, listing.request.exchange, "1Y"),
+          undefined, request),
+        listingChoiceNotes(listing, services, quote, quote ? loadBareVenues(listing, services) : null),
+      ]);
+      const closes = bars.filter((bar) => !bar.partial && !bar.unsettled);
+      return { ...buildCorrelationSeries(listing.key, closes), bars: closes.length, notes, quote };
     };
     const [leftSeries, rightSeries] = await Promise.all([loadSeries(leftListing!), loadSeries(rightListing!)]);
-    const { correlation, sampleSize } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
+    const { correlation, sampleSize, lastSharedDate } = correlateDailyCloses(leftSeries.prices, rightSeries.prices);
     // The series history reads: contradictory bars are gaps, and a thin pair says which side is short.
     const seriesNotes = [
       ...[leftSeries, rightSeries].filter((series, index) => index === 0 || left !== right)
@@ -1163,23 +1151,17 @@ async function runCorrelation(rawArgs: string[], ctx: Parameters<CliCommandDef["
         .map((series) => series.rollNote ? `${series.symbol}: ${series.rollNote}` : null),
     ].filter((note) => note != null);
     // A bare symbol names no exchange; its quote says where it lists, which sets when its daily close is taken.
-    const [leftQuote, rightQuote] = await Promise.all([leftListing!, rightListing!].map((listing) => quotes.get(listing)!));
     const sessionNote = mixedSessionCloseNote(
-      { symbol: leftListing!.symbol, exchange: listingIdentity(leftListing!, leftQuote).exchange, label: left },
-      { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightQuote).exchange, label: right },
-      alignDailyCloses(leftSeries.prices, rightSeries.prices).at(-1)?.dateKey,
+      { symbol: leftListing!.symbol, exchange: listingIdentity(leftListing!, leftSeries.quote).exchange, label: left },
+      { symbol: rightListing!.symbol, exchange: listingIdentity(rightListing!, rightSeries.quote).exchange, label: right },
+      lastSharedDate ?? undefined,
     );
-    // The daily closes used, dated by the newest last bar as the CORR report is.
-    const lastBars = [leftSeries, rightSeries].map((series) => series.prices.at(-1)?.dateKey);
     const freshness = rowsFreshness([], {
       ...DAILY_CLOSES,
-      asOf: newestReportTime(lastBars),
-      oldest: oldestReportTime(lastBars),
+      asOf: lastSharedDate,
     });
-    // A coin's code read as a listing (BTC, the Grayscale fund) says so, as `quote BTC` does.
     const warnings = [
-      ...listingReadNotes(leftListing!), ...listingReadNotes(rightListing!),
-      ...coinListingNotes(leftListing!, leftQuote), ...coinListingNotes(rightListing!, rightQuote),
+      ...leftSeries.notes, ...rightSeries.notes,
       ...sessionNote ? [sessionNote] : [],
       ...seriesNotes,
     ];

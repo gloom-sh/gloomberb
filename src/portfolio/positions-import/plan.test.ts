@@ -21,6 +21,7 @@ test("merge: the file sets its listings, keeps a holding's cost it gives none, a
   const resolutions = new Map<string, ImportSymbolResolution>([
     ["VTI", { ticker: vti }],
     ["BRK.B", { ticker: brk, notes: ["BRK.B is BRK-B"] }],
+    ["BRK-B", { ticker: brk }],
     ["NOPE", { error: "No ticker match found for \"NOPE\"." }],
   ]);
   const plan = buildPositionsImportPlan({ file, resolutions, portfolio, holdings: [vti, xom], mode: "merge" });

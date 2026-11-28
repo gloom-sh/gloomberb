@@ -8,6 +8,7 @@ import type {
   HeadlessSeriesResult,
   HeadlessSnapshotResult,
 } from "../../types/plugin";
+import { joinEnglishList as listText } from "../../utils/format";
 import { formatUtcTime, localTimeSuffix, parseReportTime, type ReportTime } from "../../utils/utc-time";
 import { timeZoneLabel, zonedDateKey, zonedDateTimeParts } from "../../utils/zoned-date-time";
 import { isRecord } from "../../utils/guards";
@@ -89,6 +90,7 @@ export interface ReportFreshness {
   periodToDate?: { period: "week" | "month"; through?: string };
   /** The local date of the session close `asOf` is, when the newest observation is its venue's latest close. */
   asOfClose?: string;
+  asOfTradeDate?: string;
   /** A session list of a part of `asOfClose`'s session (declared `sessionList.part`), named in its place: `pre-market`. */
   asOfSessionPart?: "pre-market" | "after-hours";
   /**
@@ -314,6 +316,7 @@ function readSession(record: Record<string, unknown>, time: ReportTime | null, s
     ...(calendar ? { calendar } : {}),
     // A row at its venue's nominal price is that session's price, however old its last trade.
     ...(record.nominal === true ? { nominal: true as const } : {}),
+    ...(record.futuresPriceKind === "settlement" ? { settlement: true as const } : {}),
   });
 }
 
@@ -566,50 +569,35 @@ function resolveReadFreshness({ declared, signals, observations, now }: Freshnes
   let minDelayMinutes: number | undefined;
   let staleAt: ReportTime | null = null;
   let partial: { staleCount: number; observationCount: number; feed?: "live" | "delayed" } | null = null;
-  if (declared.status === "not-a-feed") {
-    // Age alone does not make filed or published data stale. Honor explicit flags,
-    // with row-level flags outranking the metadata summary, or a missed schedule.
-    const staleRows = signals.staleTimes.length;
-    if (late || (signals.flagged > 0 ? staleRows === signals.flagged : signals.stale)) {
-      status = "stale";
-      staleAt = asOf;
-    } else if (staleRows > 0) {
-      status = "stale";
-      partial = { staleCount: staleRows, observationCount: signals.flagged };
-      staleAt = oldest(signals.staleTimes.filter((time): time is ReportTime => time != null));
-    } else {
-      status = "not-a-feed";
-    }
+  const notAFeed = declared.status === "not-a-feed";
+  const feed = declared.status === "not-a-feed" || declared.status === "unreported" ? null : worstFeedStatus([
+    ...(declared.status ? [declared.status] : []),
+    ...(signals.live ? ["live" as const] : []),
+    ...(signals.delayed ? ["delayed" as const] : []),
+  ]);
+  const staleRows = signals.staleTimes.length;
+  // Rows that say whether they are stale outrank a summary flag beside them.
+  const allStale = feed === "stale" || late
+    || (signals.flagged > 0 ? staleRows === signals.flagged : signals.stale);
+  if (allStale) {
+    status = "stale";
+    staleAt = asOf;
+  } else if (staleRows > 0) {
+    status = "stale";
+    partial = {
+      staleCount: staleRows,
+      observationCount: signals.flagged,
+      ...(!notAFeed && (feed === "live" || feed === "delayed") ? { feed } : {}),
+    };
+    staleAt = oldest(signals.staleTimes.filter((time): time is ReportTime => time != null));
   } else {
-    const feed = declared.status === "unreported" ? null : worstFeedStatus([
-      ...(declared.status ? [declared.status] : []),
-      ...(signals.live ? ["live" as const] : []),
-      ...(signals.delayed ? ["delayed" as const] : []),
-    ]);
-    const staleRows = signals.staleTimes.length;
-    // Rows that say whether they are stale outrank a summary flag beside them.
-    const allStale = feed === "stale" || late
-      || (signals.flagged > 0 ? staleRows === signals.flagged : signals.stale);
-    if (allStale) {
-      status = "stale";
-      staleAt = asOf;
-    } else if (staleRows > 0) {
-      status = "stale";
-      partial = {
-        staleCount: staleRows,
-        observationCount: signals.flagged,
-        ...(feed === "live" || feed === "delayed" ? { feed } : {}),
-      };
-      staleAt = oldest(signals.staleTimes.filter((time): time is ReportTime => time != null));
-    } else {
-      status = feed ?? "unreported";
-    }
-    // A partly stale board still says how far its fresh rows are held back.
-    if (status === "delayed" || partial?.feed === "delayed") {
-      delayMinutes = declared.delayMinutes ?? signals.delayMinutes;
-      if (declared.delayMinutes == null && signals.minDelayMinutes != null && delayMinutes != null && signals.minDelayMinutes < delayMinutes) {
-        minDelayMinutes = signals.minDelayMinutes;
-      }
+    status = notAFeed ? "not-a-feed" : feed ?? "unreported";
+  }
+  // A partly stale board still says how far its fresh rows are held back.
+  if (!notAFeed && (status === "delayed" || partial?.feed === "delayed")) {
+    delayMinutes = declared.delayMinutes ?? signals.delayMinutes;
+    if (declared.delayMinutes == null && signals.minDelayMinutes != null && delayMinutes != null && signals.minDelayMinutes < delayMinutes) {
+      minDelayMinutes = signals.minDelayMinutes;
     }
   }
   const rowsSession = reportMarketSession(signals.sessions, now);
@@ -683,6 +671,8 @@ function resolveReadFreshness({ declared, signals, observations, now }: Freshnes
     ...(periodicity ? { periodicity } : {}),
     ...(periodToDate && !declaredAsOf ? { periodToDate: { period: periodToDate.period, ...(periodToDate.through ? { through: isoTime(periodToDate.through) } : {}) } } : {}),
     ...(asOfClose ? { asOfClose } : {}),
+    ...(!declaredAsOf && !listed && rowsSession.tradeDate && asOf?.time === rowsSession.tradeDate.time
+      ? { asOfTradeDate: rowsSession.tradeDate.date } : {}),
     ...(asOfClose && listed?.part ? { asOfSessionPart: listed.part } : {}),
     ...(asOfLastPrint ? { asOfLastPrint: true as const } : {}),
     ...(tradingDayMarket ? { tradingDayMarket } : {}),
@@ -868,7 +858,7 @@ function timeText(value: string, local: boolean): string {
  * How long a delay is, in the unit it is stated in: `15 min`, `12 h`, `3 days`.
  * A delay under two hours that is not a whole hour stays in minutes.
  */
-export function delayLength(minutes: number): string {
+function delayLength(minutes: number): string {
   const whole = Math.max(0, Math.round(minutes));
   if (whole >= 2 * MINUTES_PER_DAY && whole % MINUTES_PER_DAY === 0) return `${whole / MINUTES_PER_DAY} days`;
   if (whole >= 60 && whole % 60 === 0) return `${whole / 60} h`;
@@ -971,9 +961,6 @@ function savedCopyText(savedAt: string, retrievedAt: string, local: boolean): st
 }
 
 /** `US and XETRA`, `US, XETRA and EPA`. */
-function listText(items: readonly string[]): string {
-  return items.length <= 1 ? items.join("") : `${items.slice(0, -1).join(", ")} and ${items.at(-1)}`;
-}
 
 /**
  * Each market's session date, markets on the same day and state said once:
@@ -1036,7 +1023,8 @@ function asOfText(freshness: ReportFreshness, short: boolean, local: boolean, un
   const oldestPeriod = freshness.oldestPeriodicity !== undefined ? freshness.oldestPeriodicity : period;
   const oldest = freshness.oldest && (oldestPeriod ? periodText(freshness.oldest, oldestPeriod) : dayText(freshness.oldest));
   // A list dated by its newest entry names it, so the time is not read as when the list was read.
-  const dated = freshness.asOfLabel ? `${freshness.asOfLabel} ${asOf}` : asOf;
+  const observed = freshness.asOfLabel ? `${freshness.asOfLabel} ${asOf}` : asOf;
+  const dated = freshness.asOfTradeDate ? `${observed} · ${dayText(freshness.asOfTradeDate)} trade date` : observed;
   return oldest && !short && freshness.oldestAgeMinutes == null ? `${dated} (oldest ${oldest})` : dated;
 }
 
@@ -1318,14 +1306,6 @@ function shorterSchedules(freshness: ReportFreshness, detail: StatusLineDetail):
   return [{ ...detail, basis: "none" }, ...freshness.scheduleVariants.map((_, index) => ({ ...detail, basis: "none" as const, schedule: index }))];
 }
 
-/**
- * The plain status line of a capture: the longest of `statusLineVariants`,
- * `Fri 9 Oct close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET` for quotes.
- */
-export function formatStatusLine(freshness: ReportFreshness): string {
-  return statusLineVariants(freshness)[0]!;
-}
-
 /** Whether the status line dates the data by its newest observation and lag (a dataset's), not by a market session. */
 function datesObservation(freshness: ReportFreshness): freshness is ReportFreshness & { asOf: string } {
   return (freshness.lagDays != null || freshness.observationAgeMinutes != null) && !!freshness.asOf;
@@ -1399,7 +1379,7 @@ function paneStatusLineDetails(freshness: ReportFreshness): StatusLineDetail[] {
  * (`Gloom Cloud · observed Sun 4 Oct`), and the narrowest line is the date
  * alone (`Observed Sun 4 Oct`): the source goes before the date.
  */
-export function statusLineVariants(freshness: ReportFreshness, { source = false }: { source?: boolean } = {}): string[] {
+function statusLineVariants(freshness: ReportFreshness, { source = false }: { source?: boolean } = {}): string[] {
   if (datesObservation(freshness)) {
     // The lag, relative to the reading, goes before the source and the date; the source before the date.
     const datasetDetails: DatasetLineDetail[] = [

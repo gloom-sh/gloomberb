@@ -32,7 +32,7 @@ import {
   type BrokerSignInSnapshot,
 } from "./sign-in";
 
-export function brokerSignInStatus(snapshot: BrokerSignInSnapshot, broker: SignedInBroker): { text: string; color: string } {
+function brokerSignInStatus(snapshot: BrokerSignInSnapshot, broker: SignedInBroker): { text: string; color: string } {
   switch (snapshot.phase) {
     case "connected":
       return { text: t("Connected"), color: colors.positive };
@@ -60,7 +60,7 @@ export const BROKER_CONNECT_NEW_LINK = { key: "r", label: "new link" };
  * connection it already lists (`replace`, as Gloom says), the note says to
  * choose that before the user gets there; `may` when Gloom cannot tell.
  */
-export function brokerSignInNote(broker: SignedInBroker, replace: BrokerReplacePrompt | null = null): string | null {
+function brokerSignInNote(broker: SignedInBroker, replace: BrokerReplacePrompt | null = null): string | null {
   if (replace && broker.capabilities.singleConnection) {
     return replace === "will"
       ? tf("{broker} will ask to replace your existing Gloom connection. Choose to replace it.", { broker: broker.name })

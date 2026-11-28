@@ -7,7 +7,7 @@ import { getListingSymbol, listingSuffixConflictsWithExchange, listingSuffixVenu
 import { parseOptionSymbol } from "../../utils/options";
 import { resolveCurrencyUnit } from "../../utils/currency-units";
 import { currencyPairSpelling } from "../../utils/currency-pair";
-import { typedCoinPairListing } from "../../utils/crypto-pair";
+import { exactCoinNameListing, typedCoinPairListing } from "../../utils/crypto-pair";
 import { assetClassMarketSymbol, parseAssetClassQuery } from "./asset-classes";
 import { bareFuturesCode, futuresContractByCode } from "../../market-data/futures-board";
 import { searchContractKey, searchInstrumentKey } from "./identity";
@@ -41,7 +41,7 @@ import { endsInLegalForm, readNearMissListing, readVenueFirstListing, readTermin
 import { isProviderBusy, ProviderBusyError, SEARCH_BUSY_MESSAGE } from "../../sources/provider-errors";
 import { settleWithin } from "../../utils/async-deadline";
 import { companyNameExtraWords } from "../company-name";
-import { withFundReceiptsAsFunds, withHomeListingLead, withHomeVenueLead, withNamedCompanyAfterUsLead, withoutOtherLegalFormMarks } from "./home-listing";
+import { candidateExchange, withFundReceiptsAsFunds, withHomeListingLead, withHomeVenueLead, withNamedCompanyAfterUsLead, withoutOtherLegalFormMarks } from "./home-listing";
 import { answeredInFull, rememberSearchAnswer, withKnownListings } from "./listing-index";
 import { savedAbroadForBareSymbol, savedUsListingOf } from "./bare-symbol";
 import { delistingLabel, parseListingWithdrawal, withdrawalLabel } from "../../market-data/quotes/delisting";
@@ -299,7 +299,7 @@ export async function searchTickerCandidates({
   onPartial?: (candidates: TickerSearchCandidate[]) => void;
 }): Promise<TickerSearchCandidate[]> {
   const query = symbolSearchQuery(rawQuery);
-  const assemble = (providerResults: InstrumentSearchResult[]) => buildTickerSearchCandidates({
+  const assemble = (providerResults: InstrumentSearchResult[], allowCoinNames = true) => buildTickerSearchCandidates({
     query,
     tickers,
     providerResults,
@@ -308,6 +308,7 @@ export async function searchTickerCandidates({
     // A search that hides contracts still shows them when asked: "AAPL OPT".
     includeOptionContracts: includeOptionContracts || parseAssetClassQuery(query)?.code === "OPT",
     homeVenue,
+    exactCoinNames: allowCoinNames && !searchContext?.brokerId && !searchContext?.brokerInstanceId,
   });
   const renamed = renamedListingFor(rawQuery);
   const [searched, renamedRow] = await Promise.all([
@@ -328,7 +329,7 @@ export async function searchTickerCandidates({
   const complete = answeredInFull(results, !!busy || !!unreachable);
   rememberSearchAnswer(query, results, complete);
   const brokerScoped = !!searchContext?.brokerId || !!searchContext?.brokerInstanceId;
-  const candidates = assemble(!complete && !brokerScoped ? withKnownListings(query, results) : results);
+  const candidates = assemble(!complete && !brokerScoped ? withKnownListings(query, results) : results, !busy && !unreachable);
   // Saved tickers or another source's rows still answer. Nothing at all, because the data service
   // could not be reached or a source was busy, is no answer: not a name nothing lists.
   if (unreachable && candidates.length === 0) throw unreachable;
@@ -344,6 +345,7 @@ export function buildTickerSearchCandidates({
   totalLimit = 8,
   includeOptionContracts = true,
   homeVenue,
+  exactCoinNames = true,
 }: {
   query: string;
   tickers: ReadonlyMap<string, TickerRecord>;
@@ -353,10 +355,15 @@ export function buildTickerSearchCandidates({
   includeOptionContracts?: boolean;
   /** The venue of the user's own market (`homeMarketVenue`): its lines of the company a word names lead (`withHomeVenueLead`). */
   homeVenue?: string | null;
+  exactCoinNames?: boolean;
 }): TickerSearchCandidate[] {
+  const coin = exactCoinNames ? exactCoinNameListing(query) : null;
+  const results = coin && !providerResults.some((row) => row.symbol === coin.symbol && canonicalExchange(row.exchange) === "CCC")
+    ? [...providerResults, { ...coin, providerId: "gloomberb-cloud", exchange: "CCC", type: "CRYPTOCURRENCY", currency: "USD" }]
+    : providerResults;
   const filteredProviderResults = includeOptionContracts
-    ? providerResults
-    : providerResults.filter((result) => !isOptionSearchResult(result));
+    ? results
+    : results.filter((result) => !isOptionSearchResult(result));
   const providerHints = buildProviderHints(filteredProviderResults, tickers);
   const candidateOptions = {
     includeOptionContracts,
@@ -378,7 +385,16 @@ export function buildTickerSearchCandidates({
     withHomeListingLead(withSuccessorFirst(rankTickerSearchItems([...localItems, ...providerItems], query), query), query),
     query,
   ), query, homeVenue);
-  return limitTickerSearchCandidates(companyListingsFirst(assignTickerSearchCategories(ranked, query), query), totalLimit, localLimit);
+  const candidates = companyListingsFirst(assignTickerSearchCategories(ranked, query), query);
+  return limitTickerSearchCandidates(coin ? withExactCoinNameLead(query, candidates) : candidates, totalLimit, localLimit);
+}
+
+export function withExactCoinNameLead(query: string, candidates: TickerSearchCandidate[]): TickerSearchCandidate[] {
+  const coin = exactCoinNameListing(query);
+  if (!coin) return candidates;
+  const at = candidates.findIndex((row) => row.symbol === coin.symbol && canonicalExchange(candidateExchange(row)) === "CCC");
+  if (at <= 0) return candidates;
+  return [candidates[at]!, ...candidates.slice(0, at), ...candidates.slice(at + 1)];
 }
 
 /**

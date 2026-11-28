@@ -14,8 +14,8 @@ import { requestAccountManagementTab } from "../account-management/navigation";
 import { freeQuotesDelayMinutes, resolvePlanAccess, usePlanAccess, type PlanAccess, type QuoteDelayFacts } from "../../../api-client/plan-access";
 import { useViewport } from "../../../react/input";
 import { type DialogApi, useOptionalDialog } from "../../../ui/dialog";
-import { promptCloudUpgrade, promptSignedOutUpgrade } from "../../../account/upgrade-dialog";
-import { hasAuthDialogHost, isAuthDialogOpen, requestAuthDialog } from "../../../account/auth-dialog";
+import { promptCloudUpgrade } from "../../../account/upgrade-dialog";
+import { isAuthDialogOpen, requestAuthDialog } from "../../../account/auth-dialog";
 import { type CheckoutHandoffTarget, promptCheckoutHandoff } from "../../../account/checkout-handoff";
 
 const CLOUD_UPGRADE_URL = "https://gloom.sh/cloud?upgrade=pro";
@@ -56,9 +56,6 @@ interface CloudUpgradeOptions {
   /** What the press is about, said under the sign-up dialog's title when it opens first (`Stock quotes are 15 min delayed`). */
   reason?: string;
 }
-
-/** The signed-out sheet is up: a press that would only open it again does nothing. */
-let signedOutSheetOpen = false;
 
 function recordUpgradeIntent(placement: string | undefined): void {
   recordResearchActivity("upgrade_intent", undefined, undefined, { placement });
@@ -121,12 +118,6 @@ async function openCloudUpgradePage(page: CloudUpgradePage, open: () => Promise<
     throw error;
   }
   settle(Date.now() + CLOUD_UPGRADE_REOPEN_MS);
-}
-
-/** Forgets every recent open, so one test's checkout does not swallow the next test's. */
-export function resetCloudUpgradeGuardForTests(): void {
-  cloudUpgradeBlockedUntil.clear();
-  signedOutSheetOpen = false;
 }
 
 function cloudUpgradeReturnTo(): string | undefined {
@@ -214,16 +205,12 @@ function isCloudUpgradeOptions(value: unknown): value is CloudUpgradeOptions {
  *
  * A signed-in account without Pro sees the upgrade sheet first (what Pro adds,
  * what today costs), and checkout opens only once they choose to go on, with
- * the checkout hand-off over the app until Pro arrives. Signed out, the same
- * sheet opens first, in what holds for a new account: an upgrade button that
- * opened a bare sign-up form said nothing of Pro, its price or the trial.
- * Its trial button opens the sign-up dialog and the upgrade goes on
- * once signed in, to the sheet again for an account without Pro, now in that
- * account's own terms and with a press that opens checkout, and to nothing
- * for one that has Pro. Its other button only signs up. All of it stays in
- * the app, since the Cloud page an upgrade opened before left a terminal over
- * SSH with no browser looking as if `$` did nothing. A press while the sheet
- * or the dialog is up does nothing. Only with no dialog host (an isolated
+ * the checkout hand-off over the app until Pro arrives. Signed out, the
+ * sign-up dialog opens first, as the UPGRADE command's does, and the upgrade
+ * goes on once signed in, to the sheet for an account without Pro and to
+ * nothing for one that has it: the Cloud page it opened before left a
+ * terminal over SSH with no browser looking as if `$` did nothing. A press
+ * while the dialog is up does nothing. Only with no dialog host (an isolated
  * render) does it open the public Cloud page. Pro accounts get the billing
  * portal.
  */
@@ -257,33 +244,15 @@ export function useCloudUpgradeAction(placement: string): (options?: unknown) =>
       )).catch(logFailure("shared.cloud-upgrade", "Open Cloud upgrade page failed"));
     };
     if (checkout.sheet !== false && !apiClient.isSignedIn()) {
-      // A press while the sheet or the sign-up dialog is up asks for nothing new, and counts nothing.
-      if (signedOutSheetOpen || isAuthDialogOpen()) return;
+      // A press while the sign-up dialog is up asks for nothing new, and counts nothing.
+      if (isAuthDialogOpen()) return;
       // Counted once, on this press: the upgrade that goes on after sign-up does not count it again. An account that
       // signs in with Pro already has what the press was for, so nothing more opens.
-      const continueSignedIn = (chosen: CloudUpgradeOptions) => () => {
+      const continueSignedIn = () => {
         if (resolvePlanAccess(apiClient.getCurrentUser()).hasProAccess) return;
-        void openUpgradeRef.current({ ...chosen, recordIntent: false });
+        void openUpgradeRef.current({ ...checkout, recordIntent: false });
       };
-      if (dialog && hasAuthDialogHost()) {
-        if (checkout.recordIntent !== false) recordUpgradeIntent(checkout.placement);
-        signedOutSheetOpen = true;
-        const choice = await promptSignedOutUpgrade(dialog, {
-          interval: checkout.interval,
-          viewportWidth: viewportWidthRef.current,
-        }).finally(() => {
-          signedOutSheetOpen = false;
-        });
-        if (!choice) return;
-        const goOn = choice === "free" ? null : continueSignedIn({ ...checkout, interval: choice });
-        // A session that arrived while the sheet was up (another tab signed in) has no account left to ask for.
-        if (apiClient.isSignedIn()) goOn?.();
-        // An account and no Pro: the sign-up any other button opens, with nothing after it.
-        else if (!goOn) requestAuthDialog({ mode: "signup" });
-        else requestAuthDialog({ mode: "signup", onSignedIn: goOn, checkout: true, reason: t("First an account, then Pro.") });
-        return;
-      }
-      if (requestAuthDialog({ mode: "signup", onSignedIn: continueSignedIn(checkout), checkout: true, ...(checkout.reason ? { reason: checkout.reason } : {}) })) {
+      if (requestAuthDialog({ mode: "signup", onSignedIn: continueSignedIn, checkout: true, ...(checkout.reason ? { reason: checkout.reason } : {}) })) {
         if (checkout.recordIntent !== false) recordUpgradeIntent(checkout.placement);
         return;
       }

@@ -50,7 +50,7 @@ export interface VolatilityLoadOptions {
 }
 
 /** Public index symbols have no equity listing exchange attached. */
-export function volatilityHistoryRequest(symbol: string): ChartRequest {
+function volatilityHistoryRequest(symbol: string): ChartRequest {
   return { instrument: { symbol, exchange: "" }, bufferRange: "1Y", granularity: "resolution", resolution: "1d" };
 }
 export function createVolatilityDependencies(

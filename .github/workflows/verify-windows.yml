@@ -2,9 +2,56 @@ name: Verify Windows
 
 on:
   workflow_dispatch:
+  schedule:
+    # 03:00 UTC daily, 100 minutes before Nightly (04:40 UTC), so Nightly always
+    # sees a fresh Verify Windows run on main even when recent merges did not
+    # touch Windows or packaging paths.
+    - cron: "0 3 * * *"
   push:
     branches:
       - main
+    paths:
+      - "package.json"
+      - "bun.lock"
+      - "electrobun.config.ts"
+      - "patches/**"
+      - "bin/**"
+      - "src/cli/**"
+      - "src/updater/**"
+      - "src/app/global-shortcuts*"
+      - "src/app/runtime/**"
+      - "src/app/paths*"
+      - "src/plugins/host-*"
+      - "src/plugins/loader*"
+      - "src/plugins/bundle*"
+      - "src/plugins/external-runtime*"
+      - "src/plugins/plugin-process*"
+      - "src/plugins/installer*"
+      - "src/plugins/registry*"
+      - "src/renderers/electrobun/**"
+      - "src/renderers/opentui/**"
+      - "src/renderers/dom/build-assets.ts"
+      - "src/telemetry/stall-clocks*"
+      - "src/utils/linux-libc*"
+      - "src/utils/platform*"
+      - "src/utils/paths*"
+      - "src/version.ts"
+      - "scripts/build.ts"
+      - "scripts/build-electrobun-view.ts"
+      - "scripts/build-windows-*.ps1"
+      - "scripts/verify-windows-*.ps1"
+      - "scripts/windows-installer.iss"
+      - "scripts/windows-signing.ts"
+      - "scripts/write-legacy-desktop-files.ts"
+      - "scripts/install.ps1"
+      - "scripts/install.test.ps1"
+      - "scripts/electrobun-toolchain*"
+      - "scripts/patch-electrobun-devkit*"
+      - "scripts/catalog-snapshot-file.ts"
+      - "scripts/desktop-tui-bundle.ts"
+      - ".github/workflows/verify-windows.yml"
+      - ".github/actions/setup-bun/**"
+      - ".github/actions/inno-setup/**"
 
 # Neither a push to main nor a manual run on main cancels a run half done: it
 # waits for the one running and replaces any waiting, so the nightly build can

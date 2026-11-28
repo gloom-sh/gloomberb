@@ -1,0 +1,198 @@
+name: MCP Registry
+
+# Publishes Gloom's listing in the official MCP Registry
+# (registry.modelcontextprotocol.io) as io.github.gloom-sh/gloom. The listing
+# points at the remote server https://api.gloom.sh/mcp; this workflow builds,
+# deploys and releases nothing.
+#
+# The maintainer who publishes the listing starts it by hand from main (Actions,
+# MCP Registry, Run workflow). It has no schedule, no other trigger and no
+# inputs, and it runs no code from the repository. The registry exchanges the
+# job's GitHub OIDC token for a short-lived token that can publish under
+# io.github.gloom-sh, so no secret or personal token is stored.
+#
+# What it publishes is the versioned snapshot in .github/mcp-registry/, pinned
+# below by digest; the publisher tool is a pinned release checked by digest and
+# by its Sigstore signature. The run publishes at most once: only while the
+# registry's latest version is PREVIOUS_VERSION and SERVER_VERSION is absent.
+# When SERVER_VERSION is already listed with the same content, nothing is
+# written. Any other state, or an unexpected answer from the registry, stops the
+# run before it signs in. After a publish it reads both the version and the
+# latest record back. To list a later version, add its snapshot and change the
+# versions and digest below in the same reviewed change.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mcp-registry
+  cancel-in-progress: false
+
+env:
+  REGISTRY_URL: https://registry.modelcontextprotocol.io
+  SERVER_NAME: io.github.gloom-sh/gloom
+  SERVER_VERSION: 1.2.0
+  PREVIOUS_VERSION: 1.1.0
+  SERVER_URL: https://api.gloom.sh/mcp
+  SNAPSHOT: .github/mcp-registry/server-1.2.0.json
+  SNAPSHOT_SHA256: d0d09d876ea5b0d07c80082ffb49a1bdfc54c11d2b2aa2b530dc5ea0ca1415a4
+  MCP_PUBLISHER_VERSION: v1.8.17
+  MCP_PUBLISHER_SHA256: 4fbfe8236becd291a7a37b3e2cd7d5a6171ecf25c62a47f4fe92ef9b92007f9b
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  publish:
+    name: Publish the listing
+    # Only from main in this repository, started (and re-run) by the account
+    # that publishes the listing, matched by its account id as well as its login.
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.repository == 'gloom-sh/gloomberb' &&
+      github.ref == 'refs/heads/main' &&
+      github.actor == 'vincelwt' &&
+      github.actor_id == '5092466' &&
+      github.triggering_actor == 'vincelwt'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/mcp-registry
+
+      - name: Check the snapshot
+        run: |
+          set -euo pipefail
+          echo "$SNAPSHOT_SHA256  $SNAPSHOT" | sha256sum --check --strict -
+          jq -e --arg name "$SERVER_NAME" --arg version "$SERVER_VERSION" --arg url "$SERVER_URL" '
+            .name == $name and .version == $version
+            and .remotes == [{type: "streamable-http", url: $url}]
+            and (has("packages") | not)
+          ' "$SNAPSHOT" >/dev/null || {
+            echo "::error::$SNAPSHOT is not $SERVER_NAME $SERVER_VERSION with the one remote $SERVER_URL."
+            exit 1
+          }
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@881c63bd87e38389154debd8331404ce7ca8a3ab # v4.1.4
+
+      - name: Download and verify mcp-publisher
+        run: |
+          set -euo pipefail
+          archive=mcp-publisher_linux_amd64.tar.gz
+          base="https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION"
+          mkdir -p "$RUNNER_TEMP/mcp-publisher"
+          cd "$RUNNER_TEMP/mcp-publisher"
+          for file in "$archive" "$archive.sigstore.json"; do
+            curl --fail --location --silent --show-error --connect-timeout 10 --max-time 120 \
+              --retry 2 --retry-max-time 180 --output "$file" "$base/$file"
+          done
+          echo "$MCP_PUBLISHER_SHA256  $archive" | sha256sum --check --strict -
+          timeout 120 cosign verify-blob \
+            --bundle "$archive.sigstore.json" \
+            --certificate-identity "https://github.com/modelcontextprotocol/registry/.github/workflows/release.yml@refs/tags/$MCP_PUBLISHER_VERSION" \
+            --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+            "$archive"
+          tar -xzf "$archive" mcp-publisher
+          rm -f "$archive" "$archive.sigstore.json"
+          ./mcp-publisher --version
+
+      - name: Validate the snapshot
+        run: timeout 60 "$RUNNER_TEMP/mcp-publisher/mcp-publisher" validate "$SNAPSHOT"
+
+      # Reads only. Tells the next step whether to publish, or stops the run.
+      - name: Read the registry
+        id: plan
+        run: |
+          set -euo pipefail
+          fail() { echo "::error::$*"; exit 1; }
+          versions="$REGISTRY_URL/v0.1/servers/${SERVER_NAME//\//%2F}/versions"
+          # The body goes to $2 and the HTTP status to stdout. Timeouts, 429 and
+          # 5xx are retried twice; a failed connection stops the step.
+          get() {
+            curl --silent --show-error --connect-timeout 10 --max-time 30 \
+              --retry 2 --retry-max-time 90 --output "$2" --write-out '%{http_code}' "$1"
+          }
+          latest_status=$(get "$versions/latest" "$RUNNER_TEMP/latest.json")
+          target_status=$(get "$versions/$SERVER_VERSION" "$RUNNER_TEMP/target.json")
+
+          [ "$latest_status" = 200 ] || fail "The registry answered $latest_status for the latest $SERVER_NAME."
+          jq -e --arg name "$SERVER_NAME" --argjson remotes "$(jq -c .remotes "$SNAPSHOT")" '
+            .server.name == $name and .server.remotes == $remotes
+            and (.server.version | type) == "string"
+            and ._meta["io.modelcontextprotocol.registry/official"].isLatest == true
+          ' "$RUNNER_TEMP/latest.json" >/dev/null \
+            || fail "The latest record is not $SERVER_NAME with the remote $SERVER_URL."
+          latest=$(jq -r .server.version "$RUNNER_TEMP/latest.json")
+
+          case "$target_status" in
+            404)
+              jq -e '.status == 404' "$RUNNER_TEMP/target.json" >/dev/null \
+                || fail "The registry's answer for $SERVER_VERSION was a 404 that is not its own."
+              [ "$latest" = "$PREVIOUS_VERSION" ] \
+                || fail "The latest version is $latest, not $PREVIOUS_VERSION: nothing is published over it."
+              echo "::notice::$SERVER_VERSION is not listed and $PREVIOUS_VERSION is the latest, so this run publishes $SERVER_VERSION."
+              echo "publish=true" >> "$GITHUB_OUTPUT"
+              ;;
+            200)
+              [ "$(jq -S -c .server "$RUNNER_TEMP/target.json")" = "$(jq -S -c . "$SNAPSHOT")" ] \
+                || fail "$SERVER_VERSION is already listed with other content."
+              jq -e '._meta["io.modelcontextprotocol.registry/official"].status == "active"' \
+                "$RUNNER_TEMP/target.json" >/dev/null \
+                || fail "$SERVER_VERSION is listed but not active."
+              [ "$latest" = "$SERVER_VERSION" ] \
+                || fail "$SERVER_VERSION is listed but the latest version is $latest."
+              echo "::notice::$SERVER_VERSION is already listed with this content, so this run publishes nothing."
+              echo "publish=false" >> "$GITHUB_OUTPUT"
+              ;;
+            *)
+              fail "The registry answered $target_status for $SERVER_NAME $SERVER_VERSION."
+              ;;
+          esac
+
+      # One publish request, never retried: a second run finds the version
+      # listed and changes nothing.
+      - name: Publish
+        if: steps.plan.outputs.publish == 'true'
+        run: |
+          set -euo pipefail
+          publisher="$RUNNER_TEMP/mcp-publisher/mcp-publisher"
+          trap 'rm -f "$HOME/.config/mcp-publisher/token.json"' EXIT
+          timeout 60 "$publisher" login github-oidc --registry "$REGISTRY_URL"
+          timeout 120 "$publisher" publish "$SNAPSHOT"
+
+      # The registry can take a moment to show a new version, so both records
+      # are read up to six times, ten seconds apart.
+      - name: Check the listed records
+        run: |
+          set -euo pipefail
+          versions="$REGISTRY_URL/v0.1/servers/${SERVER_NAME//\//%2F}/versions"
+          get() {
+            curl --silent --show-error --connect-timeout 10 --max-time 30 \
+              --retry 2 --retry-max-time 90 --output "$2" --write-out '%{http_code}' "$1"
+          }
+          expected=$(jq -S -c . "$SNAPSHOT")
+          for attempt in 1 2 3 4 5 6; do
+            version_status=$(get "$versions/$SERVER_VERSION" "$RUNNER_TEMP/version.json")
+            latest_status=$(get "$versions/latest" "$RUNNER_TEMP/latest.json")
+            if [ "$version_status" = 200 ] && [ "$latest_status" = 200 ] \
+              && [ "$(jq -S -c .server "$RUNNER_TEMP/version.json")" = "$expected" ] \
+              && [ "$(jq -S -c .server "$RUNNER_TEMP/latest.json")" = "$expected" ] \
+              && jq -e '._meta["io.modelcontextprotocol.registry/official"] | .status == "active" and .isLatest == true' \
+                "$RUNNER_TEMP/version.json" >/dev/null; then
+              echo "::notice::$SERVER_NAME $SERVER_VERSION is listed, active and the latest version."
+              exit 0
+            fi
+            [ "$attempt" = 6 ] || sleep 10
+          done
+          latest=$(jq -r '.server.version? // "none"' "$RUNNER_TEMP/latest.json" 2>/dev/null || echo unreadable)
+          echo "::error::$SERVER_VERSION did not read back as the listed latest version (version record $version_status, latest record $latest_status, latest version $latest)."
+          exit 1

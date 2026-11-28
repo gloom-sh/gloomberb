@@ -1,3 +1,4 @@
+import { isRecord } from "../utils/guards";
 import { ApiRequestError } from "./errors";
 import type { CloudApiRequest } from "./request";
 
@@ -24,10 +25,6 @@ export interface WaitlistState {
   joined: boolean;
   /** ISO time of the latest join while on the list; null off it. */
   joinedAt: string | null;
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function parseWaitlistState(value: unknown, product: WaitlistProduct): WaitlistState {

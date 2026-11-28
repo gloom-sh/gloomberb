@@ -15,7 +15,7 @@ import { PageStackView, type DataTableColumn } from "../ui";
  * the gap between two steps of a held key, so scrolling through a list never
  * fires it and settling on a row does.
  */
-export const DETAIL_PREFETCH_REST_MS = 120;
+const DETAIL_PREFETCH_REST_MS = 120;
 
 export interface DataTableStackViewProps<
   T,

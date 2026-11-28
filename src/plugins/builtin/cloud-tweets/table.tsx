@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Box, ScrollBox, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
 import {
-  ChoiceDialog,
   DataTableStackView,
   PaneStatusBody,
   StatGrid,
@@ -17,12 +16,14 @@ import {
 } from "../../../components";
 import { TickerBadgeText } from "../../../components/ticker/badge/text";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { RemoteImage, PaneLinkMenu } from "../../../components/ui";
+import { choiceDialog, RemoteImage, PaneLinkMenu } from "../../../components/ui";
 import { useInlineTickerOpener, useInlineTickers } from "../../../state/hooks/inline-tickers";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { useDialog } from "../../../ui/dialog";
 import { usePluginAppActions, usePluginPaneState } from "../../runtime";
 import type { CloudTweetPayload, CloudTweetSearchResponse } from "../../../api-client";
 import { formatTimeAgo } from "../../../utils/datetime-format";
+import { toTimestampMillis } from "../../../utils/timestamp";
+import { usePinnedList } from "../../../components/use-pinned-moment";
 import { tokenizeInlineContent } from "../../../utils/inline-content-tokenizer";
 import { isPlainKey } from "../../../utils/keyboard";
 import { colors } from "../../../theme/colors";
@@ -51,6 +52,12 @@ import {
 import { useAutoRefresh } from "../../../react/auto-refresh";
 import { usePaneStatusLinkFooter } from "../../../components/layout/pane/status-footer";
 import { logFailure } from "../../../utils/log-failure";
+
+const tweetId = (tweet: CloudTweetPayload) => tweet.id;
+const tweetMoment = (tweet: CloudTweetPayload) => {
+  const at = toTimestampMillis(tweet.createdAt);
+  return Number.isFinite(at) ? at : null;
+};
 
 function isAuthError(error: string | null): boolean {
   return !!error && /unauthorized|verification/i.test(error);
@@ -375,12 +382,12 @@ export function TweetSearchTable({
   // Tickers, accounts and links are badges a click opens; `m` lists them.
   const openTweetLinks = useCallback(async () => {
     if (selectedLinks.length === 0) return;
-    const choice = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog {...ctx} title="Open from this tweet" choices={selectedLinks.map(tweetLinkChoice)} />
-      ),
-    }).catch(logFailure("cloud-tweets.table", "Open tweet links prompt failed"));
+    const choice = await choiceDialog(dialog, {
+      title: "Open from this tweet",
+      choices: selectedLinks.map(tweetLinkChoice),
+      logSource: "cloud-tweets.table",
+      logMessage: "Open tweet links prompt failed",
+    });
     const link = choice === undefined ? undefined : selectedLinks[Number(choice)];
     if (!link) return;
     if (link.kind === "ticker") openTicker(link.symbol);
@@ -404,6 +411,20 @@ export function TweetSearchTable({
     hints: linkHints,
   });
 
+  // A crosshair pinned in the tab picks the newest post out by then, whatever
+  // the sort, and mutes the later ones, ticker badges too; the selection
+  // follows the pin when it moves, not when a refresh merges posts in. An
+  // open post stays open on itself, links too, while the pin moves; back on
+  // the list, the selection goes to the post at the pin.
+  const { pinnedRow, isAfterPin } = usePinnedList<CloudTweetPayload>(`${footerId}:pin`, {
+    enabled: !detailOpen,
+    rows,
+    getId: tweetId,
+    moment: tweetMoment,
+    selectedId: selectedTweetId,
+    select: setSelectedTweetId,
+  });
+
   useEffect(() => {
     if (rows.length === 0) {
       if (selectedTweetId !== null) setSelectedTweetId(null);
@@ -411,9 +432,9 @@ export function TweetSearchTable({
       return;
     }
     if (!selectedTweetId || selectedIndex < 0) {
-      setSelectedTweetId(rows[0]!.id);
+      setSelectedTweetId((pinnedRow ?? rows[0]!).id);
     }
-  }, [rows, selectedIndex, selectedTweetId]);
+  }, [pinnedRow, rows, selectedIndex, selectedTweetId]);
 
   const handleHeaderClick = useCallback((columnId: string) => {
     if (!isTweetSortColumnId(columnId)) return;
@@ -545,6 +566,7 @@ export function TweetSearchTable({
       onHeaderClick={handleHeaderClick}
       getItemKey={(tweet) => tweet.id}
       renderCell={renderCell}
+      isRowMuted={isAfterPin}
       selectedTextOverridesCellColor
       emptyContent={emptyContent}
       emptyStateTitle={emptyStateTitle ?? "No tweets"}

@@ -121,33 +121,36 @@ async function runIsolated(root: string, body: string, env: Record<string, strin
  * started are stopped, the install fails with a plain reason, and nothing is
  * left in the plugins folder for the next launch to take for an install.
  */
-test.skipIf(process.platform === "win32")("a clone that stalls is stopped at its time limit and leaves nothing behind", async () => {
+test.skipIf(process.platform === "win32").concurrent("a clone that stalls is stopped at its time limit and leaves nothing behind", async () => {
   const smoke = join(homedir(), ".cache", "gloom-smoke");
   mkdirSync(smoke, { recursive: true });
   const root = mkdtempSync(join(smoke, "plugin-stall-"));
-  scratch.push(root);
-  const bin = join(root, "bin");
-  mkdirSync(bin);
-  // A git that never answers, does not stop when asked to, and waits on a helper of its own.
-  writeFileSync(join(bin, "git"), "#!/bin/sh\ntrap '' TERM\nsleep 29.517\n");
-  chmodSync(join(bin, "git"), 0o755);
-  const home = join(root, "home");
+  try {
+    const bin = join(root, "bin");
+    mkdirSync(bin);
+    // A git that never answers, does not stop when asked to, and waits on a helper of its own.
+    writeFileSync(join(bin, "git"), "#!/bin/sh\ntrap '' TERM\nsleep 29.517\n");
+    chmodSync(join(bin, "git"), 0o755);
+    const home = join(root, "home");
 
-  const result = await runIsolated(root, `
-    const started = Date.now();
-    const error = await installer.installPlugin("fixture/gloom-fixture-stall", { quiet: true, timeouts: { gitMs: 1000, dependenciesMs: 1000 } })
-      .then(() => null, (failure) => ({ message: failure.message, code: failure.code }));
-    const { readdirSync } = await import("fs");
-    return { error, ms: Date.now() - started, left: readdirSync(loader.getPluginsDir()) };
-  `, { GLOOMBERB_HOME: home, PATH: `${bin}${delimiter}${process.env.PATH}` });
+    const result = await runIsolated(root, `
+      const started = Date.now();
+      const error = await installer.installPlugin("fixture/gloom-fixture-stall", { quiet: true, timeouts: { gitMs: 1000, dependenciesMs: 1000 } })
+        .then(() => null, (failure) => ({ message: failure.message, code: failure.code }));
+      const { readdirSync } = await import("fs");
+      return { error, ms: Date.now() - started, left: readdirSync(loader.getPluginsDir()) };
+    `, { GLOOMBERB_HOME: home, PATH: `${bin}${delimiter}${process.env.PATH}` });
 
-  expect(result.error).toEqual({ message: "Failed to clone https://github.com/fixture/gloom-fixture-stall.git: no answer within 1 s", code: "install_timed_out" });
-  expect(result.ms).toBeLessThan(10_000);
-  expect(result.left).toEqual([]);
-  // The process ended only once the stalled command was gone, and it took its helpers along.
-  const running = execFileSync("ps", ["-A", "-o", "args="]).toString();
-  expect(running).not.toContain(join(bin, "git"));
-  expect(running).not.toContain("sleep 29.517");
+    expect(result.error).toEqual({ message: "Failed to clone https://github.com/fixture/gloom-fixture-stall.git: no answer within 1 s", code: "install_timed_out" });
+    expect(result.ms).toBeLessThan(10_000);
+    expect(result.left).toEqual([]);
+    // The process ended only once the stalled command was gone, and it took its helpers along.
+    const running = execFileSync("ps", ["-A", "-o", "args="]).toString();
+    expect(running).not.toContain(join(bin, "git"));
+    expect(running).not.toContain("sleep 29.517");
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 }, 30_000);
 
 /**
@@ -157,7 +160,7 @@ test.skipIf(process.platform === "win32")("a clone that stalls is stopped at its
  * until removed by hand, and one from this install would replace the reason
  * it failed, so a restore never learns the network stalled.
  */
-test.skipIf(process.platform === "win32" || process.getuid?.() === 0)("a staging folder that cannot be removed never replaces why an install failed", async () => {
+test.skipIf(process.platform === "win32" || process.getuid?.() === 0).concurrent("a staging folder that cannot be removed never replaces why an install failed", async () => {
   const smoke = join(homedir(), ".cache", "gloom-smoke");
   mkdirSync(smoke, { recursive: true });
   const root = mkdtempSync(join(smoke, "plugin-locked-"));
@@ -297,7 +300,6 @@ describe("plugins that import a sibling plugin", () => {
     const smoke = join(homedir(), ".cache", "gloom-smoke");
     mkdirSync(smoke, { recursive: true });
     const root = mkdtempSync(join(smoke, "plugin-peers-"));
-    scratch.push(root);
     const remotes = join(root, "remotes");
     publish(remotes, "gloom-fixture-peer", {
       "package.json": JSON.stringify({ name: "gloom-fixture-peer", main: "index.ts" }),
@@ -328,40 +330,48 @@ describe("plugins that import a sibling plugin", () => {
       GIT_CONFIG_KEY_0: `url.file://${remotes}/.insteadOf`,
       GIT_CONFIG_VALUE_0: "https://github.com/fixture/",
     }, registry);
-    return { home, run };
+    return { root, home, run };
   }
 
-  test("an install is not imported while its sibling is missing, so it loads once the sibling arrives", async () => {
-    const { run } = setup();
-    const result = await run(`
-      const gateway = await installer.installPlugin("fixture/gloom-fixture-gateway", { quiet: true });
-      await installer.installPlugin("fixture/gloom-fixture-peer", { quiet: true });
-      const loaded = await loader.loadExternalPlugin(gateway.path, "cli", { fresh: true });
-      return { validated: gateway.plugin, name: loaded.plugin.name, error: loaded.error ?? null, needsRestart: !!loaded.needsRestart };
-    `);
+  test.concurrent("an install is not imported while its sibling is missing, so it loads once the sibling arrives", async () => {
+    const { root, run } = setup();
+    try {
+      const result = await run(`
+        const gateway = await installer.installPlugin("fixture/gloom-fixture-gateway", { quiet: true });
+        await installer.installPlugin("fixture/gloom-fixture-peer", { quiet: true });
+        const loaded = await loader.loadExternalPlugin(gateway.path, "cli", { fresh: true });
+        return { validated: gateway.plugin, name: loaded.plugin.name, error: loaded.error ?? null, needsRestart: !!loaded.needsRestart };
+      `);
 
-    expect(result).toEqual({ validated: null, name: "Fixture Gateway", error: null, needsRestart: false });
+      expect(result).toEqual({ validated: null, name: "Fixture Gateway", error: null, needsRestart: false });
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   }, 30_000);
 
-  test("an install from the app brings the sibling along and loads both", async () => {
-    const { home, run } = setup();
-    const result = await run(`
-      const manager = createNodePluginManager("cli");
-      const installed = await manager.install("fixture/gloom-fixture-gateway", { ref: "v1" });
-      const loaded = [];
-      for (const directory of [...(installed.peers ?? []), installed.directory]) {
-        const entry = await manager.load(directory);
-        loaded.push({ name: entry.plugin.name, error: entry.error ?? null });
-      }
-      return { installed, loaded };
-    `);
+  test.concurrent("an install from the app brings the sibling along and loads both", async () => {
+    const { root, home, run } = setup();
+    try {
+      const result = await run(`
+        const manager = createNodePluginManager("cli");
+        const installed = await manager.install("fixture/gloom-fixture-gateway", { ref: "v1" });
+        const loaded = [];
+        for (const directory of [...(installed.peers ?? []), installed.directory]) {
+          const entry = await manager.load(directory);
+          loaded.push({ name: entry.plugin.name, error: entry.error ?? null });
+        }
+        return { installed, loaded };
+      `);
 
-    expect(result.installed).toEqual({ ok: true, directory: "gloom-fixture-gateway", peers: ["gloom-fixture-peer"] });
-    expect(existsSync(join(home, "plugins", "gloom-fixture-peer", "bridge.ts"))).toBe(true);
-    expect(result.loaded).toEqual([
-      { name: "Fixture Peer", error: null },
-      { name: "Fixture Gateway", error: null },
-    ]);
+      expect(result.installed).toEqual({ ok: true, directory: "gloom-fixture-gateway", peers: ["gloom-fixture-peer"] });
+      expect(existsSync(join(home, "plugins", "gloom-fixture-peer", "bridge.ts"))).toBe(true);
+      expect(result.loaded).toEqual([
+        { name: "Fixture Peer", error: null },
+        { name: "Fixture Gateway", error: null },
+      ]);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   }, 30_000);
 });
 
@@ -420,36 +430,39 @@ test.skipIf(process.platform === "win32")("git is resolved before entering a plu
 // plugin by its id, so a command given either has to land on the same folder,
 // and refuse to guess when a clone and a linked copy share the id. A linked
 // plugin with no gloom.json is known by the id its export registers.
-test("an installed plugin is found by its folder, its gloom.json id, or the id its export registers", async () => {
+test.concurrent("an installed plugin is found by its folder, its gloom.json id, or the id its export registers", async () => {
   const root = mkdtempSync(join(tmpdir(), "gloom-plugin-names-"));
-  scratch.push(root);
-  const home = join(root, "home");
-  const plugin = (folder: string, id?: string, source = "export default {};\n") => {
-    mkdirSync(join(home, "plugins", folder), { recursive: true });
-    writeFileSync(join(home, "plugins", folder, "index.ts"), source);
-    if (id) writeFileSync(join(home, "plugins", folder, "gloom.json"), JSON.stringify({ id }));
-  };
-  plugin("gloom-hackernews", "hackernews");
-  plugin("my-hn", "hackernews");
-  plugin("gloom-polls", "polls");
-  plugin("side-loaded");
-  plugin("riskwatch", undefined, 'export default { id: "risk-watch", name: "Risk watch", version: "0.1.0" };\n');
-
-  const found = await runIsolated(root, `
-    const names = ["gloom-hackernews", "polls", "hackernews", "side-loaded", "nope", "riskwatch", "risk-watch"];
-    return {
-      named: Object.fromEntries(names.map((name) => [name, installer.installedPluginDirectoriesNamed(name).sort()])),
-      byId: Object.fromEntries(await Promise.all(names.map(async (name) => [name, (await installer.installedPluginDirectoriesById(name)).sort()]))),
+  try {
+    const home = join(root, "home");
+    const plugin = (folder: string, id?: string, source = "export default {};\n") => {
+      mkdirSync(join(home, "plugins", folder), { recursive: true });
+      writeFileSync(join(home, "plugins", folder, "index.ts"), source);
+      if (id) writeFileSync(join(home, "plugins", folder, "gloom.json"), JSON.stringify({ id }));
     };
-  `, { GLOOMBERB_HOME: home });
+    plugin("gloom-hackernews", "hackernews");
+    plugin("my-hn", "hackernews");
+    plugin("gloom-polls", "polls");
+    plugin("side-loaded");
+    plugin("riskwatch", undefined, 'export default { id: "risk-watch", name: "Risk watch", version: "0.1.0" };\n');
 
-  const named = {
-    "gloom-hackernews": ["gloom-hackernews"],
-    polls: ["gloom-polls"],
-    hackernews: ["gloom-hackernews", "my-hn"],
-    "side-loaded": ["side-loaded"],
-    nope: [],
-    riskwatch: ["riskwatch"],
-  };
-  expect(found).toEqual({ named: { ...named, "risk-watch": [] }, byId: { ...named, "risk-watch": ["riskwatch"] } });
+    const found = await runIsolated(root, `
+      const names = ["gloom-hackernews", "polls", "hackernews", "side-loaded", "nope", "riskwatch", "risk-watch"];
+      return {
+        named: Object.fromEntries(names.map((name) => [name, installer.installedPluginDirectoriesNamed(name).sort()])),
+        byId: Object.fromEntries(await Promise.all(names.map(async (name) => [name, (await installer.installedPluginDirectoriesById(name)).sort()]))),
+      };
+    `, { GLOOMBERB_HOME: home });
+
+    const named = {
+      "gloom-hackernews": ["gloom-hackernews"],
+      polls: ["gloom-polls"],
+      hackernews: ["gloom-hackernews", "my-hn"],
+      "side-loaded": ["side-loaded"],
+      nope: [],
+      riskwatch: ["riskwatch"],
+    };
+    expect(found).toEqual({ named: { ...named, "risk-watch": [] }, byId: { ...named, "risk-watch": ["riskwatch"] } });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });

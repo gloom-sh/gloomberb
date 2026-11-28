@@ -59,7 +59,7 @@ self.onmessage = (event) => {
 export type NativeCallThreadFailure = "open-failed" | "ended" | "stuck";
 
 /** A call the thread took and never began. */
-export interface UnstartedNativeCall {
+interface UnstartedNativeCall {
   /** When it was taken (performance.now()). */
   takenAt: number;
   /** What the caller gave `call` to make it another way. */

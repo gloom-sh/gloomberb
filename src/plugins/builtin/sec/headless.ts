@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDaysInText } from "../../../utils/day-format";
 import type {
   HeadlessBundleResult,
   HeadlessPaneColumn,
@@ -14,14 +15,17 @@ import type { FundFactsPayload } from "../../../api-client/fund-facts";
 import { errorMessage } from "../../../utils/errors";
 import { filingStoryNote, loadFilingStories, type FilingStory } from "../insider/filing-stories";
 import { logFailure } from "../../../utils/log-failure";
-import { latestFilingRows, localFilingListing, localFilingRows } from "./exchange-filings";
+import { emptyOwnershipArchive, exchangeFilingForms, exchangeFilingHistoryLimit, HKEX_FILING_HISTORY_LIMIT, latestFilingRows, localFilingListing, localFilingRows, PRESENTATIONS_FORM } from "./exchange-filings";
+import type { ExchangeAnnouncementsPayload, ExchangeAnnouncementsRequest } from "../../../api-client/exchange-announcements";
 import { loadSecFilings } from "./client";
 import { ETF_FILING_FORMS, filterFilingsByForms, fundSeriesFilings, loadShownSecFilings, SEC_FILING_FETCH_LIMIT } from "./forms";
 import { hiddenFilingsMetadata, hiddenFilingsNote } from "../../../utils/sec-filings";
 import { buildSecFilingRows, secFilingIssuers, SEC_ACCEPTANCE_NOTE } from "./model";
 import { SEC_FILINGS } from "../shared/report-freshness";
 import { fetchFundFacts, fundFactEntries, fundFactPublishers, fundFactsEmpty, fundFactsErrorText, fundFactsStaleNote, fundNoteEntries, listNames } from "./fund-facts";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { limitOption } from "../shared/headless-options";
+import { dayCell, textCell, underRowCol } from "../shared/headless-columns";
+import { isoDayEntries } from "../shared/day-entries";
 import { fundAbroadProfile, venueAbroad, type FundAbroadProfile } from "./fund-abroad";
 import { listingAnnouncementsPage } from "../../../utils/exchange-announcements";
 import { companyDataNotes } from "../../../types/company-from";
@@ -31,15 +35,13 @@ import {
 } from "../../../market-data/tax-equivalent";
 
 const SEC_COLUMNS: HeadlessPaneColumn[] = [
-  {
-    key: "filedAt",
-    header: "Filed",
-    format: (value) => typeof value === "string" ? value.slice(0, 10) : MISSING_VALUE,
-  },
+  { key: "filedAt", header: "Filed", format: dayCell() },
   { key: "acceptanceReported", header: "SEC-reported acceptance" },
   { key: "form", header: "Form" },
-  { key: "companyName", header: "Issuer" },
-  { key: "filing", header: "Filing" },
+  // As the pane: one issuer's filings name it once, in the title; a filer's several issuers name each row's.
+  { key: "companyName", header: "Issuer", omitWhenSame: true },
+  // A period end reads day first in the text; JSON and CSV keep it in ISO.
+  { key: "filing", header: "Filing", textFormat: (value) => typeof value === "string" ? formatDaysInText(value) : MISSING_VALUE },
   { key: "items", header: "Items" },
   { key: "accessionNumber", header: "Accession" },
 ];
@@ -51,9 +53,7 @@ const hasItems = (rows: readonly HeadlessPaneRow[]) => rows.some((row) => typeof
 const PRESS_RELEASE_COLUMN: HeadlessPaneColumn = { key: "pressReleaseUrl", header: "Press release" };
 
 /** The stories that report a Form 4, under its row, as INS prints them under its lines; JSON has them as `stories`. */
-const STORIES_NOTE_COLUMN: HeadlessPaneColumn = {
-  key: "storiesNote", header: "Stories", underRow: true, format: (value) => typeof value === "string" ? value : "",
-};
+const STORIES_NOTE_COLUMN = underRowCol("storiesNote", "Stories", textCell(""));
 
 function secTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneColumn[] {
   const columns = hasItems(rows) ? SEC_COLUMNS : SEC_COLUMNS.filter((column) => column.key !== "items");
@@ -102,14 +102,14 @@ function fundFilingTextColumns(rows: readonly HeadlessPaneRow[]): HeadlessPaneCo
     .map((column) => column.key === "acceptanceReported" ? { ...column, minTableWidth: 100 } : column);
 }
 
-export interface SecHeadlessDependencies {
+interface SecHeadlessDependencies {
   loadFilings(
     symbol: string,
     limit: number,
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<SecFilingItem[]>;
-  loadExchange?: (listing: { symbol: string; exchange: string; limit: number }, ctx: HeadlessPaneContext) => Promise<import("../../../api-client/exchange-announcements").ExchangeAnnouncementsPayload>;
+  loadExchange?: (listing: ExchangeAnnouncementsRequest & { limit: number }, ctx: HeadlessPaneContext) => Promise<ExchangeAnnouncementsPayload>;
   /** The stories reporting each Form 4, by accession number (Gloom Cloud's match); none asked when absent. */
   loadFilingStories?(accessions: readonly string[], ctx: HeadlessPaneContext): Promise<Map<string, FilingStory[]>>;
 }
@@ -125,7 +125,7 @@ const defaultDependencies: SecHeadlessDependencies = {
  * forms, such as a grantor trust (IBIT, GLD) filing 10-Ks and 10-Qs, says so
  * and where its filings are.
  */
-export function fundFilingsEmpty(symbol: string, searched: { count: number; complete: boolean }): string {
+function fundFilingsEmpty(symbol: string, searched: { count: number; complete: boolean }): string {
   if (searched.count === 0) return `No SEC filings found for ${symbol}.`;
   const forms = "prospectus, shareholder reports, N-CEN, N-PORT";
   const none = searched.complete
@@ -134,7 +134,7 @@ export function fundFilingsEmpty(symbol: string, searched: { count: number; comp
   return `${none} Its other filings: fn SEC ${symbol}.`;
 }
 
-export function createSecHeadless(dependencies: SecHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
+function createSecHeadless(dependencies: SecHeadlessDependencies = defaultDependencies): HeadlessPaneDefinition<"rows"> {
   return {
     shape: "rows",
     freshness: { ...SEC_FILINGS, observedKey: "acceptedAt" },
@@ -144,30 +144,15 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       description: "Equity ticker, with its exchange for a local listing.",
     },
     options: [
+      limitOption({ aliases: ["count", "rows"], description: "Maximum recent filings.", defaultValue: 50, maximum: 200 }),
       {
-        key: "limit",
-        shot: REPORT_ROWS,
-        aliases: ["count", "rows"],
-        description: "Maximum recent filings.",
-        type: "integer",
-        defaultValue: 50,
-        minimum: 1,
-        maximum: 200,
+        key: "form", shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
+        description: "Only this SEC form and its amendments, such as 8-K, 10-K or 13D. Use presentations for Taiwan investor conference decks, results for Hong Kong, Japan, Singapore and Vietnam earnings materials, or ownership for Singapore ownership disclosures.",
+        type: "string", placeholder: "form", example: "--form 8-K",
       },
       {
-        key: "form",
-        shot: { reportOnly: "picks the report's rows by form; the pane's Form filter picks a group of forms" },
-        description: "Only this form and its amendments, such as 8-K, 10-K or 13D, from every filing listed for the issuer.",
-        type: "string",
-        placeholder: "form",
-        example: "--form 8-K",
-      },
-      {
-        key: "all",
+        key: "all", type: "boolean", defaultValue: false, pluginState: { pluginId: "ticker-research", key: "pricingSupplements" },
         description: "Also list what is left out by default: the pricing supplements and term sheets (424B2, FWP, and a 424B3 filed among them) a bank files for each structured note, and a fund trust's filings for its other funds.",
-        type: "boolean",
-        defaultValue: false,
-        pluginState: { pluginId: "ticker-research", key: "pricingSupplements" },
       },
     ],
     columns: SEC_COLUMNS,
@@ -176,14 +161,24 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       const symbol = args.symbols[0]!;
       const limit = Number(args.options.limit);
       const form = typeof args.options.form === "string" ? args.options.form.trim() : "";
+      const localListing = localFilingListing(symbol);
+      const localKind = exchangeFilingForms(localListing?.exchange).find(option => option.kind === form.toLowerCase())?.kind;
+      const presentations = localKind === PRESENTATIONS_FORM;
       const load = (count: number) => dependencies.loadFilings(symbol, count, args, ctx);
       // A form filter searches every filing listed for the issuer and keeps the supplements it names; without
       // one, a bank's pricing supplements and a trust's other funds stay out unless --all, as in `filings`.
-      const listing = !form ? localFilingListing(symbol) : null;
+      const listing = !form || localKind ? localListing : null;
+      const localLimit = listing?.exchange === "HKEX" && !localKind && args.options.all !== true
+        ? HKEX_FILING_HISTORY_LIMIT
+        : Math.min(exchangeFilingHistoryLimit(listing?.exchange, localKind), limit);
       const [us, local] = await Promise.allSettled([
-        loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
-        listing && dependencies.loadExchange ? dependencies.loadExchange({ ...listing, limit: listing.exchange === "HKEX" && args.options.all !== true ? 100 : Math.min(50, limit) }, ctx) : Promise.resolve(null),
+        localKind ? Promise.resolve({ filings: [], hidden: null })
+          : loadShownSecFilings(load, limit, { form: form || null, all: args.options.all === true }),
+        listing && dependencies.loadExchange ? dependencies.loadExchange({
+          ...listing, limit: localLimit, ...(localKind ? { kind: localKind } : {}),
+        }, ctx) : Promise.resolve(null),
       ]);
+      if (localKind && local.status === "rejected") throw local.reason;
       const exchange = local.status === "fulfilled" ? local.value : null;
       const exchangeRows = exchange ? localFilingRows(exchange, args.options.all === true) : [];
       if (us.status === "rejected" && !exchangeRows.length) throw us.reason;
@@ -194,14 +189,26 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
       if (us.status === "rejected") notes.push(`SEC filings unavailable: ${errorMessage(us.reason)}`);
       if (local.status === "rejected" && listing) notes.push(`${listing.publisher} filings unavailable: ${errorMessage(local.reason)}`);
       if (exchange?.coverage) notes.push(exchange.coverage);
-      if (exchangeRows.length && listing && exchange) {
+      if ((exchangeRows.length || localKind) && listing && exchange) {
         const combined = latestFilingRows(rows, exchangeRows, limit);
+        const hasCatalogueDate = presentations || combined.some(row => row.dateBasis === "catalogue");
         const columns: HeadlessPaneColumn[] = [
-          SEC_COLUMNS[0]!, { key: "source", header: "Source" }, SEC_COLUMNS[2]!, SEC_COLUMNS[4]!, { key: "url", header: "Document" },
+          hasCatalogueDate ? { ...SEC_COLUMNS[0]!, header: "Date" } : SEC_COLUMNS[0]!,
+          { key: "source", header: "Source" }, SEC_COLUMNS[2]!, SEC_COLUMNS[4]!, { key: "url", header: "Document" },
         ];
+        const publishers = hasCatalogueDate
+          ? [...new Set(combined.map(row => String(row.source)))].join(", ")
+          : rows.length ? `SEC EDGAR, ${listing.publisher}` : listing.publisher;
         return { rows: combined, columns, textColumns: columns.slice(0, -1), notes: [...notes, ...companyDataNotes(filings[0]?.companyFrom)],
-          freshness: { source: rows.length ? `SEC EDGAR, ${listing.publisher}` : listing.publisher, status: "not-a-feed", basis: "filed data", observedKey: "filedAt" },
-          metadata: { symbol, returned: combined.length, exchangePage: exchange.page, ...hiddenFilingsMetadata(hidden) } };
+          freshness: { source: publishers, status: "not-a-feed", basis: hasCatalogueDate ? "filings and catalogue dates" : "filed data", observedKey: "filedAt" },
+          ...(localKind && !combined.length ? { empty: presentations
+            ? exchange.stale ? "MOPS presentation archive incomplete." : "No investor conference presentations in the past year."
+            : localKind === "ownership" ? emptyOwnershipArchive(exchange.stale)
+            : exchange.stale ? "Exchange results archive incomplete." : "No results or presentations in the exchange archive." } : {}),
+          metadata: { symbol, returned: combined.length, exchangePage: exchange.page,
+            ...(exchange.dateSource ? { exchangeDateSource: exchange.dateSource } : {}),
+            ...(localKind ? { form: localKind, total: exchange.total, retrievedAt: exchange.retrievedAt, stale: exchange.stale ?? false } : {}),
+            ...hiddenFilingsMetadata(hidden) } };
       }
       // A listing abroad whose company files nothing with the SEC says where its exchange publishes its announcements.
       const page = !form && filings.length === 0 ? listingAnnouncementsPage(symbol) : null;
@@ -226,7 +233,7 @@ export function createSecHeadless(dependencies: SecHeadlessDependencies = defaul
 
 export const secHeadless = createSecHeadless();
 
-export interface FundHeadlessDependencies extends SecHeadlessDependencies {
+interface FundHeadlessDependencies extends SecHeadlessDependencies {
   loadFacts(symbol: string, ctx: HeadlessPaneContext): Promise<FundFactsPayload>;
   loadAbroadProfile?(key: string, ctx: HeadlessPaneContext): Promise<FundAbroadProfile | null>;
   /** With `--tax-rate`: the Treasury par curve GC shows, for the muni/Treasury ratio; null when it cannot be read. */
@@ -283,7 +290,8 @@ function fundAbroadFactsResult(symbol: string, venue: string, facts: FundFactsPa
   const publishers = fundFactPublishers(facts);
   const stale = fundFactsStaleNote(symbol, facts);
   return {
-    sections: [{ title: "Fund facts", entries: fundFactEntries(facts) }],
+    // Each line's days read first in the text; JSON and CSV keep them in ISO.
+    sections: [{ title: "Fund facts", ...isoDayEntries(fundFactEntries(facts), ["url"]) }],
     complete: true,
     ...(stale ? { notes: [stale] } : {}),
     freshness: {
@@ -303,22 +311,13 @@ function fundAbroadFactsResult(symbol: string, venue: string, facts: FundFactsPa
  * filings. Either part can fail or be empty without taking the other with it:
  * signed out, the facts still load and the filings say why they do not.
  */
-export function createFundHeadless(dependencies: FundHeadlessDependencies = defaultFundDependencies): HeadlessPaneDefinition<"bundle"> {
+function createFundHeadless(dependencies: FundHeadlessDependencies = defaultFundDependencies): HeadlessPaneDefinition<"bundle"> {
   return {
     shape: "bundle",
     freshness: { source: "Fund sponsors and SEC EDGAR", status: "not-a-feed", basis: "published fund data" },
     argument: { kind: "ticker", placeholder: "ticker", description: "US-listed fund ticker. A fund listed abroad gets its issuer's page.",
       examples: TAX_RATE_EXAMPLES.slice(0, 2) },
-    options: [{
-      key: "limit",
-      shot: REPORT_ROWS,
-      aliases: ["count", "rows"],
-      description: "Maximum recent fund filings.",
-      type: "integer",
-      defaultValue: 50,
-      minimum: 1,
-      maximum: 200,
-    }, ...TAX_RATE_OPTIONS],
+    options: [limitOption({ aliases: ["count", "rows"], description: "Maximum recent fund filings.", defaultValue: 50, maximum: 200 }), ...TAX_RATE_OPTIONS],
     discovery: { limitations: ["Fund facts cover the sponsors Gloom collects; other funds point to their SEC filings."] },
     describe: (args) => `ETF | ${args.symbols[0]}`,
     async load(args, ctx) {
@@ -372,8 +371,9 @@ export function createFundHeadless(dependencies: FundHeadlessDependencies = defa
       // The filings line already sends a fund without fund forms to SEC; the facts line does not say it twice.
       const filingsPointToSec = filingsResult.status === "fulfilled" && filings.length === 0 && issuerFilings.length > 0;
       const factsSection = facts?.covered
-        ? { title: "Fund facts", entries: fundFactEntries(facts) }
-        : etn ? { title: "Note terms", entries: fundNoteEntries(etn) }
+        // Each line's days read first in the text; JSON and CSV keep them in ISO.
+        ? { title: "Fund facts", ...isoDayEntries(fundFactEntries(facts), ["url"]) }
+        : etn ? { title: "Note terms", ...isoDayEntries(fundNoteEntries(etn), ["url"]) }
         : { title: "Fund facts", rows: [], empty: factsResult.status === "rejected"
           ? fundFactsErrorText(factsResult.reason)
           : fundFactsEmpty(symbol, facts, !filingsPointToSec) };

@@ -1,10 +1,9 @@
-import { useCallback, useMemo, useRef } from "react";
+import { useCallback, useMemo, useRef, type ReactNode } from "react";
 import {
   TickerListTableView,
   type DataTableKeyEvent,
   type TickerListVisibleRange,
 } from "../../../components";
-import { useDataTableSortMenu } from "../../../components/data-table/sort-menu";
 import { followLiveSparklinePrice } from "../../../components/price-sparkline/model";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
 import type { QuoteFlashDirection } from "../../../components/quote-flash";
@@ -22,6 +21,7 @@ import { RANGE_FROM_BARS_NOTE } from "../../../portfolio/column-values";
 import { getRowAsOfIso, periodPnlFigure, tickerDisplayName } from "../../../portfolio/column-values";
 import { listedSymbol } from "../../../portfolio/listed-symbol";
 import { displayWidth } from "../../../utils/format";
+import { QUOTE_BOOK_CELL_MAX_WIDTH } from "../../../market-data/quotes/time";
 import { dropColumnsToFit, markHiddenTableColumns } from "../../../components/ui/table-layout";
 import { sinceLastSeenTint, type SinceLastSeenRecap } from "./since-last-seen";
 import { portfolioPnlLabel } from "../../../portfolio/position-metrics";
@@ -38,7 +38,7 @@ const BOOK_CURRENCY_COLUMN_IDS: ReadonlySet<string> = new Set(["market_cap", "co
  * names it as the CLI's do (`MKT VAL (CAD)`, `P&L (CAD)`, `MCAP (TRY)`),
  * whatever currency the rows' prices are in, wide enough for it.
  */
-export function bookCurrencyColumn(column: ColumnConfig, currency: string): ColumnConfig {
+function bookCurrencyColumn(column: ColumnConfig, currency: string): ColumnConfig {
   const label = `${column.label} (${currency})`;
   return { ...column, label, width: Math.max(column.width, displayWidth(label)) };
 }
@@ -81,6 +81,12 @@ const NARROW_BOOK_DROP_ORDER = ["forward_pe", "pe", "dividend_yield", "market_ca
  * latest price) and the cost a period's P&L does not read.
  */
 const NARROW_PERIOD_DROP_ORDER = [...NARROW_BOOK_DROP_ORDER, "day_pnl", "change_pct", "avg_cost", "price"];
+/**
+ * What the desktop's table gives up after those, where a book is still wider
+ * than its pane (`DataTableProps.columnDropOrder`), so its value and P&L stay
+ * beside the ticker: the average cost, then the day's change and P&L.
+ */
+const NARROW_BOOK_COLUMN_DROP_ORDER = ["avg_cost", "change_pct", "day_pnl"] as const;
 /** Columns of a held position: a list that shows one is a book, whose value outranks its valuation. */
 const POSITION_COLUMN_IDS: ReadonlySet<string> = new Set(["shares", "avg_cost", "cost_basis", "mkt_value", "weight", "day_pnl", "pnl", "pnl_pct"]);
 
@@ -95,7 +101,7 @@ const NO_COMPANY_DATA_TYPES: ReadonlySet<string> = new Set(["FUTURE", "FUTURES",
  * A stock, a fund or a listing of no stated type waits for that answer, as
  * its dash may still fill in; a future, a currency or an index does not.
  */
-export function companyDataSettled(financials: TickerFinancials | undefined, answered: boolean): boolean {
+function companyDataSettled(financials: TickerFinancials | undefined, answered: boolean): boolean {
   const quote = financials?.quote;
   if (!quote) return false;
   if (financials.fundamentals || answered) return true;
@@ -111,7 +117,7 @@ export function companyDataSettled(financials: TickerFinancials | undefined, ans
  * unless a settled row has a figure for it, so adding a row never brings it
  * back for a moment.
  */
-export function fitPortfolioColumns(
+function fitPortfolioColumns(
   columns: readonly ColumnConfig[],
   rows: readonly { cell: (column: ColumnConfig) => string; settled: boolean }[],
   width: number | undefined,
@@ -209,6 +215,7 @@ export function PortfolioTickerTable({
   resetScrollKey,
   onRowActivate,
   addTickerShortcut,
+  emptyActions,
   onOpenPerpetual,
   rootHeight,
   width,
@@ -244,6 +251,8 @@ export function PortfolioTickerTable({
   onRowActivate?: (ticker: TickerRecord) => void;
   /** The key of the add row, which the empty table names. The pane shows the row itself, once. */
   addTickerShortcut?: string;
+  /** Buttons under the empty table's title (`TickerListTableViewProps.emptyActions`). */
+  emptyActions?: ReactNode;
   /** Opens PERP on a row's stock perpetual: its PERP% and FUND 8H cells link to it. */
   onOpenPerpetual?: (marketId: string) => void;
   rootHeight?: number;
@@ -315,6 +324,12 @@ export function PortfolioTickerTable({
       priceColumn.width,
     ))
     : 0, [columnContext.valuationBasis, priceColumn, resolveCell, sortedTickers, tableFinancialsMap]);
+  // BOOK UTC grows to show a book's session and feed marks whole (◷AH 24 Nov 23:40), as LAST grows for its session mark.
+  const bookColumn = columns.find((column) => column.id === "book_time");
+  const bookWidth = useMemo(() => bookColumn ? Math.min(QUOTE_BOOK_CELL_MAX_WIDTH, sortedTickers.reduce(
+    (widest, ticker) => Math.max(widest, displayWidth(resolveCell(bookColumn, ticker, tableFinancialsMap.get(ticker.metadata.ticker)).text)),
+    bookColumn.width,
+  )) : 0, [bookColumn, resolveCell, sortedTickers, tableFinancialsMap]);
   // 52W% grows to show a range read from daily bars as one ("+45.30% bars"), as LAST grows for its session mark.
   const rangeColumn = columns.find((column) => column.id === "range_52w");
   const rangeWidth = useMemo(() => rangeColumn && sortedTickers.some((ticker) =>
@@ -337,6 +352,7 @@ export function PortfolioTickerTable({
     : column.id === "weight" && grossWeights ? { ...column, label: GROSS_WEIGHT_LABEL }
     : column.id === "ticker" && tickerWidth > column.width ? { ...column, width: tickerWidth }
     : column.id === "price" && priceWidth > column.width ? { ...column, width: priceWidth }
+    : column.id === "book_time" && bookWidth > column.width ? { ...column, width: bookWidth }
     : column.id === "range_52w" && rangeWidth > column.width ? { ...column, width: rangeWidth }
     : column.id === "pnl_pct" && period ? { ...column, label: CONTRIBUTION_LABEL }
     : pnlLabel !== "P&L" && (column.id === "pnl" || column.id === "pnl_pct") ? {
@@ -344,8 +360,8 @@ export function PortfolioTickerTable({
     label: column.id === "pnl_pct" ? pnlLabel.replace("P&L", "%") : pnlLabel,
   } : column).map((column) => BOOK_CURRENCY_COLUMN_IDS.has(column.id) ? bookCurrencyColumn(column, capCurrency) : column)
     .map((column) => hasFrontReference && column.id === noteColumnId ? { ...column, flexGrow: 1 } : column),
-  [capCurrency, columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, period, pnlLabel, priceWidth, rangeWidth, sharesWidth,
-    tickerWidth]);
+  [bookWidth, capCurrency, columns, grossWeights, hasFrontReference, hasNonShareQuantity, noteColumnId, period, pnlLabel, priceWidth, rangeWidth,
+    sharesWidth, tickerWidth]);
   // Read again as the rows' data moves, from the cells the rows show; the columns change only when what is hidden does.
   // The company columns hidden last time, per list, stay hidden while a row added since settles.
   const hiddenCompanyRef = useRef<{ list: string | undefined; ids: ReadonlySet<string> }>({ list: undefined, ids: new Set() });
@@ -366,6 +382,8 @@ export function PortfolioTickerTable({
     const eligible = sizedColumns.filter((column) => !hiddenCompanyRef.current.ids.has(column.id));
     return hiddenColumnIds ? markHiddenTableColumns(eligible, eligible.filter((column) => !hidden.has(column.id))) : sizedColumns;
   }, [hiddenColumnIds, sizedColumns]);
+  // A watchlist's day change is what it is for; only a book gives it up before its P&L.
+  const book = displayColumns.some((column) => POSITION_COLUMN_IDS.has(column.id));
   // The Export CSV dates each row as its AS OF does: a book at the latest print by the print its LAST is.
   const exportAsOf = useCallback(
     (ticker: TickerRecord) => getRowAsOfIso(ticker, tableFinancialsMap.get(ticker.metadata.ticker), columnContext),
@@ -391,17 +409,6 @@ export function PortfolioTickerTable({
     ].map(labelled);
     return rows.length > 0 ? rows : undefined;
   }, [allocationRows, displayColumns, periodLines]);
-  // The table offers "Sort by…" while it has a sort column. A watchlist starts
-  // unsorted and a third header click turns sorting off, so the unsorted state
-  // needs its own entry until TickerListTableView takes `sortable`.
-  useDataTableSortMenu({
-    enabled: !!focused && sortColumnId === null,
-    columns: displayColumns,
-    sortColumnId: null,
-    sortDirection,
-    onHeaderClick,
-  });
-
   return (
     <TickerListTableView
       focused={focused}
@@ -424,11 +431,13 @@ export function PortfolioTickerTable({
       onRowActivate={onRowActivate}
       rowMenuAccelerators={PORTFOLIO_ROW_MENU_KEYS}
       addTickerShortcut={addTickerShortcut}
+      emptyActions={emptyActions}
       summaryRows={summaryRows}
       rootHeight={rootHeight}
       exportName={exportName}
       exportAsOf={exportAsOf}
       columnReorder={columnReorder}
+      columnDropOrder={book ? NARROW_BOOK_COLUMN_DROP_ORDER : undefined}
       groups={groups}
       onToggleGroup={onToggleGroup}
       rowMenuItems={rowMenuItems}

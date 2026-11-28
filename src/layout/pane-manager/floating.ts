@@ -114,7 +114,7 @@ const FLOATING_PANE_CHROME_LAYERS = 3;
  * renumbered from the base in the same order; a layout saved with a higher
  * stack is renumbered when it loads.
  */
-export const FLOATING_PANE_MAX_Z = SHELL_PREVIEW_Z - FLOATING_PANE_CHROME_LAYERS - 1;
+const FLOATING_PANE_MAX_Z = SHELL_PREVIEW_Z - FLOATING_PANE_CHROME_LAYERS - 1;
 
 /**
  * The entries with the same front-to-back order and no z above

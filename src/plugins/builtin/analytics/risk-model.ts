@@ -226,7 +226,7 @@ export function isWeakFactorFit(rSquared: number | null | undefined): boolean {
 }
 
 /** "R² 0.28", or "R² 0.03, weak fit" below WEAK_FACTOR_FIT; "R² --" without a fit. */
-export function factorFitText(rSquared: number | null | undefined): string {
+function factorFitText(rSquared: number | null | undefined): string {
   if (rSquared == null || !Number.isFinite(rSquared)) return `R² ${MISSING_VALUE}`;
   return `R² ${rSquared.toFixed(2)}${isWeakFactorFit(rSquared) ? ", weak fit" : ""}`;
 }
@@ -607,7 +607,7 @@ const NAMED_CALENDAR_VENUES = 2;
  * a US trading day it did not trade (convertClosesToUsd). Null when every
  * holding in the basket trades on a US venue.
  */
-export function riskReturnCalendar(members: ReadonlyArray<{ exchange: string; convertedFrom?: string | null }>): string | null {
+function riskReturnCalendar(members: ReadonlyArray<{ exchange: string; convertedFrom?: string | null }>): string | null {
   const abroad = [...new Set(members.flatMap((row) => {
     const venue = canonicalExchange(row.exchange);
     if (!venue) return row.convertedFrom ? ["other"] : [];

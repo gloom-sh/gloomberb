@@ -17,7 +17,7 @@ const SCREENSHOT_WATERMARK_LINGER_MS = 10_000;
  */
 const REFOCUS_GRACE_MS = 1_500;
 
-export type ScreenshotKeySignal = "show" | "hide" | "keep";
+type ScreenshotKeySignal = "show" | "hide" | "keep";
 
 type ScreenshotKeyEventLike = Pick<KeyboardEvent, "key" | "metaKey" | "shiftKey">;
 
@@ -31,7 +31,7 @@ const MODIFIER_KEYS = new Set(["Alt", "AltGraph", "Control", "Fn", "Hyper", "Met
  * screenshot, and hides it again. Print Screen is delivered on Windows and on
  * desktops that do not grab it globally, so it counts as a screenshot outright.
  */
-export function screenshotKeySignal(event: ScreenshotKeyEventLike): ScreenshotKeySignal {
+function screenshotKeySignal(event: ScreenshotKeyEventLike): ScreenshotKeySignal {
   if (event.key === "PrintScreen" || event.key === "Snapshot") return "show";
   if (MODIFIER_KEYS.has(event.key)) {
     return event.metaKey && event.shiftKey ? "show" : "keep";

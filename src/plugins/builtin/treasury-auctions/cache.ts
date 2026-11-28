@@ -1,10 +1,11 @@
+import { sourceDidNotAnswer } from "../../../api-client/errors";
 import { createPluginCache, savedCopyForTransientFailure, type PluginCacheResult } from "../../../data/plugin-cache";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
 import type { ConnectionHealthRegistry } from "../../../core/connection-health";
 import type { PluginPersistence } from "../../../types/plugin";
 import {
   AUCTION_ARCHIVE_PAGE_SIZE, AUCTION_HISTORY_ALL, AUCTION_HISTORY_DAYS, AUCTION_HISTORY_START, auctionArchiveBoundary,
-  auctionWindowQuery, fetchTreasuryAuctions, type AuctionHistoryWindow, type AuctionQuery,
+  auctionWindowQuery, EMPTY_AUCTION_HISTORY, fetchTreasuryAuctions, type AuctionHistory, type AuctionHistoryWindow, type AuctionQuery,
 } from "./client";
 import { isPendingAuction, mergeAuctionSources } from "./model";
 import { DIRECT_LOOKBACK_DAYS, fetchDirectAuctions } from "./treasury-direct";
@@ -19,8 +20,8 @@ const DIRECT_CACHE_SOURCE = "treasury-direct";
  * 5: boards carry the low yield and discount rate, and early rows with their high and low swapped are put right.
  */
 /** Raised when a board gains fields (5: the low yield; 6: early bills blank an investment rate their swapped discount rates contradict), so a saved board never lacks a column the pane shows. */
-export const CACHE_SCHEMA_VERSION = 6;
-export const DIRECT_CACHE_SCHEMA_VERSION = 2;
+const CACHE_SCHEMA_VERSION = 6;
+const DIRECT_CACHE_SCHEMA_VERSION = 2;
 export const TREASURY_FISCAL_DATA_CONNECTION_ID = "treasury-fiscal-data";
 export const TREASURY_DIRECT_CONNECTION_ID = "treasury-direct";
 /**
@@ -80,16 +81,21 @@ export function resetTreasuryAuctionsPersistence(): void {
   connectionHealth = null;
 }
 
-type AuctionLoader = (query: AuctionQuery) => Promise<TreasuryAuction[]>;
+type AuctionLoader = (query: AuctionQuery) => Promise<AuctionHistory>;
 /** The auctions of the last `days` days and the announced ones, from TreasuryDirect. */
 type DirectLoader = (days: number) => Promise<TreasuryAuction[]>;
+type DirectLookup = { days: number; load: DirectLoader; coversWindow: boolean };
 
-/** One walk, reported through Connections; an empty one is invalid and must never replace the last good board. */
-function walk(source: { id: string; name: string }, load: () => Promise<TreasuryAuction[]>) {
+/** One walk, reported through Connections. Only a covered zero-page history can be cached as empty. */
+function walk(source: { id: string; name: string }, load: () => Promise<AuctionHistory>, coversEmpty?: () => Promise<boolean>) {
   return async () => {
     const auctions = await (connectionHealth?.hasSource(source.id)
       ? connectionHealth.track(source.id, "fetchAuctions", load)
       : load());
+    if (auctions === EMPTY_AUCTION_HISTORY) {
+      if (await coversEmpty?.()) return [];
+      throw NO_FISCAL_HISTORY;
+    }
     if (auctions.length === 0) throw new Error(`${source.name} returned no auctions`);
     return auctions;
   };
@@ -97,6 +103,7 @@ function walk(source: { id: string; name: string }, load: () => Promise<Treasury
 
 const FISCAL_DATA = { id: TREASURY_FISCAL_DATA_CONNECTION_ID, name: "Treasury Fiscal Data" };
 const TREASURY_DIRECT = { id: TREASURY_DIRECT_CONNECTION_ID, name: "TreasuryDirect" };
+const NO_FISCAL_HISTORY = sourceDidNotAnswer("Treasury Fiscal Data returned no auctions");
 
 /** One source's answer, or why it gave none: the other source's board stands in for it. */
 type Answer = { read: PluginCacheResult<TreasuryAuction[]> } | { failed: unknown };
@@ -111,6 +118,12 @@ async function answer(read: Promise<PluginCacheResult<TreasuryAuction[]>>): Prom
 
 const failureMessage = (failed: unknown) => failed instanceof Error ? failed.message : String(failed);
 
+function directCoversHistory(direct: PluginCacheResult<TreasuryAuction[]> | null, lookup: DirectLookup | null, from: string): boolean {
+  if (!direct || !lookup?.coversWindow || direct.stale || auctionWindowQuery(lookup.days, direct.fetchedAt).from > from) return false;
+  const today = auctionWindowQuery(0).from;
+  return direct.data.some((auction) => auction.auctionDate >= from && auction.auctionDate <= today && !isPendingAuction(auction));
+}
+
 /**
  * The recent auctions from both sources: Fiscal Data's walk of `fiscalKey`
  * and TreasuryDirect's last weeks and announcements, each cached and refreshed
@@ -123,25 +136,35 @@ const failureMessage = (failed: unknown) => failed instanceof Error ? failed.mes
 async function loadRecentBoard(
   force: boolean,
   fiscalKey: string,
-  fiscal: () => Promise<TreasuryAuction[]>,
-  direct: { days: number; load: DirectLoader } | null,
-  from: () => string,
+  fiscal: () => Promise<AuctionHistory>,
+  direct: DirectLookup | null,
+  from: string,
 ): Promise<TreasuryAuctionsResult> {
   const directKey = direct && `direct:${direct.days}`;
-  const unchanged = force ? null : savedRecentBoard(fiscalKey, directKey, from());
+  const unchanged = force ? null : savedRecentBoard(fiscalKey, directKey, direct, from);
   if (unchanged) return unchanged;
-  const [primary, supplement] = await Promise.all([
-    answer(cache.load(fiscalKey, walk(FISCAL_DATA, fiscal), { force })),
-    direct && directKey ? answer(directCache.load(directKey, walk(TREASURY_DIRECT, () => direct.load(direct.days)), { force })) : null,
+  const recent = direct && directKey
+    ? answer(directCache.load(directKey, walk(TREASURY_DIRECT, () => direct.load(direct.days)), { force })) : null;
+  const covered = (supplement: Answer | null) => !!supplement && "read" in supplement && directCoversHistory(supplement.read, direct, from);
+  const [history, supplement] = await Promise.all([
+    answer(cache.load(fiscalKey, walk(FISCAL_DATA, fiscal, async () => covered(await recent)), { force })),
+    recent,
   ]);
-  if ("failed" in primary && (!supplement || "failed" in supplement)) throw primary.failed;
+  const primary = "read" in history && !history.read.data.length && (history.read.stale || !covered(supplement))
+    ? { failed: history.read.error ?? NO_FISCAL_HISTORY } : history;
+  if ("failed" in primary && (!supplement || "failed" in supplement)) {
+    throw primary.failed === NO_FISCAL_HISTORY && supplement ? supplement.failed : primary.failed;
+  }
 
   const answers = [primary, supplement].filter((entry): entry is { read: PluginCacheResult<TreasuryAuction[]> } => !!entry && "read" in entry);
   const failed = [primary, supplement].find((entry): entry is { failed: unknown } => !!entry && "failed" in entry);
   const saved = answers.filter(({ read }) => read.source === "stale-fallback");
-  const refreshError = answers.find(({ read }) => read.refreshError)?.read.refreshError ?? (failed ? failureMessage(failed.failed) : undefined);
+  const noHistory = ("read" in primary ? primary.read.error : primary.failed) === NO_FISCAL_HISTORY;
+  const recentError = noHistory && supplement
+    ? "read" in supplement ? supplement.read.refreshError : failureMessage(supplement.failed) : undefined;
+  const refreshError = recentError ?? answers.find(({ read }) => read.refreshError)?.read.refreshError ?? (failed ? failureMessage(failed.failed) : undefined);
   return {
-    auctions: mergeAuctionSources("read" in primary ? primary.read.data : [], supplement && "read" in supplement ? supplement.read.data : [], from()),
+    auctions: mergeAuctionSources("read" in primary ? primary.read.data : [], supplement && "read" in supplement ? supplement.read.data : [], from),
     // The oldest part: how old what is shown can be.
     fetchedAt: Math.min(...answers.map(({ read }) => read.fetchedAt)),
     stale: !!failed || answers.some(({ read }) => read.stale),
@@ -186,11 +209,12 @@ function comeDue(auction: TreasuryAuction, today: string, weekAgo: string): bool
  * cache already answers from a fresh copy, and keeps the failure of a refresh,
  * so only a run that has read nothing yet (a command) looks here.
  */
-function savedRecentBoard(fiscalKey: string, directKey: string | null, from: string, now = Date.now()): TreasuryAuctionsResult | null {
+function savedRecentBoard(fiscalKey: string, directKey: string | null, lookup: DirectLookup | null, from: string, now = Date.now()): TreasuryAuctionsResult | null {
   if (cache.get(fiscalKey)) return null;
   const fiscal = cache.get(fiscalKey, { allowExpired: true });
   const direct = directKey ? directCache.get(directKey, { allowExpired: true }) : null;
   if (!fiscal || fiscal.stale || (directKey && (!direct || direct.stale))) return null;
+  if (!fiscal.data.length && !directCoversHistory(direct, lookup, from)) return null;
   const auctions = mergeAuctionSources(fiscal.data, direct?.data ?? [], from);
   const fetchedAt = Math.min(fiscal.fetchedAt, direct?.fetchedAt ?? Infinity);
   const today = newYorkDay.format(now);
@@ -207,13 +231,14 @@ export async function loadTreasuryAuctions(
   direct: DirectLoader | null = loader === fetchTreasuryAuctions ? fetchDirectAuctions : null,
 ): Promise<TreasuryAuctionsResult> {
   if (window === AUCTION_HISTORY_ALL) return loadAllTreasuryAuctions(force, loader, direct);
+  const query = auctionWindowQuery(window);
   // A saved board answers only for a failure asking again may get past; a refusal or an invalid page is the error.
   return answered(await loadRecentBoard(
     force,
     `recent:${window}`,
-    () => loader(auctionWindowQuery(window)),
-    direct && { days: Math.min(window, DIRECT_LOOKBACK_DAYS), load: direct },
-    () => auctionWindowQuery(window).from,
+    () => loader(query),
+    direct && { days: Math.min(window, DIRECT_LOOKBACK_DAYS), load: direct, coversWindow: window <= DIRECT_LOOKBACK_DAYS },
+    query.from,
   ));
 }
 
@@ -243,7 +268,7 @@ async function loadAllTreasuryAuctions(force: boolean, loader: AuctionLoader, di
   const boundary = auctionArchiveBoundary();
   const key = `archive:${boundary}`;
   const [recent, archive] = await Promise.all([
-    loadRecentBoard(force, `since:${boundary}`, () => loader({ from: boundary }), direct && { days: DIRECT_LOOKBACK_DAYS, load: direct }, () => boundary),
+    loadRecentBoard(force, `since:${boundary}`, () => loader({ from: boundary }), direct && { days: DIRECT_LOOKBACK_DAYS, load: direct, coversWindow: false }, boundary),
     savedArchive(key) ?? archiveCache.load(key, walk(FISCAL_DATA, () => loader({
       from: AUCTION_HISTORY_START, before: boundary, pageSize: AUCTION_ARCHIVE_PAGE_SIZE,
     }))).then(savedCopyForTransientFailure),

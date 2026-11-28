@@ -8,6 +8,7 @@ import { MISSING_VALUE, formatCompact } from "../../../utils/format";
 import { formatStrikeLabel } from "../../../utils/options";
 import { formatOptionPrice, optionQuoteSide, optionSpread } from "./market-reference";
 import { formatCarryPercent, formatCostOfSpot } from "./carry";
+import { OPTION_IV_UNIT, optionIvFields } from "../shared/volatility/option-export";
 import type {
   OptionColumn,
   OptionFieldId,
@@ -152,10 +153,23 @@ export function fitOptionFieldIds(fieldIds: readonly OptionFieldId[], width: num
   return fields;
 }
 
+const sideColumnId = (side: OptionSide, field: OptionFieldId) => `${side}${field[0]!.toUpperCase()}${field.slice(1)}` as OptionColumn["id"];
+
+/**
+ * The same order for the desktop's chain, whose table fits whole columns to
+ * its width (`DataTableProps.columnDropOrder`): a field is a set of its call
+ * and its put, which leave together or stay together, so the puts that stay
+ * mirror the calls wherever Settings put the field. The bid is listed last
+ * so it is such a set too; the table never gives up a row's last figure, so
+ * it stays, as does the strike that names the row (`createOptionColumns`).
+ */
+export const OPTION_COLUMN_DROP_ORDER: readonly (readonly string[])[] = [...OPTION_FIELD_DROP_ORDER, "bid" as const]
+  .map((field) => [sideColumnId("call", field), sideColumnId("put", field)]);
+
 function sideColumn(side: OptionSide, field: OptionFieldId): Omit<OptionColumn, "headerColor"> {
   const definition = OPTION_FIELDS_BY_ID.get(field)!;
   return {
-    id: `${side}${field[0]!.toUpperCase()}${field.slice(1)}` as OptionColumn["id"],
+    id: sideColumnId(side, field),
     field,
     side,
     label: `${side === "call" ? "C" : "P"} ${definition.header}`,
@@ -168,7 +182,8 @@ export function createOptionColumns(fieldIds: readonly OptionFieldId[]): Array<O
   const fields = resolveOptionFieldIds(fieldIds);
   return [
     ...fields.filter((field) => !OPTION_FIELDS_BY_ID.get(field)!.putOnly).map((field) => sideColumn("call", field)),
-    { id: "strike", field: "strike", side: null, label: "STRIKE", width: STRIKE_COLUMN_WIDTH, align: "right" },
+    // The strike is what each row is, between its calls and its puts: no fit leaves it out.
+    { id: "strike", field: "strike", side: null, label: "STRIKE", width: STRIKE_COLUMN_WIDTH, align: "right", identifiesRow: true },
     ...[...fields].reverse().map((field) => sideColumn("put", field)),
   ];
 }
@@ -346,9 +361,6 @@ function formatOptionContractCell(
       return formatCompact(contract.volume, { fixedDecimals: true });
     case "openInterest":
       return formatCompact(contract.openInterest, { fixedDecimals: true });
-    case "iv":
-      // A stale quote (from before the session, or under intrinsic) is shown, but no IV or greek is read from it.
-      return contract.quoteStale ? "stale" : formatIv(row.impliedVolatility, row.impliedVolatilityFilled);
     case "delta":
       return formatGreek(greeks?.delta);
     case "gamma":
@@ -365,6 +377,8 @@ function formatOptionContractCell(
       return column.side === "put" ? formatCostOfSpot(row.putCostOfSpot) : MISSING_VALUE;
     case "strike":
       return formatStrikeLabel(contract.strike);
+    default:
+      return MISSING_VALUE;
   }
 }
 
@@ -396,8 +410,10 @@ export function renderOptionCell(
   const contract = optionContractForColumn(row, column);
   const backgroundColor = optionMoneynessBackground(row, contract, column, rowState);
   const surface = backgroundColor ?? rowSurface;
+  const iv = column.field === "iv" ? optionIvFields(contract, row.impliedVolatility, row.impliedVolatilityFilled) : null;
   return {
-    text: formatOptionContractCell(row, contract, column),
+    text: iv ? iv.ivSource === "stale quote" ? "stale" : formatIv(iv.iv ?? undefined, iv.ivSource === "filled") : formatOptionContractCell(row, contract, column),
+    ...(iv ? { value: iv.iv === null ? null : iv.iv * 100, reportValueUnit: OPTION_IV_UNIT } : {}),
     ...(!contract ? { mayBeBlank: true } : {}),
     color: contract && !contract.quoteStale ? optionRoleColor(optionColumnRole(column), surface) : optionMutedColor(surface),
     keepColorWhenSelected: otherHalf,

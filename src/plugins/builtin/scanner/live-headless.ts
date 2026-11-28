@@ -1,10 +1,10 @@
 import type { LiveScanPayload, LiveScanWireDefinition } from "../../../api-client/live-scan";
 import type {
   HeadlessPaneDefinition,
-  HeadlessPaneFreshness,
   HeadlessSnapshotResult,
 } from "../../../types/plugin";
 import { MISSING_VALUE, formatPercentRaw } from "../../../utils/format";
+import { scannerFreshness } from "./headless";
 import {
   conditionColumnLabel,
   conditionText,
@@ -43,12 +43,6 @@ function headlessScan(universe: string, json: string): LiveScan {
     scan = readLiveScan(raw);
   }
   return { ...scan, universe: parseHeadlessUniverse(universe) };
-}
-
-function freshness(payload: LiveScanPayload): HeadlessPaneFreshness {
-  if (payload.status === "closed") return { status: "not-a-feed", basis: "closed session" };
-  if (payload.status === "degraded" || payload.status === "starting") return { status: "stale" };
-  return payload.access === "realtime" ? { status: "live" } : { status: "delayed", delayMinutes: payload.delayMinutes };
 }
 
 /** Why a scan lists nothing, as the pane says it: still starting, warming up, closed, or no match. */
@@ -96,7 +90,7 @@ function projectLiveScan(payload: LiveScanPayload, scan: LiveScan): HeadlessSnap
       gapPercent: match.gapPercent,
     })),
     ...(payload.status === "degraded" ? { errors: ["Live scanner degraded"] } : {}),
-    freshness: freshness(payload),
+    freshness: scannerFreshness(payload),
     metadata: {
       ...(notice ? { notices: [notice] } : {}),
       ...(payload.warnings.length ? { warnings: payload.warnings } : {}),

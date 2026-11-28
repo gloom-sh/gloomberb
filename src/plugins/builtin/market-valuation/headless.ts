@@ -13,6 +13,8 @@ import { DEFAULT_INDICATOR_ID, INDICATORS, resolveIndicatorArg } from "./indicat
 import { createCloudSourceDeps } from "./sources";
 import { historyStartNotice, sinceLabel } from "../shared/history-span";
 import { formatSigma } from "../shared/trend";
+import { numCol, textCol } from "../shared/headless-columns";
+import { enumOption } from "../shared/headless-options";
 import {
   readingPeriodLabel,
   selectValuationViews,
@@ -87,36 +89,16 @@ function projectValuationHeadlessBundle(
       {
         title: "Market valuation",
         columns: [
-          { key: "indicator", header: "Indicator" },
-          {
-            key: "value",
-            header: "Value",
-            align: "right",
-            format: (_value, row) => String(row.formattedValue),
-          },
-          { key: "zone", header: "Zone" },
-          {
-            key: "richPercentile",
-            header: "Rich %ile",
-            align: "right",
-            format: (value) => value == null ? MISSING_VALUE : formatNumber(Number(value), 0),
-          },
-          {
-            // Where the indicator's history starts: its percentile and trend are taken from there whatever the range.
-            key: "historyStart",
-            header: "Since",
-            align: "right",
-            format: (value) => typeof value === "string" ? value.slice(0, 4) : MISSING_VALUE,
-          },
-          {
-            key: "richSigma",
-            header: "Trend",
-            align: "right",
-            format: (value) => formatSigma(value == null ? null : Number(value)),
-          },
+          textCol("indicator", "Indicator"),
+          numCol("value", "Value", (_value, row) => String(row.formattedValue)),
+          textCol("zone", "Zone"),
+          numCol("richPercentile", "Rich %ile", (value) => value == null ? MISSING_VALUE : formatNumber(Number(value), 0)),
+          // Where the indicator's history starts: its percentile and trend are taken from there whatever the range.
+          numCol("historyStart", "Since", (value) => typeof value === "string" ? value.slice(0, 4) : MISSING_VALUE),
+          numCol("richSigma", "Trend", (value) => formatSigma(value == null ? null : Number(value))),
           // The day the reading's period ends, as FA dates its columns; the row keeps the period's first day.
-          { key: "asOf", header: "As of", format: (value, row) => typeof value === "string"
-            ? readingPeriodLabel(value, row.periodicity as IndicatorViewModel["periodicity"] | undefined) : MISSING_VALUE },
+          textCol("asOf", "As of", (value, row) => typeof value === "string"
+            ? readingPeriodLabel(value, row.periodicity as IndicatorViewModel["periodicity"] | undefined) : MISSING_VALUE),
         ],
         rows,
       },
@@ -149,13 +131,7 @@ export const marketValuationHeadless: HeadlessPaneDefinition<"bundle"> = {
     description: "Optional valuation indicator id, label, or prefix.",
     optional: true,
   },
-  options: [{
-    key: "range",
-    description: "History window used by the selected indicator view.",
-    type: "enum",
-    values: [{ value: "10Y" }, { value: "25Y" }, { value: "ALL", aliases: ["all"] }],
-    defaultValue: "25Y",
-  }],
+  options: [enumOption("range", ["10Y", "25Y", { value: "ALL", aliases: ["all"] }], { description: "History window used by the selected indicator view.", defaultValue: "25Y" })],
   // The range asked for: the table lists every indicator, each with a history of its own.
   describe: (args) => `Market Valuation | ${String(args.options.range)}`,
   async load(args, ctx) {

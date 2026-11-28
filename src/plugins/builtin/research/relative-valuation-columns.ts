@@ -13,7 +13,7 @@ import { currentTrailingValuation, latestTrailingStatement, listingStatementConv
 import { refusedLock } from "../shared/cloud-denied";
 import { resolveHeadlessInstrument } from "../shared/headless-market-data";
 import { loadShortInterest } from "../short-interest/client";
-import { buildShortWatchRow } from "../short-interest/watch-model";
+import { settlementPercentFloat } from "../short-interest/model";
 import { analystTargetCurrency, formatAnalystPrice, recommendationTotal } from "./analyst-model";
 import { peerDatesText } from "./relative-valuation-basis";
 
@@ -148,6 +148,11 @@ export function extraColumns(ids: readonly ExtraColumnId[]): { text: HeadlessPan
       ...spec.columns,
       { key: spec.sourceKey, header: `${spec.label} source`, format: text },
       { key: spec.asOfKey, header: `${spec.label} as of`, format: text, shrink: false },
+      ...spec === COLUMN_SPECS.shortInterest ? [
+        { key: "shortInterestSettlementSource", header: "Short settlement source", format: text },
+        { key: "shortInterestSettlementDate", header: "Short settlement date", format: text, shrink: false },
+        { key: "shortInterestFloatAsOf", header: "Short float count as of", format: text, shrink: false },
+      ] : [],
     ]),
   };
 }
@@ -197,12 +202,20 @@ async function loadShortInterestFields(symbols: readonly string[], financials: R
     if (!bare) return;
     try {
       const result = await loadShortInterest(bare, ctx.apiClient);
-      const row = buildShortWatchRow({ symbol, records: result.records, floatShares: financials.get(symbol)?.fundamentals?.floatShares ?? null, history: null });
-      if (!row.settlementDate) return;
+      const fundamentals = financials.get(symbol)?.fundamentals;
+      const latest = result.records.reduce<(typeof result.records)[number] | null>((current, record) =>
+        current && current.settlementDate > record.settlementDate ? current : record, null);
+      if (!latest) return;
+      const date = latest.settlementDate.toISOString().slice(0, 10);
+      const ratio = settlementPercentFloat(latest, fundamentals?.floatShares);
+      const source = SHORT_INTEREST_SOURCES[result.source];
       Object.assign(out.fields.get(symbol)!, {
-        shortInterestPercentFloat: row.percentFloat,
-        shortInterestSource: SHORT_INTEREST_SOURCES[result.source] ?? "FINRA",
-        shortInterestAsOf: row.settlementDate,
+        shortInterestPercentFloat: ratio,
+        shortInterestSource: ratio == null ? null : source,
+        shortInterestAsOf: ratio == null ? null : date,
+        shortInterestSettlementSource: source,
+        shortInterestSettlementDate: date,
+        shortInterestFloatAsOf: ratio == null || latest.shortPercentFloat != null ? null : fundamentals?.floatSharesAsOf ?? null,
       });
     } catch (error) {
       out.errors.push(failureMessage(label, error, symbol));
@@ -343,22 +356,31 @@ function derivedOperatingIncomeNote(financials: TickerFinancials, statement: Fin
  * for the note under the table, the rate an ADR's statements took and any
  * derived operating income (`detail`).
  */
-function evEbitdaSource(financials: TickerFinancials, enterpriseValue: ReturnType<typeof listingEnterpriseValue>, statement: FinancialStatement): { source: string; detail: string | null } {
+function evEbitdaSource(
+  financials: TickerFinancials,
+  enterpriseValue: ReturnType<typeof listingEnterpriseValue>,
+  statement: FinancialStatement,
+  annual?: boolean,
+): { source: string; detail: string | null } {
   const ev = enterpriseValue.kind === "value" && enterpriseValue.basis === "computed" ? "Market cap + total debt - cash" : "Gloom Cloud enterprise value";
   const conversion = listingStatementConversion(financials, statement);
+  const periodEnd = statement.date.slice(0, 10);
   const detail = [
+    ...annual ? [`annual EBITDA (${periodEnd})`] : [],
     ...conversion ? [`statements in ${conversion.from} at ${conversion.rate.toPrecision(4)} ${conversion.to}`] : [],
     ...[derivedOperatingIncomeNote(financials, statement) ?? []].flat(),
   ].join("; ") || null;
-  return { source: `${ev} over trailing operating income plus D&A${detail ? `; ${detail}` : ""}`, detail };
+  const basis = annual ? "annual operating income plus D&A" : "trailing operating income plus D&A";
+  return { source: `${ev} over ${basis}${detail ? `; ${detail}` : ""}`, detail };
 }
 
 /**
  * EV/EBITDA as GE's trailing series ends on it (currentTrailingValuation):
  * the listing's enterprise value at the regular session price over the latest
- * four quarters of operating income plus D&A, an ADR's converted at its EV
- * check's rate. N/M where either is at or below zero, and for a bank or an
- * insurer; otherwise a blank says why.
+ * four quarters of operating income plus D&A (or latest fiscal year when
+ * interim reports omit D&A), an ADR's converted at its EV check's rate. N/M
+ * where either is at or below zero, and for a bank or an insurer; otherwise a
+ * blank says why.
  */
 function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow & { evEbitdaNote?: string } {
   if (isBankOrInsurerIndustry(financials.profile?.industry)) {
@@ -369,7 +391,7 @@ function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow & { evEbi
   if (enterpriseValue.kind === "not-meaningful") return { evEbitda: null, evEbitdaNotMeaningful: enterpriseValue.reason };
   const current = currentTrailingValuation(financials, "evEbitda");
   if (current) {
-    const { source, detail } = evEbitdaSource(financials, enterpriseValue, current.statement);
+    const { source, detail } = evEbitdaSource(financials, enterpriseValue, current.statement, current.annual);
     const dated = { evEbitdaSource: source, evEbitdaAsOf: current.periodEnd };
     if (current.value === null) {
       return { evEbitda: null, evEbitdaNotMeaningful: current.notMeaningful, evEbitdaNote: `N/M, ${current.notMeaningful!.charAt(0).toLowerCase()}${current.notMeaningful!.slice(1)}`, ...dated };
@@ -380,10 +402,13 @@ function evEbitdaFields(financials: TickerFinancials): HeadlessPaneRow & { evEbi
   const trailing = latestTrailingStatement(financials);
   const statementCurrency = trailing?.currency ?? financials.financialCurrency;
   const quoteCurrency = financials.quote?.currency;
-  if (trailing && statementCurrency && quoteCurrency && statementCurrency !== quoteCurrency) return { evEbitdaGap: `statements in ${statementCurrency}` };
-  if (trailing && typeof trailing.ebitda !== "number") {
+  const convertible = trailing ? listingStatementConversion(financials, trailing) !== null : false;
+  if (trailing && typeof trailing.ebitda !== "number" && (convertible || !statementCurrency || statementCurrency === quoteCurrency)) {
     const quarters = financials.quarterlyStatements;
     return { evEbitdaGap: quarters.some(ebitdaLacksDepreciation) || ebitdaLacksDepreciation(trailing) ? "no D&A" : "no EBITDA" };
+  }
+  if (trailing && statementCurrency && quoteCurrency && statementCurrency !== quoteCurrency && !convertible) {
+    return { evEbitdaGap: `statements in ${statementCurrency}` };
   }
   if (!trailing) return { evEbitdaGap: trailingGap(financials, "EBITDA") };
   return { evEbitdaGap: enterpriseValue.kind === "unavailable" ? "EV unavailable" : "not reported" };

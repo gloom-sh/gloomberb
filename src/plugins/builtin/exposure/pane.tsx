@@ -1,20 +1,20 @@
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { ExposureEvidence, ExposurePayload } from "../../../api-client/exposure";
 import { ActionRow, Button, ChartTableHeader, DataTableView, EmptyState, KeyValueRow, PageStackView, QueryBar, SectionHeading, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint, type StatItem } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAppSelector, useAsyncResource, useAutoRefresh, useMarketData, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
+import { usePaneResource } from "../shared/pane-resource";
+import { useAppSelector, useAsyncResource, useMarketData, usePaneInstance, usePaneSettingValue, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, Text, useRendererHost, useUiCapabilities } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
+import { daysInTextCell, formatDay } from "../../../components/ui/day-cell";
 import { logFailure } from "../../../utils/log-failure";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { useOpenDescription } from "../shared/open-description";
-import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { useTickerJumpHints } from "../shared/open-description";
+import { lockedTableCell, lockedTableOverlay } from "../shared/locked-rows";
 import { humanLabel, listingCell, missingCell } from "../shared/research-cells";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { ExposurePathDiagram, ExposureRanges } from "./charts";
@@ -29,7 +29,7 @@ function EvidenceItem({ item }: { item: ExposureEvidence }) {
   const colors = useThemeColors();
   const host = useRendererHost();
   return <Box flexDirection="column" paddingY={1}>
-    <KeyValueRow labelWidth={20} label="Evidence" value={`${item.tier} · ${item.asOf ?? "undated"}`} detail={item.confidence === null ? undefined : `${Math.round(item.confidence * 100)}% confidence`} />
+    <KeyValueRow labelWidth={20} label="Evidence" value={`${item.tier} · ${item.asOf ? formatDay(item.asOf) : "undated"}`} detail={item.confidence === null ? undefined : `${Math.round(item.confidence * 100)}% confidence`} />
     <KeyValueRow labelWidth={20} label="Period / units" value={`${item.period ? periodText(item.period) : "unknown"} · ${item.units}${item.currency ? ` ${item.currency}` : ""}`} />
     {item.revision ? <KeyValueRow labelWidth={20} label="Revision" value={item.revision} /> : null}
     {item.quote ? <Text fg={colors.textBright}>{item.quote}</Text> : <Text fg={colors.textDim}>{item.tier === "user" ? "User-supplied assumption" : "Structured observation; no verbatim quote"}</Text>}
@@ -48,8 +48,8 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
   return <ScrollBox flexGrow={1} flexBasis={0} minHeight={0} scrollY contentOptions={{ paddingX: 1 }}>
     {row?.driver ? <>
       <KeyValueRow labelWidth={20} label="Value / units" value={`${driverValue(row.driver)} ${driverUnits(row.driver)}`} />
-      <KeyValueRow labelWidth={20} label="Period" value={row.driver.period ?? "Unknown"} />
-      <KeyValueRow labelWidth={20} label="As of" value={row.driver.asOf?.slice(0, 10) ?? "Unknown"} />
+      <KeyValueRow labelWidth={20} label="Period" value={row.driver.period ? periodText(row.driver.period) : "Unknown"} />
+      <KeyValueRow labelWidth={20} label="As of" value={row.driver.asOf ? formatDay(row.driver.asOf) : "Unknown"} />
       {row.driver.valueText ? <KeyValueRow labelWidth={20} label="Reported wording" value={row.driver.valueText} /> : null}
       {row.driver.status ? <KeyValueRow labelWidth={20} label="Status" value={humanLabel(row.driver.status)} /> : null}
       {row.driver.basis ? <KeyValueRow labelWidth={20} label="Basis" value={humanLabel(row.driver.basis)} /> : null}
@@ -76,6 +76,11 @@ function ExposureDetail({ row, data, width }: { row: ExposureRow | null; data: E
   </ScrollBox>;
 }
 
+/** The exposure tables keep the holding, its figures and the period they are for; the evidence's wording and the weight go first. */
+const EXPOSURE_COLUMN_DROP_ORDER = ["classification", "weight", "basis"] as const;
+/** The drivers keep their value and period; the scope's wording and the units go first. */
+const DRIVER_COLUMN_DROP_ORDER = ["scope", "units"] as const;
+
 export function ExposurePane({ width, height, focused }: PaneProps) {
   const colors = useThemeColors();
   const desktop = !!useUiCapabilities().nativePaneChrome;
@@ -85,11 +90,10 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
   const config = useAppSelector(s => s.config);
   const tickers = useAppSelector(s => s.tickers);
   const session = useResearchCloudSession();
-  const access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const { accessKey } = session;
   const upgrade = useCloudUpgradeAction("expo");
   const { createPaneFromTemplate } = usePluginAppActions();
-  const openDescription = useOpenDescription();
+  const jumpHints = useTickerJumpHints();
   const [openingScenario] = usePaneSettingValue("scenario", "taiwan-disruption");
   const [customSetting, setCustomSetting] = usePaneSettingValue("customScenario", "");
   const [openingDepth] = usePaneSettingValue("depth", 2);
@@ -153,10 +157,8 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     return fetchExposure({ holdings, scenario, depth: inputs.depth, ...(cash === undefined ? {} : { cashWeight: cash }) });
   // Explicit request state, including the account, owns recalculation. Quote changes do not.
   }, [sourceKey, snapshot]);
-  const resource = useAsyncResource(!inputError && (inputs.input || inputs.source !== "typed" || snapshot) ? loader : null, { clearOnError: isAccessDenied });
+  const resource = usePaneResource(!inputError && (inputs.input || inputs.source !== "typed" || snapshot) ? loader : null, { focused: focused && !editing && !inputError, clearOnError: isAccessDenied });
   const data = resource.data;
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused: focused && !editing && !inputError });
   const rawRows = useMemo(() => !data ? [] : tab === "drivers" ? driverRows(data) : tab === "paths" ? pathRows(data) : tab === "portfolio" ? portfolioRows(data, view) : tableRows(data), [data, tab, view]);
   const rows = useMemo(() => [...rawRows].sort((a, b) => {
     const get = (r: ExposureRow) => sort.column === "value" ? r.driver?.value ?? r.driver?.range?.high ?? -Infinity : sort.column === "units" ? r.driver ? driverUnits(r.driver) : "" : sort.column === "scope" ? r.driver ? driverScope(r.driver) : "" : sort.column === "classification" ? r.classification : sort.column === "label" ? r.label : sort.column === "period" ? r.period ?? "" : sort.column === "exposure" ? r.exposure?.high ?? -Infinity : sort.column === "impact" ? r.impact?.low ?? -Infinity : sort.column === "weight" ? r.weight ?? -Infinity : sort.column === "basis" ? r.basis ?? "" : r.symbol;
@@ -179,9 +181,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     ...(symbol ? [
       ...(activeRow?.driver ? [{ id: "dataset", key: "a", label: "ll disclosures", title: "Open company disclosures", onPress: () => createPaneFromTemplate(activeRow.driver!.kind === "kpi" ? "company-kpis-pane" : activeRow.driver!.kind === "guidance" ? "company-guidance-pane" : "credit-documents-pane", { symbol }) }] : []),
       { id: "supply", key: "c", label: "hain", title: "Supply chain", onPress: () => createPaneFromTemplate("supply-chain-pane", { symbol }) },
-      { id: "des", key: "d", label: "es", onPress: () => openDescription(symbol) },
-      { id: "fa", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol }) },
-      { id: "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: symbol }) },
+      ...jumpHints(symbol, { ids: { des: "des", fa: "fa", graph: "chart" } }),
     ] : []),
     ...(data?.access === "preview" ? [{ id: "upgrade", key: CLOUD_PLAN_KEY, label: "upgrade", title: "Upgrade to Pro", onPress: upgrade }] : []),
   ];
@@ -210,17 +210,29 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     { id: "period", label: "Period", width: 12, align: "left" },
     { id: "weight", label: tab === "portfolio" ? concentration ? "Gross wt. %" : "Covered wt. %" : "NAV wt. %", width: 13, align: "right" },
   ];
+  // What a narrow desktop pane gives up first: the words about a figure before the figure, its basis or its period.
+  const columnDropOrder = tab === "drivers" ? DRIVER_COLUMN_DROP_ORDER : EXPOSURE_COLUMN_DROP_ORDER;
   const renderCell = (row: ExposureRow, col: DataTableColumn, _index: number, state: { selected: boolean }): DataTableCell => {
     if (row.id.startsWith("locked:")) {
-      if (!desktop && col.id === "symbol" && row.id === "locked:0") return { text: "Pro: full holdings", content: <UpgradeLabel text="Pro: full holdings and deeper paths" onPress={upgrade} role="exposure-upgrade" />, onMouseDown: upgrade };
-      return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{col.id === "symbol" ? "Holding" : "Hidden"}</Text></Blurred> } : { text: "░░░░", color: colors.textDim };
+      return lockedTableCell({
+        desktop,
+        isLabelCell: col.id === "symbol" && row.id === "locked:0",
+        labelText: "Pro: full holdings",
+        upgradeText: "Pro: full holdings and deeper paths",
+        blurText: col.id === "symbol" ? "Holding" : "Hidden",
+        onUpgrade: upgrade,
+        onMouseDown: upgrade,
+        role: "exposure-upgrade",
+        dimColor: colors.textDim,
+      });
     }
     const unknown = row.classification === "unknown";
     switch (col.id) {
       case "symbol": return row.symbol.includes(",") ? { text: row.symbol, color: colors.textBright } : listingCell(row.symbol, colors, state.selected);
       case "value": return { text: row.driver ? driverValue(row.driver) : MISSING_VALUE, value: row.driver?.value ?? null, color: colors.textBright };
       case "units": return { text: row.driver ? driverUnits(row.driver) : "", color: colors.textDim };
-      case "scope": return { text: row.driver ? driverScope(row.driver) : "", color: colors.textDim };
+      // A day in the scope or the period reads first and exports as its ISO day.
+      case "scope": return { ...daysInTextCell(row.driver ? driverScope(row.driver) : ""), color: colors.textDim };
       case "label": {
         const cell = { text: exposureCellText(row, "label"), color: unknown ? colors.textDim : colors.text };
         // Grouped by country, each target leads with its flag on the desktop and the web.
@@ -233,7 +245,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
         color: row.classification === "disclosed" ? colors.borderFocused : unknown ? colors.textMuted : colors.textDim, keepColorWhenSelected: row.classification === "disclosed" };
       case "impact": return !row.impact ? missingCell(colors) : { text: exposureCellText(row, "impact"), value: row.impact.low,
         color: row.concentration ? colors.text : row.impact.high < 0 ? colors.negative : row.impact.low > 0 ? colors.positive : colors.text };
-      case "period": return row.period ? { text: exposureCellText(row, "period"), color: colors.textDim } : missingCell(colors);
+      case "period": return row.period ? { ...daysInTextCell(exposureCellText(row, "period")), color: colors.textDim } : missingCell(colors);
       default: return { text: exposureCellText(row, "weight"), value: row.weight === null ? null : row.weight * 100, color: colors.text };
     }
   };
@@ -242,7 +254,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
     exposure: null, impact: null, weight: null, classification: "unknown", incomplete: false, components: [], unknowns: [] }))], [rows, lockedRows]);
   const figures: StatItem[] = data ? tab === "drivers" ? [
     { label: "Dataset", value: selected?.driver ? selected.driver.kind === "kpi" ? "KPI" : humanLabel(selected.driver.kind) : MISSING_VALUE },
-    { label: "As of", value: selected?.driver?.asOf?.slice(0, 10) ?? MISSING_VALUE },
+    { label: "As of", value: formatDay(selected?.driver?.asOf) },
     { label: "Basis", value: selected?.driver?.basis ? humanLabel(selected.driver.basis) : MISSING_VALUE },
   ] : tab === "portfolio" ? [
     { label: "Gross holdings", value: fraction(data.portfolio.grossWeight) }, { label: "Net holdings", value: fraction(data.portfolio.netWeight) },
@@ -267,7 +279,7 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
       rootContent={!data && !resource.loading && !resource.error && !inputError
         ? <EmptyState title="Choose holdings and a scenario." actions={<ActionRow label="Configure exposure" onPress={() => setEditing(true)} />} />
         // A scenario change reloads under the query bar, which stays.
-        : <DataTableView<ExposureRow> columns={columns} items={data ? items : []} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
+        : <DataTableView<ExposureRow> columns={columns} columnDropOrder={columnDropOrder} items={data ? items : []} getItemKey={r => r.id} rootWidth={width} rootHeight={bodyHeight} focused={focused && !detailOpen}
           status={data && !inputError ? undefined : { loading: !inputError && resource.loading, error: inputError ?? resource.error, subject: "exposure analysis",
             actions: savedSnapshot.error ? <Button label="Reset saved snapshot" onPress={() => { setSnapshotSetting(null); setEditing(false); setDetail(null); }} />
               : savedScenario.error ? <><Button label="Edit scenario" onPress={() => setEditing(true)} /><Button label="Reset custom scenario" onPress={() => { setCustomSetting(""); setInputs({ ...inputs, scenario: DEFAULT_SCENARIO }); setScenarioId(DEFAULT_SCENARIO.id!); setEditing(false); setDetail(null); }} /></> : undefined }}
@@ -279,6 +291,6 @@ export function ExposurePane({ width, height, focused }: PaneProps) {
               : rows.some(r => r.exposure) ? { render: size => <ExposureRanges rows={rows} showTargets={tab === "portfolio" || data.scenario.shocks.length > 1} selectedId={selected?.id ?? null} onSelect={setSelected} onOpen={setDetail} {...size} />, minRows: 1, maxRows: Math.max(1, Math.min(7, rows.filter(r => r.exposure && r.shockId === selected?.shockId && r.basis === selected?.basis && r.period === selected?.period).length)), strip: null } : null} />}
           renderCell={renderCell}
           emptyStateTitle={tab === "drivers" ? "No supported company drivers are available for these holdings." : tab === "paths" ? "No supported exposure paths for this scenario." : "No quantified exposure in this view."}
-          bodyAfter={lockedRows && desktop ? <LockedOverlay rows={lockedRows} text="Pro: full holdings and deeper exposure paths" onPress={upgrade} role="exposure-upgrade" /> : undefined} />} />
+          bodyAfter={lockedTableOverlay(lockedRows, desktop, "Pro: full holdings and deeper exposure paths", upgrade, "exposure-upgrade")} />} />
   </Box>;
 }

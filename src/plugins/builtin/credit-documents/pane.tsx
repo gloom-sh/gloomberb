@@ -1,6 +1,6 @@
+import { formatDay, isoDay } from "../../../utils/day-format";
 import { useCallback, useMemo } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { CreditDocumentsPayload, CreditHeadroom, CreditInstrument, CreditScreenPayload, CreditScreenRow } from "../../../api-client/credit-documents";
 import { ChartTableHeader, DataTableView, EmptyState, Notice, PageStackView, QueryBar, useChartTableSelection, usePaneFooter, usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, type DataTableCell, type DataTableColumn, type PaneHint } from "../../../components";
 import { formatCompactAxis } from "../../../components/chart-table";
@@ -19,7 +19,7 @@ import { cachedCredit, creditIssuerSymbol, CREDIT_UNAVAILABLE, fetchCreditScreen
 import { CreditInstrumentDetail } from "./detail";
 import { useCreditEvidence } from "./evidence";
 import { HeadroomGauge } from "./gauge";
-import { capitalCell, capitalColumns, capitalFigures, comparatorSymbol, covenantColumns, covenantFact, covenantReason, covenantUsage, CREDIT_EMPTY_TITLE, creditEmptyCause, CREDIT_TABS, creditAmount, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, headroomTone, instrumentOutstanding, isClosed, maturityAxis, maturityColumns, maturitySeries, maturityShares, NO_VALUE, screenColumns, screenRowId, screenSignal, sentence } from "./model";
+import { capitalCell, capitalColumns, capitalFigures, comparatorSymbol, covenantColumns, covenantFact, covenantReason, covenantUsage, CREDIT_EMPTY_TITLE, creditEmptyCause, CREDIT_TABS, creditAmount, creditFigure, covenantNumber, creditCurrencies, creditMaturityRows, creditPercent, creditTab, fieldLabel, headroomTone, instrumentOutstanding, isClosed, maturityAxis, maturityColumns, maturitySeries, maturityShares, NO_VALUE, screenColumns, screenRowId, screenSignal, sentence } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
 type Row = { numbers?: Record<string, number | null>; id: string; values: Record<string, string>; instrumentId?: string; covenant?: CreditHeadroom; screen?: CreditScreenRow; year?: number; locked?: boolean; closed?: boolean };
@@ -29,8 +29,8 @@ const hintCells = (hint: PaneHint) => hint.key.length + hint.label.length + 3;
 
 export function CreditDocumentsPane(props: PaneProps) {
   const { symbol } = usePaneTickerIdentity();
-  const session = useResearchCloudSession(), access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const session = useResearchCloudSession();
+  const { accessKey } = session;
   return <CreditView key={`${symbol}:${accessKey}`} {...props} symbol={symbol} accessKey={accessKey} needsVerification={session.needsVerification} />;
 }
 function CreditView({ symbol, width, height, focused, accessKey, needsVerification }: PaneProps & { symbol: string | null; accessKey: string; needsVerification: boolean }) {
@@ -73,10 +73,10 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
   const unsortedRows = useMemo<Row[]>(() => {
     if (tab === "screen") return (screenData?.rows ?? []).map((row) => ({ id: screenRowId(row), instrumentId: row.instrumentId, screen: row, numbers: {value:row.value}, values: { symbol: row.symbol, kind: screenSignal(row), value: creditPercent(row.value), date: row.date ?? NO_VALUE, instrument: row.instrumentName, reason: sentence(row.reason) } }));
     if (!data) return [];
-    if (tab === "capital") return data.instruments.map((row) => ({ id: row.id, instrumentId: row.id, closed: isClosed(row), numbers: {principal:instrumentOutstanding(row)}, values: Object.fromEntries(["name", "facility", "coupon", "maturity", "principal", "currency", "ranking", "control"].map((id) => [id, capitalCell(row, id, data)])) }));
+    if (tab === "capital") return data.instruments.map((row) => ({ id: row.id, instrumentId: row.id, closed: isClosed(row), numbers: {principal:instrumentOutstanding(row),commitment:row.commitment}, values: Object.fromEntries(["name", "facility", "coupon", "margin", "maturity", "principal", "commitment", "currency", "ranking", "control"].map((id) => [id, capitalCell(row, id, data)])) }));
     if (tab === "covenants") return data.covenants.map((row) => { const fact=covenantFact(data, row); return ({ id: row.id, instrumentId: row.instrumentId, covenant: row, numbers: {headroom:row.headroomPercent,usage:covenantUsage(row),threshold:row.threshold,current:row.current}, values: { metric: sentence(row.metric), headroom: creditPercent(row.headroomPercent), usage: "", threshold: `${comparatorSymbol(row.comparator, row.inclusive)} ${covenantNumber(row.threshold,fact)}`, current: covenantNumber(row.current,fact), status: fieldLabel(row.status), date: row.asOf, instrument: row.instrumentName } }); });
     const shares = preview ? new Map() : maturityShares(maturityRows);
-    return maturityRows.flatMap((row) => row.instruments.map((instrument) => { const id = `${row.year}:${instrument.id}`, share = shares.get(id); return { id, instrumentId: instrument.id, year: row.year, numbers: {year:row.year,principal:instrument.principal,share:share?.share ?? null,cumulative:share?.cumulative ?? null}, values: { year: String(row.year), principal: creditAmount(instrument.principal), share: creditPercent(share?.share), cumulative: creditPercent(share?.cumulative), instruments: instrument.name } }; }));
+    return maturityRows.flatMap((row) => row.instruments.map((instrument) => { const id = `${row.year}:${instrument.id}`, share = shares.get(id); return { id, instrumentId: instrument.id, year: row.year, numbers: {year:row.year,principal:instrument.principal,share:share?.share ?? null,cumulative:share?.cumulative ?? null}, values: { year: String(row.year), principal: creditFigure(instrument.principal), share: creditPercent(share?.share), cumulative: creditPercent(share?.cumulative), instruments: instrument.name } }; }));
   }, [data, screenData, tab, maturityRows, preview]);
   const rows = useMemo(() => !sort.column ? unsortedRows : [...unsortedRows].sort((a,b) => {
     const column=sort.column!;
@@ -157,9 +157,12 @@ function CreditView({ symbol, width, height, focused, accessKey, needsVerificati
     if (row.locked) return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{column.id === lockedColumn ? tab === "screen" ? "Additional signal" : "Additional credit document" : "Hidden"}</Text></Blurred> }
       : { text: column.id === lockedColumn && row.id === "locked:0" ? lockedText : "░░░░", color: colors.textDim, ...(column.id === lockedColumn && row.id === "locked:0" ? { content: <UpgradeLabel text={lockedText} onPress={openUpgrade} /> } : {}) };
     if (column.id === "usage" && row.covenant) return { text: "", content: <HeadroomGauge covenant={row.covenant} width={column.width} selected={state.selected} /> };
-    const text = row.values[column.id] ?? "";
+    const raw = row.values[column.id] ?? "";
+    // A day sorts and exports as its ISO date and reads day first.
+    const day = column.id === "maturity" || column.id === "date" ? isoDay(raw) : null;
+    const text = day ? formatDay(day) : raw;
     const number = row.numbers?.[column.id];
-    const value = column.align === "right" && row.numbers && column.id in row.numbers ? number ?? null : undefined;
+    const value = day ?? (column.align === "right" && row.numbers && column.id in row.numbers ? number ?? null : undefined);
     if (text === NO_VALUE) return { text, value, color: colors.textMuted };
     if (row.closed) return { text, value, color: colors.textDim };
     if (column.id === "headroom" && row.covenant) {

@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
-import { TextPromptDialog, usePaneFooter } from "../../../../components";
+import { usePaneFooter } from "../../../../components";
+import { textPromptDialog } from "../../../../components/ui";
 import { tf } from "../../../../i18n";
 import {
   CASH_SYMBOL,
@@ -100,18 +101,15 @@ export function useTargetWeightActions({
     busyRef.current = true;
     try {
       const current = target.cash ? book.targetWeights?.[CASH_SYMBOL] : holdingTarget(book.targetWeights, target.symbol);
-      const typed = await dialog.prompt<string>({
-        content: (context) => (
-          <TextPromptDialog
-            {...context}
-            title="Set Target Weight"
-            body={[describeRow(target, book)]}
-            label="Target"
-            initialValue={current != null ? formatAllocationWeight(current).replace(/%$/, "") : ""}
-            placeholder="12.5%"
-            confirmLabel="Set"
-          />
-        ),
+      const typed = await textPromptDialog(dialog, {
+        title: "Set Target Weight",
+        body: [describeRow(target, book)],
+        label: "Target",
+        initialValue: current != null ? formatAllocationWeight(current).replace(/%$/, "") : "",
+        placeholder: "12.5%",
+        confirmLabel: "Set",
+        logSource: "portfolio-list.target-weights",
+        logMessage: "Open target weight prompt failed",
       });
       if (typed == null || !typed.trim()) return;
       let weight: number;

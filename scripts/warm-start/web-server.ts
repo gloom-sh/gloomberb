@@ -38,7 +38,9 @@ export async function startWarmStartWebServer({ webRoot, networkDir }: { webRoot
       });
     },
   };
-  type SocketData = { upstream: WebSocket | null; queued: Array<string | Buffer> };
+  type SocketData = { upstream: WebSocket | null; queued: Array<string | Uint8Array<ArrayBuffer>> };
+  const toWsPayload = (message: string | Buffer): string | Uint8Array<ArrayBuffer> =>
+    typeof message === "string" ? message : new Uint8Array(message);
   const server = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: 0,
@@ -61,9 +63,10 @@ export async function startWarmStartWebServer({ webRoot, networkDir }: { webRoot
         upstream.addEventListener("close", () => socket.close());
       },
       message(socket, message) {
+        const payload = toWsPayload(message);
         const upstream = socket.data.upstream;
-        if (upstream?.readyState === WebSocket.OPEN) upstream.send(message);
-        else socket.data.queued.push(message);
+        if (upstream?.readyState === WebSocket.OPEN) upstream.send(payload);
+        else socket.data.queued.push(payload);
       },
       close(socket) {
         socket.data.upstream?.close();

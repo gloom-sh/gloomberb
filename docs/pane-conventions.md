@@ -528,16 +528,155 @@ this, except:
   symbol in FUT and WEI); `key` separates two tables in one pane that name
   their rows with the same column but are otherwise unrelated.
 
+**Columns in a narrow pane.** A table never draws a column cut at its edge.
+On the desktop and the web a table too narrow for its columns draws whole
+columns only: a column set to grow gives up length first, then the least
+needed leave, a line above the header names them
+(`2 hidden · FY2023, FY2022`), and More on that line, Shift+Right or "Show All
+Columns" in the pane menu draws them all as set in a table that scrolls
+sideways (Shift+Left at its start, or "Fit Columns", fits them again). The terminal
+gives up the blank in its columns first, draws the whole ones and scrolls to
+the rest (`more ⇧→`). Exports, `fn` reports and automation keep every column
+at any width. A pane does nothing for this, except say what matters:
+
+- With no order given the trailing columns leave first, so put what the row
+  is read for first: FA gives up its oldest periods, ATS its trade counts,
+  HVT its sample count. A column headed "As of" is the exception: it leaves
+  after the others, since a figure is misread without its date.
+- Set `flexGrow` on the column that holds a name, a title or a sentence. It
+  is the one that takes up a change in the pane's width, so it narrows (to
+  half its set width, never under 12 cells or its header) before any column
+  leaves, and "Full Column Widths" in the pane menu, or Shift+Right, draws it
+  as set again. A figure, a date or a ticker is never narrowed: cut short it
+  reads as another one. A pane that knows what its names need (BI's fixed
+  list of sectors) sets `fitFloor` on that column: the least needed columns
+  then leave before a name is cut.
+- Where a later column outranks an earlier one, pass `columnDropOrder`, least
+  needed first. Give up a name that repeats its ticker, a second way of
+  saying a figure and wording the row's detail holds, before an identifier,
+  the figures the pane is for, or the date a figure is as of: RV gives up the
+  name and the day's move before a multiple, MDAY the prior and the forecast
+  before the move, ALRT the session before the quote's time.
+- An entry of several ids is a set that means little apart: it leaves whole,
+  and stays whole while one of it is kept. OMON's call and put of a field
+  are one set wherever Settings put the field, and VCA's HV, its date and
+  IV/HV all stay while the table is sorted by one of them.
+- Sets that share a column the table draws are one set, kept or not. List a
+  date with each figure it dates, in a set of its own: VCA's risk reversal
+  and its percentile each list the skew's date, so where that date is drawn
+  the three leave or stay together and neither figure is read against the
+  IV's date. Where the dates agree and the pane draws no skew date, nothing
+  is shared and the percentile leaves before the reversal.
+- The columns that name the row and the sorted column never leave, whatever
+  the order says and wherever the reader moved the columns. The leading
+  columns name the row by default (`anchored`); where another does (OMON's
+  strike, between the calls and the puts), mark it `identifiesRow`.
+- A row is never left with its name alone or beside nothing but a date: its
+  last figure stays. Where what must stay does not fit, the table leaves
+  nothing out and scrolls sideways with every column, as it always did.
+- The fit measures the headers as they are drawn: translated and in the
+  table's one case. A longer translation makes a column leave sooner, never
+  a cut one. Exports keep the raw labels.
+- `dropColumnsToFit` in the pane is for a column that leaves in the terminal
+  too, by the pane's own width (PF's valuation columns, AUCT's). The table's
+  fit then covers what that order did not, and the line tells the two apart:
+  `1 hidden · AVG COST` beside More, which draws it, and `3 need a wider
+  pane · AS OF UTC, 1M, COST (USD)` for the pane's own, which More cannot
+  (the menu entry then reads "Show More Columns").
+- A table set not to scroll sideways (`showHorizontalScrollbar={false}`: a
+  list read down, such as TRIAL or the news wire) narrows its columns to the
+  pane instead and leaves none out.
+- Size a column that takes what the pane has left by the table's own measure
+  (`width - getTableWidth(columns)`), never by a constant: one that forgets
+  the gaps makes the table wider than its pane at every width, and its last
+  column is the one that leaves.
+- A cell the pane draws itself (`content`) says how wide it draws whole
+  (`contentWidth`), so the terminal fits its column to it, and lays itself
+  out in the width its column is given. Where the terminal's edge still cuts
+  that column, the cell is made again with the cells that show as the
+  column's width, so it gives up a piece whole rather than have the edge cut
+  it, and in a column left no cells it draws nothing. DVD's source cell
+  links the notice and the schedule where both fit whole and the notice
+  alone in less: the pane sizes that column to its width by the table's own
+  measure, and the schedule stays on the selected row's menu.
+
+`shot` names a column a capture cut in a warning (`cutColumns`), which does
+not fail `--strict`; a table drawn outside the kit owes the same fit.
+
 **Unavailable table columns.** Check the source before treating an empty column
-as missing coverage: fix a dropped field rather than hiding it. A value waiting
-on an event, such as reported EPS and its basis before earnings, uses
-`DataTableColumn.mayBeBlank`. For structurally unavailable coverage, opt that
+as missing coverage: fix a dropped field rather than hiding it. A value every
+row can be waiting on, such as reported EPS and its basis before earnings, uses
+`DataTableColumn.mayBeBlank`, which exempts the whole column from a strict
+capture's blank-column check. Where only some rows wait on the value or are of
+a kind that has none (ECO's ACTUAL before the release, the terms of a deal
+still in talks), mark those cells with `DataTableCell.mayBeBlank` and leave the
+column unmarked, so the capture still fails when the rows that owe the value
+have none. Decide it from what else the row says (its status, its kind, its
+time), never from the cell: a null is not thereby optional, and words in the
+value's place are not the value. The capture leaves a marked cell out whatever
+it shows, so mark a row of a kind that has no value even where its cell says
+something else (an event's label under a call's PERIOD, "Created" under an
+alert's Value), and never mark a row that owes the value: its figure, zero
+included, is what fills the column. Where the
+row cannot say whether its null is a value lost (a deal's undisclosed terms, a
+fill with no commission), leave the cell unmarked and write the limit down
+beside the rule and in `docs/usage.md`. For structurally unavailable coverage, opt that
 column into `omitWhenEmpty: true`: it leaves the pane only while every data row
 renders a missing value, and returns as soon as any row has one. Zero and N/M
 are values, not missing data. A chronological history with coverage only in
 older reports can use `omitWhenEmpty: "visible"`, so scrolling into those
 reports restores their column. This changes presentation only; JSON reports
 and CSV exports retain the fields and missing values.
+
+**No filler columns.** A column whose value is the same on every row, or
+blank on every row, says nothing a row needs: drop it, or say its value once
+in the header meta (a figure above the table, a column label such as
+`EPS USD` or `Obligated USD`, a section heading, a title), never down every
+row. Judge on what the view holds, not on one row: a lone row or a section
+header keeps its columns, and so does one page of a paged feed whose next
+page may differ.
+
+- `DataTableColumn.omitWhenSame` leaves a column out while every data row
+  (two or more) renders the same text, blank included; set it only where the
+  rows are all the view holds (a complete list, or a query that fixes the
+  value: a docket list, a ticker's awards, a period every holder filed for).
+  `omitWhenEmpty` is its blank-only sibling. Both are presentation only:
+  CSV and JSON keep the field, and the text report follows the pane through
+  `HeadlessPaneColumn.omitWhenSame` and `omitWhenEmpty`.
+- A value the query or the view already names (NI MNA's M&A category, ECO's
+  High impact, a searched drug and its labeler, a ticker's company on its own
+  CALLS) is blank on the rows that share it, with the field's `value` kept for
+  export, and the column goes when every row does.
+- A code that is the same nearly everywhere (USD on ERN's board) is written
+  only where it differs, next to its figure (`7.21 CNY`), with no column.
+- Rows of different kinds that would share a column meaning different things
+  (CRDOC's notes and credit lines, coupon against margin) get their own
+  columns or sections.
+- Colour carries meaning only where it differs between rows. A status every
+  row has (HALT's RESUMED), the side a whole board is filtered to (INS's
+  buys), or a filter's own value is plain text; tone stays for what goes
+  against the rest (a holding cut on a buy board, a breach).
+
+**One precision per column.** Every figure in a column has the same number of
+decimals, so the column reads and lines up: distribution amounts share the
+finest one needs (`distributionAmountsDigits`: Haier's 0.89151 over 0.26920),
+compact figures keep theirs (below), and a cell built as a string formats with
+the column's precision, not its own. A financial statement column (FA,
+Statements), whose rows are different line items, keeps its magnitude tiers
+(`formatFinancialAmount`: one decimal from 100, two from 1, three below): its
+figures are not one quantity.
+
+**One date format.** Every table writes a calendar day the same way: day
+first (`02 Nov 2026`), through `dayCell` (`components/ui/day-cell.ts`), which
+keeps the ISO day as the cell's `value`, so CSV and JSON still read
+`2026-11-02`. A column short of room drops the year (`02 Nov`), never the
+order, and a time beside a day follows it (`02 Nov 2026 13:21`, `formatDayTime`)
+with its zone in the header. A day inside a cell's words (`ended 19 Nov 2026`,
+a period `25 Nov 2026 / 31 Mar 2027`) is written the same way, and so is the
+date beside a figure or labeled value over a table (`NAV $718.51 24 Nov 2026`,
+`formatDaysInText` for a dated detail). A text report prints what its pane
+shows (`formatDay` in the column's `format`); a figure an agency names in its
+own text (a contract title) stays as written.
 
 **Country flags.** Wherever a row or a field names a country (ECO's country,
 a balance's or a board's country or jurisdiction, a venue's market, an IPO's
@@ -601,6 +740,8 @@ The kit pieces that lay a label out cut it the same way, so a caller passes them
 
 A table cell's optional `note` adds muted context after its `text`, such as a reference contract and price. It appears whole only when both fit; otherwise the primary text keeps its room and normal ellipsis. Use it through `DataTableCell` or `TickerTableCell`, so the terminal, desktop and web share the same behavior. It does not change the exported cell value.
 
+**A cut name beside a short figure.** A left-aligned text its column cuts goes on into the blank the right-aligned text after it leaves in the same row, up to one blank before that text, and is cut there if it is longer still: "RatingDog Manufacturing PMI —" where the column alone gave "RatingDog Manufacturin… " and six blank cells before the dash. Each row reads only its own blank, so no column moves while scrolling and a long figure in another row takes nothing from it. `DataTable` does this in every renderer (`tableCellSpill`): the terminal moves the edge between the two cells, the desktop and the web let the text's cell span the next column. Only plain text spills or is spilled into: a cell that draws `content`, `leading` art, a `note`, its own fill or its own press keeps its cells, and so do columns the viewport or a frozen first column cuts. A pane gives the name column its width first (`narrowColumnsForName`); the spill is for the rows whose figures leave blank past that.
+
 A cell's optional `keepEnd` names the end of its `text` that a column too narrow for it keeps whole, such as a contract's month: the cut shortens what comes before it, so the FUT board reads "Brent Crude Oil Last Day… Jan 2027" rather than losing the month. The terminal, the desktop and the web cut it that way; exports and reports read the whole `text`.
 
 **Figures in a column.** A right-aligned column is a column of figures, and its compact numbers keep their decimals so they line up: 12.00M over 10.73M, 10.0k over 12.5k. `DataTable` formats every right-aligned cell inside `inFigureColumn`, where `formatCompact` keeps them unless the caller passes `fixedDecimals: false` (a bracket label such as $1k-15k). Prose, figures above the table and labels keep the short 12M. A cell built before the table renders it (a row of strings) passes `fixedDecimals: true` itself. A column measured to the short figures keeps the short one wherever the decimals would not fit, rather than cut it; measure in `inFigureColumn` to give it the room.
@@ -654,6 +795,21 @@ write it to lead with what names the item. Rules:
 - A row that is shown but does not apply right now (an exited holder, a story
   or print after the tab's pinned moment) reads in `textMuted` and plain
   weight across the row, its value colours included, and stays selectable.
+  The table draws it: `isRowMuted` on `DataTableView` mutes every cell, and
+  content a cell draws itself (ticker badges) reads `useDataTableRowMuted`,
+  so a pane never mutes cell by cell.
+- A list of rows out at an instant follows the tab's pinned crosshair through
+  `usePinnedList` (a chart over a table gets it from
+  `useChartTableSelection`): it selects the row out by the pinned moment when
+  the pin moves, mutes the later rows, and names the pin in its footer on one
+  labelled clock. Give it the selected id as the list stores it, null when
+  nothing is picked, not the row it falls back to showing, and select by id,
+  so a row streaming in above never takes the selection. Pass `order` when
+  rows are finer than milliseconds (the tape's nanoseconds), and
+  `enabled: false` while an item is open over the list, which also holds the
+  selection still until it closes. A list dated by day leaves it out
+  (`FeedDataTableTimeColumn` without `instant`): a day cannot say whether it
+  came before a moment in it.
 - A board row whose figures are not the market now says so in a word beside
   its date, in `MarketBoardStack`'s as-of column, never by colour alone:
   `stale` (warning colour) for an observation too old to be current, `so far`

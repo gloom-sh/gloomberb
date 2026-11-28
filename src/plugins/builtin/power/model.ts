@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import { MISSING_VALUE } from "../../../utils/format";
 import type { PowerAggregate, PowerBoard, PowerCoverage, PowerExposure, PowerHistoryPoint, PowerProject, PowerRates } from "../../../api-client/power";
 import { staticSeries, type DataTableColumn } from "../../../components";
@@ -110,8 +111,26 @@ export function historySeries(points: readonly PowerHistoryPoint[], selected: Po
     { id: historyKey(selected), label: `${powerRegion(selected.region, selected.sourceId)} ${titleCase(selected.fuel)} ${titleCase(selected.status)}`, color, style: "step", calendarSpaced: true }),
     unit: "MW", unitGroup: "power-mw", interpolation: "step-after" as const }];
 }
+/** Columns that hold a day or a UTC stamp, written day first. */
+export const POWER_DATE_COLUMNS: ReadonlySet<string> = new Set(["proposedDate", "asOf", "observedAt", "date"]);
+const POWER_STAMP = /^(\d{4}-\d{2}-\d{2})(?:[T ](\d{2}:\d{2})(?::\d{2}(?:\.\d+)?)?Z?)?$/;
+/** A day or a UTC stamp as the tables write it, day first (`25 Nov 2026 13:36`); a period or other text as given. */
+export function powerStampText(value: string): string {
+  const match = POWER_STAMP.exec(value);
+  return match ? `${formatDay(match[1])}${match[2] ? ` ${match[2]}` : ""}` : value;
+}
 const col = (id: string, label: string, width: number, numeric = false, flexGrow?: number): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flexGrow ? { flexGrow } : {}) });
 export const PROJECT_COLUMNS = [col("name", "Project / area", 30, false, 1), col("capacityMw", "MW", 11, true), col("region", "Region", 16), col("fuel", "Fuel", 10), col("status", "Status", 11), col("scope", "Record scope", 18), col("ticker", "Ticker", 13), col("developer", "Developer / utility", 26), col("location", "Location", 24), col("proposedDate", "Proposed service", 17), col("asOf", "As of", 12)];
+/**
+ * What a narrow desktop pane gives up first in a table of records: where one
+ * is and whose, which its detail holds, then its fuel and region. The name,
+ * its MW, status, ticker and as-of date stay.
+ */
+export const RECORD_COLUMN_DROP_ORDER = ["location", "developer", "scope", "proposedDate", "fuel", "region"] as const;
+/** A utility's later figures leave before the period they are for and its ticker; its name and summer peak stay. */
+export const UTILITY_COLUMN_DROP_ORDER = ["location", "generationMwh", "revenueUsd", "salesMwh", "winterPeakDemandMw"] as const;
+/** A dataset's row count and read time leave before what it covers, its state and the date it is as of. */
+export const COVERAGE_COLUMN_DROP_ORDER = ["records", "observedAt", "country", "role"] as const;
 export const GENERATION_COLUMNS = [col("name", "Plant / generator", 30, false, 1), col("generationMwh", "Generation MWh", 18, true), col("period", "Period", 9), col("fuel", "Fuel", 11), col("region", "Region", 12), col("ticker", "Ticker", 12), col("developer", "Operator", 25), col("location", "Location", 20)];
 export const UTILITY_COLUMNS = [col("name", "Utility", 30, false, 1), col("summerPeakDemandMw", "Summer peak MW", 17, true), col("winterPeakDemandMw", "Winter peak MW", 17, true), col("salesMwh", "Sales MWh", 17, true), col("revenueUsd", "Retail revenue USD", 20, true), col("generationMwh", "Generation MWh", 18, true), col("period", "Period", 9), col("ticker", "Ticker", 12), col("location", "Location", 20)];
 export const HISTORY_COLUMNS = [col("date", "Observed / period", 20), col("region", "Region", 15, false, 1), col("fuel", "Fuel", 11), col("status", "Status", 12), col("capacityMw", "MW", 13, true), col("changeMw", "Change MW", 13, true), col("projects", "Records", 9, true), col("unknownCapacity", "Missing MW records", 19, true)];

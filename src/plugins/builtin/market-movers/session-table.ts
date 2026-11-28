@@ -36,7 +36,7 @@ export function buildSessionMoverColumns(view: CloudSessionMoversCategory, width
     { id: "relativeVolume", label: "RVOL", width: 6, align: "right" },
     ...(view === "gaps" ? [{ id: "vwapPercent" as const, label: "VWAP%", width: 7, align: "right" as const }] : []),
     { id: "floatShares", label: "FLOAT", width: 7, align: "right" },
-    { id: "catalyst", label: "EVENT", width: 6, align: "left", mayBeBlank: true },
+    { id: "catalyst", label: "EVENT", width: 6, align: "left" },
   ];
   const optional: SessionMoverColumnId[] = [...(view === "gaps" ? ["volume" as const] : []), ...(options.float ? [] : ["floatShares" as const])];
   // Measured the way the table draws it: a header widens its column, and a
@@ -91,6 +91,7 @@ export function renderSessionMoverCell(row: SessionMoverRow, column: SessionMove
       };
     case "catalyst": {
       const lead = leadCatalyst(row);
+      // No catalyst is an empty cell, never a dash: a marker some rows leave out is no blank column to a capture.
       if (!lead) return { text: "", value: null };
       // A halt is the one marker that changes what can be traded right now.
       return { text: CATALYST_LABEL[lead], value: CATALYST_LABEL[lead], color: lead === "halt" ? colors.warning : colors.text };

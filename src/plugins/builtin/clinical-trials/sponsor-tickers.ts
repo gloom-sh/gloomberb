@@ -24,7 +24,7 @@ export type SponsorTicker =
   | { kind: "failed"; reason: string };
 
 /** A ticker only when one company and its listing were found; an ambiguous name never gets one. */
-export function sponsorTickerFrom(result: OrganizationTicker): SponsorTicker {
+function sponsorTickerFrom(result: OrganizationTicker): SponsorTicker {
   if (result.ambiguous) return { kind: "none", entityName: null, ambiguous: true };
   if (result.ticker) return { kind: "listed", ticker: result.ticker, exchange: result.exchange, entityName: result.entityName };
   return { kind: "none", entityName: result.entityName, ambiguous: false };
@@ -50,7 +50,7 @@ const sponsorKey = (name: string) => name.trim().replace(/\s+/g, " ").toLowerCas
  * a failed lookup is remembered just until `retryFailed`, so a sponsor is
  * never stored as having no ticker because the lookup did not happen.
  */
-export class SponsorTickerStore {
+class SponsorTickerStore {
   private readonly answers: TtlCache<SponsorTicker>;
   private readonly failures = new Map<string, string>();
   private readonly inFlight = new Set<string>();

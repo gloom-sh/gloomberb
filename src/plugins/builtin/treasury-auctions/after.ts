@@ -172,7 +172,7 @@ const REAL_TENORS: ReadonlyArray<[string, number]> = [["5Y", 1826], ["7Y", 2557]
 const UNIT_DAYS = { day: 1, week: 7, month: 30.44, year: 365.25 } as const;
 
 /** The curve and tenor whose yield matches an auction's: the nearest stored tenor to its benchmark; null for an FRN. */
-export function cmtFor(auction: TreasuryAuction): { curve: CloudCurveId; tenor: string } | null {
+function cmtFor(auction: TreasuryAuction): { curve: CloudCurveId; tenor: string } | null {
   if (auction.secType === "FRN") return null;
   const benchmark = auctionBenchmark(auction.securityTerm);
   if (!benchmark) return null;
@@ -187,11 +187,6 @@ const cmtLabel = (cmt: { curve: CloudCurveId; tenor: string }) => cmt.curve === 
 
 /** A curve tenor's closes, oldest first, as `date` and `value` (percent). */
 export type CurveCloses = ReadonlyArray<{ date: string; value: number }>;
-
-/** The change from the auction day's close to the close `sessions` later, in bp; null when either is missing. */
-export function yieldChangeAfter(closes: CurveCloses, date: string, sessions: number): number | null {
-  return yieldMoveAfter(closes, date, sessions)?.change ?? null;
-}
 
 /** The change from the auction day's close to the close `sessions` later, in bp, and that later close's day. */
 function yieldMoveAfter(closes: CurveCloses, date: string, sessions: number): { change: number; end: string } | null {
@@ -245,10 +240,6 @@ const curveKey = (cmt: { curve: CloudCurveId; tenor: string }) => `${cmt.curve}:
  * alone, so a list that changes reads again only when it needs older closes.
  */
 const curveCache = createTtlCache<{ from: string | null; history: CloudCurveHistory }>({ ttlMs: 10 * 60_000, maxEntries: 64 });
-
-export function resetAuctionCurvesForTests(): void {
-  curveCache.clear();
-}
 
 type CurveRead = (curve: CloudCurveId, tenor: string, from: string | null) => Promise<CloudCurveHistory>;
 

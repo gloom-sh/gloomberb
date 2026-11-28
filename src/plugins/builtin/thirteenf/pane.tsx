@@ -4,7 +4,7 @@ import {
   DataTableStackView,
   DataTableView,
   EmptyState, PaneStatusBody, QueryBar, StatGrid, usePagedRows, usePaneFooter, usePaneNoticeFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableKeyEvent,
-  type DataTableRootKeyContext, type PageRequest, type PaneFooterSegment, type PaneHint, type StatItem
+  type PageRequest, type PaneFooterSegment, type PaneHint, type StatItem
 } from "../../../components";
 import { useShortcut } from "../../../react/input";
 import { usePaneSettingValue } from "../../../state/app/context";
@@ -20,8 +20,7 @@ import { isDetailBackNavigationKey } from "../../../utils/back-navigation";
 import { countEscapeTowardClose } from "../../../utils/double-escape-close";
 import { isPlainKey } from "../../../utils/keyboard";
 import { logFailure } from "../../../utils/log-failure";
-import { stopSearchFocusNavigation } from "../../../utils/search-focus-navigation";
-import { useSearchFocusUp } from "../../../components/input-search-bar";
+import { useSearchUpRootKeyDown } from "../../../components/input-search-bar";
 import { nextHeaderSort } from "../../../utils/sort-values";
 import { useAssetData, usePluginPaneState, usePluginTickerActions } from "../../runtime";
 import { useMineTickers } from "../shared/mine-tickers";
@@ -32,6 +31,8 @@ import { ThirteenFCrowdingPane, ThirteenFTickerHoldingsView } from "./signals-pa
 import { PaneFooterScope, savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
 import { useClaimResearchTabKeys } from "../ticker-detail/research-tab-keys";
+import { isSignInChange } from "./api";
+import { beginScopedRead, useHoldingsScopeKey, useScopedShown } from "./session-scope";
 import {
   DEFAULT_BROWSER_SORT,
   DEFAULT_FILING_POSITION_SORT,
@@ -249,30 +250,9 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
     ? "Loading 13F funds..."
     : error ?? warning ?? "No 13F funds found.";
 
-  const isSearchUp = useSearchFocusUp();
-  const handleRootKeyDown = useCallback((
-    event: DataTableKeyEvent,
-    context: DataTableRootKeyContext,
-  ) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return handleRefreshKey(event, refresh, { stopPropagation: true });
-  }, [isSearchUp, focusSearch, refresh]);
-
-  const handleTickerRootKeyDown = useCallback((
-    event: DataTableKeyEvent,
-    context: DataTableRootKeyContext,
-  ) => {
-    if (context.selectedIndex <= 0 && isSearchUp(event)) {
-      stopSearchFocusNavigation(event);
-      focusSearch();
-      return true;
-    }
-    return false;
-  }, [isSearchUp, focusSearch]);
+  const handleRefreshRootKey = useCallback((event: DataTableKeyEvent) => handleRefreshKey(event, refresh, { stopPropagation: true }), [refresh]);
+  const handleRootKeyDown = useSearchUpRootKeyDown(focusSearch, handleRefreshRootKey);
+  const handleTickerRootKeyDown = useSearchUpRootKeyDown(focusSearch);
 
   if (showTickerHoldings) {
     return (
@@ -342,6 +322,17 @@ function ThirteenFBrowserPane({ focused, width, height, onDetailChange }: PanePr
   );
 }
 
+/** What an open fund shows: its book, the split factors its Est P&L reads, and how its read went. */
+interface FundShown {
+  data: FundDetailData | null;
+  /** The split factors of the lines that moved as across a split; null until their corporate actions answer. */
+  splitFactors: ReadonlyMap<string, number | null> | null;
+  status: LoadStatus;
+  error: string | null;
+}
+
+const NOTHING_SHOWN: FundShown = { data: null, splitFactors: null, status: "loading", error: null };
+
 export function FundDetailView({
   focused,
   seed,
@@ -365,11 +356,11 @@ export function FundDetailView({
   const [filingSelectedId, setFilingSelectedId] = usePluginPaneState<string | null>("filingSelectedId", null);
   const [openFilingId, setOpenFilingId] = usePluginPaneState<string | null>("openFilingId", null);
   const [filingReturnTab, setFilingReturnTab] = useState<ThirteenFDetailTab | null>(null);
-  const [data, setData] = useState<FundDetailData | null>(null);
-  // The split factors of the lines that moved as across a split; null until their corporate actions answer.
-  const [splitFactors, setSplitFactors] = useState<ReadonlyMap<string, number | null> | null>(null);
-  const [status, setStatus] = useState<LoadStatus>("loading");
-  const [error, setError] = useState<string | null>(null);
+  // All the pane shows of the fund is the sign-in's it was read in: after a sign-in change none of it is shown while
+  // the fund is read again, nor when that read fails.
+  const scopeKey = useHoldingsScopeKey();
+  const [shown, show] = useScopedShown<FundShown>(scopeKey);
+  const { data, splitFactors, status, error } = shown ?? NOTHING_SHOWN;
   const abortRef = useRef<AbortController | null>(null);
   const marketData = useAssetData();
   const marketDataRef = useRef(marketData);
@@ -382,25 +373,28 @@ export function FundDetailView({
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-    setStatus("loading");
-    setError(null);
+    // The fund, its split factors and how its read went, all read in this one sign-in and shown under its key.
+    const read = beginScopedRead();
+    const update = (next: (current: FundShown) => FundShown) => {
+      if (abortRef.current === controller) show(read.key, (current) => next(current ?? NOTHING_SHOWN));
+    };
+    update((current) => ({ ...current, status: "loading", error: null }));
     void loadFundDetail(seed.cik, seed.name, controller.signal, {
       forceRefresh: refresh,
+      session: read.session,
       // A first load shows the fund as it fills in; a refresh keeps what is on screen until it answers whole.
-      ...(refresh ? {} : { onProgress: (partial: FundDetailData) => { if (abortRef.current === controller) setData(partial); } }),
+      ...(refresh ? {} : { onProgress: (partial: FundDetailData | null) => update((current) => ({ ...current, data: partial })) }),
     })
       .then((nextData) => {
         if (abortRef.current !== controller) return;
-        setData(nextData);
-        setSplitFactors(null);
-        setStatus("loaded");
+        update(() => ({ data: nextData, splitFactors: null, status: "loaded", error: null }));
         // The table is up already: a line that moved as across a split has no Est P&L until its corporate actions say whether one happened.
         const provider = marketDataRef.current;
         void (provider
           ? loadSplitFactors(nextData, corporateSplitLookup(provider), controller.signal)
           : Promise.resolve(new Map<string, number | null>())
         ).then((factors) => {
-          if (abortRef.current === controller) setSplitFactors(factors);
+          update((current) => ({ ...current, splitFactors: factors }));
         }, () => {
           // Intentional ignore: split lookups reject only on cancellation; individual failures remain unconfirmed.
         });
@@ -408,20 +402,26 @@ export function FundDetailView({
       .catch((loadError) => {
         if (abortRef.current !== controller) return;
         if (loadError instanceof Error && loadError.name === "AbortError") return;
+        // The sign-in changed under the read: its key is gone, so the fund is read again in the new one.
+        if (isSignInChange(loadError)) return;
         // A first load that failed after its first rows shows the error, not a part of the filing as the fund.
-        setData((current) => current?.loading ? null : current);
-        setError(loadError instanceof Error ? loadError.message : String(loadError));
-        setStatus("error");
+        update((current) => ({
+          ...current,
+          data: current.data?.loading ? null : current.data,
+          error: loadError instanceof Error ? loadError.message : String(loadError),
+          status: "error",
+        }));
       });
-  }, [seed.cik, seed.name]);
+  }, [seed.cik, seed.name, show]);
 
+  // Signing in or out reads the fund again.
   useEffect(() => {
     load(false);
     return () => {
       abortRef.current?.abort();
       abortRef.current = null;
     };
-  }, [load]);
+  }, [load, scopeKey]);
 
   const holdingRows = useMemo(() => buildFundHoldingRows(data, splitFactors ?? undefined), [data, splitFactors]);
   const visibleHoldingRows = useMemo(() => (

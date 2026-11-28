@@ -6,7 +6,7 @@ import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { mayBeUsEquityOrFundTicker } from "../../../utils/sec";
 import { ResearchTradeActions, researchTradeMatches, useResearchTrading } from "../shared/research-trading";
 import { instrumentFromTicker } from "../../../market-data/request-types";
-import { useMemo, type ReactNode } from "react";
+import { useCallback, useMemo, type ReactNode } from "react";
 import { EmptyState, ExternalLinkText, PaneLinkMenu, PaneStatusBody, SectionHeading, unavailableText, usePaneMenuItems, usePaneNoticeFooter } from "../../../components";
 import { CompositeChart, pricePointsToResolvedSeries } from "../../../components/chart/composite";
 import { CompanyLogo, resolveCompanyLogoSrc } from "../../../components/company-logo";
@@ -43,14 +43,18 @@ import { appendLiveQuotePoint, hasUnknownBondHistoryBasis } from "../../../time-
 import type { TickerFinancials } from "../../../types/financials";
 import type { TickerRecord } from "../../../types/ticker";
 import { Box, ScrollBox, Text, useUiCapabilities } from "../../../ui";
-import { displayTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { canonicalExchange, displayTickerKey, publicTickerKey, resolveExchangeTimeZone } from "../../../utils/exchanges";
+import { continuousFuturesRoot } from "../../../utils/futures-generic";
 import { convertCurrency, displayWidth, formatPercentRaw } from "../../../utils/format";
 import {
   appTtmRate, baseCurrencyFiguresNote, enterpriseValueGapIsLarge, enterpriseValueReconciliationNote, trailingEpsFiscalYear, ttmAtAppRate,
   ttmConversionNote, withFinancialEnterpriseValue,
 } from "../../../utils/fundamentals";
 import { servedRatesNotMeaningful } from "../../../utils/served-rates";
-import { atRegularSessionPrice } from "../../../market-data/quotes/regular-session-valuation";
+import { atRegularSessionPrice, regularSessionMarketCapitalization } from "../../../market-data/quotes/regular-session-valuation";
+import { balanceSheetRateWanted, enterpriseValueBridgeNote, listingEnterpriseValue } from "../../../market-data/quotes/listing-enterprise-value";
+import { loadBalanceSheetRate } from "../../../market-data/quotes/balance-sheet-rate";
+import { useAsyncResource } from "../../../react/async-resource";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
 import { sharesOutstandingInReceipts } from "../../../utils/depositary-receipt";
 import { isReceiptSide, listingCedearRatio, listingDepositaryPair } from "../../../market-data/depositary-pair";
@@ -70,11 +74,12 @@ import type { OverviewDividendState } from "./overview/dividend";
 import { optionContractFields, useOptionContractRow } from "./overview/option-contract";
 import { resolveOptionsTarget } from "../../../utils/options";
 import { buildOverviewStats, buildPositionRows, buildProfileFields, FINANCIALS } from "./overview/model";
+import { usePurchaseDateCostFx } from "../portfolio-list/pane/purchase-date-fx";
 import { hasStatementFinancials } from "./financials/model";
 import type { OverviewFunctionLink, StatField } from "./overview/types";
 import type { CryptoMarketAsset } from "../../../api-client/crypto-markets";
-import { describeFundamentalMarketCap } from "../../../utils/market-capitalization";
-import { liveFiftyTwoWeekRange, liveMarketCapitalization } from "../../../market-data/quotes/live-valuation";
+import { describeFundamentalMarketCap, marketCapBasisNote } from "../../../utils/market-capitalization";
+import { liveFiftyTwoWeekRange } from "../../../market-data/quotes/live-valuation";
 import { instrumentTypeLabel } from "../../../tickers/instrument-kind";
 import { ClippedText } from "../../../components/ui/display";
 import { DelayedMark, delayedMarkWidth, useDelayedMarkMinutes } from "../../../components/ui/delayed-mark";
@@ -115,8 +120,14 @@ function contractField(line: FuturesContractLine): StatField {
 
 interface OverviewTabProps {
   coin?: CryptoMarketAsset | null;
-  /** The contracts on the security, given the width of the overview's content. */
+  /** A perpetual contract's own funding and premium, right under its price, given the width of the overview's content. */
   perpetuals?: ReactNode | ((contentWidth: number) => ReactNode);
+  /**
+   * The perpetual markets on a stock or a coin, one row per venue, given the width of the overview's content.
+   * Another market on the security, not its own price: it follows the security's range, chart, returns and
+   * figures, so those open the tab.
+   */
+  perpetualMarkets?: ReactNode | ((contentWidth: number) => ReactNode);
   /** The company's latest news, given the width of the overview's content; it draws nothing while there is none. */
   news?: ReactNode | ((contentWidth: number) => ReactNode);
   width?: number;
@@ -130,6 +141,8 @@ interface OverviewTabProps {
   onOpenChart?: () => void;
   /** A click on a figure opens its research function (beta to GR, holders to HDS). */
   onOpenFunction?: (link: OverviewFunctionLink) => void;
+  /** Opens a listing's DES (useOpenDescription): an A+H company's other line, from its row. */
+  onOpenListing?: (ticker: string) => void;
   /** The history the dividend yield reads (useOverviewDividend): a trailing one's cash, a forward one's lapse; without it the yield stands. */
   dividend?: OverviewDividendState;
   /** An A+H company's other line and how the two prices compare (useAhPair); none for any other listing. */
@@ -176,7 +189,7 @@ export function OverviewTab(props: OverviewTabProps) {
 const FUND_FACTS_LINK: OverviewFunctionLink = { name: "Fund Facts", templateId: "sec-etf-pane" };
 
 function ResolvedOverviewTab({
-  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, perpetuals, news, coin, dividend, ah = null, boardLot = null, tax = null,
+  width, height, focused = false, ticker, financials, beta, onOpenChart, onOpenFunction, onOpenListing, perpetuals, perpetualMarkets, news, coin, dividend, ah = null, boardLot = null, tax = null,
   chartScale: chartScaleChoice = "auto", onChartScaleChange,
 }: OverviewTabProps & { ticker: TickerRecord }) {
   const trade = useResearchTrading();
@@ -202,7 +215,7 @@ function ResolvedOverviewTab({
     getMetadata: () => ({ observations: [quoteObservation(quote, Date.now())] }),
   } : null);
   const fundamentals = financials?.fundamentals;
-  const capitalization = liveMarketCapitalization(quote, fundamentals);
+  const capitalization = regularSessionMarketCapitalization({ quote, fundamentals });
   const profile = financials?.profile;
   const instrumentType = quote?.instrumentType?.trim()
     || financials?.quoteMetadata?.instrumentType?.trim()
@@ -231,6 +244,14 @@ function ResolvedOverviewTab({
     () => (fundamentals ? ttmAtAppRate(withFinancialEnterpriseValue(fundamentals, profile), ttmRate) : fundamentals),
     [fundamentals, profile, ttmRate?.rate, ttmRate?.asOf],
   );
+  const evFinancials = financials && { ...financials, quote, fundamentals: shownFundamentals };
+  const { from: sheetCurrency, to: capCurrency, date: sheetDate } = evFinancials ? balanceSheetRateWanted(evFinancials) ?? {} : {};
+  const loadEvRate = useCallback(() => sheetCurrency && capCurrency && sheetDate
+    ? loadBalanceSheetRate({ from: sheetCurrency, to: capCurrency, date: sheetDate }) : Promise.resolve(null),
+  [sheetCurrency, capCurrency, sheetDate]);
+  const { data: evRate } = useAsyncResource(sheetDate ? loadEvRate : null);
+  const evInputs = evFinancials && (evRate ? { ...evFinancials, balanceSheetRate: evRate } : evFinancials);
+  const enterpriseValue = evInputs ? listingEnterpriseValue(evInputs) : undefined;
   const quoteCurrency = quote?.currency || ticker.metadata.currency || baseCurrency;
   const toBase = (value: number, fromCurrency: string) =>
     convertCurrency(value, fromCurrency, baseCurrency, exchangeRates);
@@ -326,8 +347,9 @@ function ResolvedOverviewTab({
   // A provider EV well off market cap + debt - cash, or why a withdrawn one is unavailable, at the
   // regular session price the EV beside it is shown at. A gap of a few percent is the valuation panes' detail.
   const pricedForEnterpriseValue = atRegularSessionPrice({ quote, fundamentals: withFinancialEnterpriseValue(fundamentals, profile) }).fundamentals;
-  const enterpriseValueNote = enterpriseValueGapIsLarge(pricedForEnterpriseValue)
-    ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, financials ?? undefined) : undefined;
+  const bridgeNote = enterpriseValue?.kind === "value" ? enterpriseValueBridgeNote(enterpriseValue) : null;
+  const enterpriseValueNote = bridgeNote ?? (enterpriseValueGapIsLarge(pricedForEnterpriseValue)
+    ? enterpriseValueReconciliationNote(pricedForEnterpriseValue, undefined, evInputs ?? undefined) : undefined);
   // Months of cash, for a company that burns it, and an offering since its balance sheet that the cash is not in yet.
   const unadjustedRunway = useMemo(() => financials ? cashRunway(financials) : null, [financials]);
   const offerings = useRunwayOfferings(ticker.metadata.ticker, ticker.metadata.exchange,
@@ -339,6 +361,7 @@ function ResolvedOverviewTab({
     ? ttmConversionNote(shownFundamentals) : undefined;
   // A cap shown in the base currency too (7.80T ARS, 5.03B USD) says at what rate, and when it was read.
   const capRateNote = capitalization ? baseCurrencyFiguresNote(capitalization.currency, baseCurrency, fxObservations) : undefined;
+  const capBasisNote = marketCapBasisNote(capitalization);
   // FB lists a fund now, and Meta trades as META: said for someone who typed FB meaning the company, as `quote FB` says it.
   const changeNote = useTickerChangeNote(ticker.metadata.ticker, ticker, quote);
   const returnIntegrityNotice = priceReturnIntegrityNotice(performanceFields);
@@ -355,7 +378,8 @@ function ResolvedOverviewTab({
       ...(enterpriseValueNote ? [enterpriseValueNote] : []),
       ...(ttmNote ? [ttmNote] : []),
       ...(capRateNote ? [capRateNote] : []),
-      ...(capitalization?.provenance.kind === "fundamentals" && !capitalization.live
+      ...(capBasisNote ? [capBasisNote] : []),
+      ...(capitalization?.provenance.kind === "fundamentals"
         ? [`Market cap: ${describeFundamentalMarketCap(capitalization.provenance)}.`] : []),
     ],
     focused,
@@ -465,7 +489,11 @@ function ResolvedOverviewTab({
   const hasDayRange = quote?.low != null && quote?.high != null && quote.high > quote.low;
   const yearRange = liveFiftyTwoWeekRange(quote);
   // A listing that no longer trades: its range is its last session's, years ago perhaps, never today's.
-  const dayRangeLabel = delisted ? t("Last Session") : t("Day Range");
+  const nseRange = !delisted && quote && canonicalExchange(returnVenue) === "NSE";
+  const rangeDay = nseRange ? quote.dayRangeSessionDate : null;
+  const sessionRange = nseRange && quote.dayRangeBasis === "daily-bar";
+  const rangeBasis = sessionRange ? t("Session Range") : rangeDay ? t("Quote Range") : null;
+  const dayRangeLabel = delisted ? t("Last Session") : rangeBasis ?? t("Day Range");
   const yearRangeLabel = t("52W Range");
   const rangeLabelWidth = Math.max(
     hasDayRange ? displayWidth(dayRangeLabel) : 0,
@@ -497,15 +525,17 @@ function ResolvedOverviewTab({
   const contractGridColumns = futuresFields.length > 0 ? contractColumns : textGridColumns(optionFields, contentWidth);
   const depositaryPair = listingDepositaryPair(financials);
   const stats = buildOverviewStats({
-    ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null, linked: !!depositaryPair } : null,
+    ahPair: ah ? { other: ah.side === "h" ? ah.pair.a : ah.pair.h, side: ah.side, premiumPercent: ah.comparison?.premiumPercent ?? null } : null,
     quote,
     fundamentals: shownFundamentals,
     coin,
     financialCurrency: financials?.financialCurrency,
+    statementFinancials: financials,
     quoteCurrency,
     baseCurrency,
     toBase,
     marketCapExchangeRates: exchangeRates,
+    enterpriseValue,
     nextEarnings: financials?.nextEarnings,
     depositaryReceipt: sharesOutstandingInReceipts(quote, fundamentals, description),
     depositaryPair: depositaryPair ? { pair: depositaryPair, receiptSide: isReceiptSide(financials) } : null,
@@ -528,12 +558,15 @@ function ResolvedOverviewTab({
     isin: ticker.metadata.isin,
   });
   const hasPerformance = performanceFields.some((field) => field.value != null || field.unavailableReason);
+  const positionTickers = useMemo(() => [ticker], [ticker]);
+  const purchaseDateFx = usePurchaseDateCostFx(positionTickers, { enabled: ticker.metadata.positions.length > 0, into: baseCurrency });
   const positionRows = buildPositionRows({
     ticker,
     quote,
     quoteCurrency,
     baseCurrency,
     toBase,
+    purchaseDateFx,
     accountNames,
   });
 
@@ -667,9 +700,8 @@ function ResolvedOverviewTab({
                 low={quote.low!}
                 high={quote.high!}
                 label={dayRangeLabel}
-                // A coin's range is the composite's or one exchange's own day: said, so a switch between them shows.
-                note={quoteStatsBasisText(quote) || undefined}
-                shortLabel={delisted ? t("Last") : t("Day")}
+                note={rangeDay ?? (quoteStatsBasisText(quote) || undefined)}
+                shortLabel={delisted ? t("Last") : sessionRange ? t("Session") : rangeDay ? t("Quote") : t("Day")}
                 labelWidth={rangeLabelWidth}
                 endpointWidth={rangeEndpointCells}
                 width={rangeWidth}
@@ -735,7 +767,8 @@ function ResolvedOverviewTab({
 
         {hasPerformance && (
           <Box flexDirection="column">
-            <SectionHeading title={t("Price Return")} />
+            <SectionHeading title={continuousFuturesRoot(ticker.metadata.ticker)
+              ? t("Price Return (continuous futures; includes rolls)") : t("Price Return")} />
             <PriceReturnStrip fields={performanceFields} width={contentWidth} />
           </Box>
         )}
@@ -753,7 +786,7 @@ function ResolvedOverviewTab({
           <Box flexDirection="column">
             <SectionHeading title={t("Fundamentals")} />
             <PaneLinkMenu>
-              <FundamentalsGrid fields={stats} width={contentWidth} onOpenLink={onOpenFunction} />
+              <FundamentalsGrid fields={stats} width={contentWidth} onOpenLink={onOpenFunction} onOpenListing={onOpenListing} />
               {beta && <FundamentalsGrid fields={[beta]} columns={1} width={contentWidth} onOpenLink={onOpenFunction} />}
               {/* The statements behind the figures, for a company that has them. */}
               {onOpenFunction && hasStatementFinancials(financials) ? <FunctionLinkRow link={FINANCIALS} onOpen={onOpenFunction} /> : null}
@@ -767,6 +800,8 @@ function ResolvedOverviewTab({
             <FundamentalsGrid fields={taxFields} width={contentWidth} />
           </Box>
         )}
+
+        {perpetualMarkets && <PaneLinkMenu>{typeof perpetualMarkets === "function" ? perpetualMarkets(contentWidth) : perpetualMarkets}</PaneLinkMenu>}
 
         {positionRows.length > 0 && (
           <Box flexDirection="column">

@@ -6,6 +6,7 @@ import { countEscapeTowardClose, keepEscapeFromClosing } from "../../../../utils
 import { isPlainKey } from "../../../../utils/keyboard";
 import { createOneShot } from "../../../../utils/one-shot";
 import { scrollToBottom } from "../layout";
+import { releaseTranscriptFocus } from "./selection-runtime";
 import type { ChatSidebarRow } from "../sidebar-rows";
 import type { ComposerShareLink } from "../pane-links/composer";
 
@@ -331,6 +332,7 @@ export function useChatContentShortcuts({
       event.stopPropagation?.();
       setSelectedIdx(0);
       setFollowMessages(false);
+      releaseTranscriptFocus();
       scrollRef.current?.scrollTo(0);
       queueMicrotask(() => requestOlderMessagesIfNeeded({ firstIsSelected: true }));
       return;
@@ -340,6 +342,7 @@ export function useChatContentShortcuts({
       event.stopPropagation?.();
       setSelectedIdx(messages.length - 1);
       setFollowMessages(true);
+      releaseTranscriptFocus();
       queueMicrotask(() => scrollToBottom(scrollRef.current, nativePaneChrome));
     }
   }, { allowEditable: true });

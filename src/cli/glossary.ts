@@ -1,4 +1,5 @@
 import { cliStyles, cliTerminalWidth, renderDefinitions, renderSection, wrapText } from "../utils/cli-output";
+import { escapeRegExp } from "../utils/format";
 
 /**
  * Plain-words meanings of the rates, auction, credit and bond yield, energy, perpetual-futures, portfolio, portfolio risk (beta, R², VaR, HHI),
@@ -508,7 +509,7 @@ export const GLOSSARY: readonly GlossaryEntry[] = [
   },
   {
     term: "Net debt", aliases: ["net debt/ebitda", "net debt to ebitda", "net leverage"], functions: ["FA"], shown: ["Net Debt"],
-    definition: "Total debt less cash and short-term investments, with the balance sheet's lease liabilities under IFRS (\"incl. leases\"); "
+    definition: "Total debt less cash and short-term investments, with the balance sheet's lease liabilities under IFRS (\"of which leases\"); "
       + "a company reporting under US GAAP (a 10-K, or a 20-F such as Alibaba's) keeps its operating leases out (\"excl. op. leases\"). Negative means more cash than debt. "
       + "Net debt / EBITDA is how many years of EBITDA would repay it; FA divides by a year of EBITDA, the trailing four quarters in a quarterly column.",
   },
@@ -1151,10 +1152,6 @@ export function lookupGlossary(query: string): GlossaryLookup {
   const whole = holding(wholeWord);
   if (exact.length > 0) return { exact, partial: whole };
   return { exact, partial: [...whole, ...holding((name, word) => name.startsWith(word)).filter((entry) => !whole.includes(entry))] };
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** The label as a whole token of the text: `bp` in `Chg bp` but not in `+9bp` or `bps`. */

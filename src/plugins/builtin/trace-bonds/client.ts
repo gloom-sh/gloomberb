@@ -3,6 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import { shortCompanyName } from "../../../tickers/company-name";
 import type { DataProvider } from "../../../types/data-provider";
 import { signalWithTimeout } from "../../../utils/async-deadline";
+import { errorMessage } from "../../../utils/errors";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { httpFetch } from "../../../utils/http-transport";
 import { isoDateOrNull, numericOrNull, recordOrNull, textOrNull } from "../../../utils/guards";
@@ -88,7 +89,7 @@ function cusipCheckDigit(base: string): number | null {
   return (10 - (sum % 10)) % 10;
 }
 
-export function isCusip(text: string): boolean {
+function isCusip(text: string): boolean {
   return /^[0-9A-Z*@#]{8}\d$/.test(text) && cusipCheckDigit(text) === Number(text[8]);
 }
 
@@ -124,7 +125,7 @@ interface DomainFilter {
 }
 
 /** One request to the tape, and what its rows must be: checked again before they merge, so no filter is taken on trust. */
-export interface BondRequest {
+interface BondRequest {
   filters: CompareFilter[];
   /** The issues asked for by CUSIP, when a company's links name them. */
   domain?: DomainFilter[];
@@ -175,7 +176,7 @@ function unmatured(bond: Pick<CorporateBond, "maturityDate">, today: string): bo
  * take the page; a filter on the date also drops perpetuals, which have
  * none, so each is asked twice, once for each.
  */
-export function bondTapeRequests(query: BondQuery | null, today: string): BondRequest[] {
+function bondTapeRequests(query: BondQuery | null, today: string): BondRequest[] {
   if (!query) return [{ filters: [TRADED], accepts: anyBond }];
   if (query.kind === "cusip") {
     return [{ filters: [{ fieldName: "cusip", compareType: "EQUAL", fieldValue: query.cusip }, TRADED], accepts: anyBond }];
@@ -424,10 +425,6 @@ function latestTradeDate(bonds: readonly CorporateBond[]): string | null {
   return latest;
 }
 
-function errorText(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
 /**
  * Every request of a query at once. One that fails does not fail the others:
  * their rows still show and the failure is listed. Only when none answers
@@ -439,7 +436,7 @@ async function askTape(token: string, requests: readonly BondRequest[], signal: 
   const failures: string[] = [];
   for (const [index, result] of settled.entries()) {
     if (result.status === "fulfilled") answers.push({ payload: result.value, accepts: requests[index]!.accepts, limit: PAGE_SIZE });
-    else failures.push(errorText(result.reason));
+    else failures.push(errorMessage(result.reason));
   }
   if (answers.length === 0) throw (settled[0] as PromiseRejectedResult).reason;
   return { ...mergeBondAnswers(answers), failures: [...new Set(failures)] };
@@ -451,7 +448,7 @@ async function askTape(token: string, requests: readonly BondRequest[], signal: 
  * `Cumulus Media Inc.` is `CUMULUS MEDIA`, which starts `CUMULUS MEDIA NEW
  * HLDGS INC`. Null for a name with nothing left.
  */
-export function tapeIssuerName(company: string): string | null {
+function tapeIssuerName(company: string): string | null {
   const name = shortCompanyName(company).toUpperCase().replace(/[.,]/g, "").replace(/\s+/g, " ")
     .replace(/ HOLDINGS?$/, "").slice(0, MAX_QUERY_LENGTH).trim();
   return name.length >= 2 ? name : null;
@@ -567,7 +564,7 @@ export async function fetchBondTape(input: string, options: BondTapeOptions = {}
     options.signal?.throwIfAborted();
     if (linked && linked.cusips.length > 0) {
       const found = await askTape(token, [linkedBondsRequest(linked.cusips, today)], deadline)
-        .catch((error: unknown) => ({ bonds: [], truncated: false, failures: [errorText(error)] }));
+        .catch((error: unknown) => ({ bonds: [], truncated: false, failures: [errorMessage(error)] }));
       if (found.bonds.length > 0) {
         issuer = { company: linked.company, name: linked.company, linked: true };
         answer = { ...found, failures: [...new Set([...first.failures, ...found.failures])] };
@@ -587,7 +584,7 @@ export async function fetchBondTape(input: string, options: BondTapeOptions = {}
     if (company && name && name !== query.name) {
       issuer = { company, name };
       answer = await askTape(token, bondTapeRequests({ kind: "issuer", text: name, name, root: null, ticker: null }, today), deadline)
-        .catch((error: unknown) => ({ bonds: [], truncated: false, failures: [errorText(error)] }));
+        .catch((error: unknown) => ({ bonds: [], truncated: false, failures: [errorMessage(error)] }));
       answer = { ...answer, failures: [...new Set([...first.failures, ...answer.failures])] };
     }
   }

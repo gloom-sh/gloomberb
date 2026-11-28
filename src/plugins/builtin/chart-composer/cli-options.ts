@@ -30,7 +30,7 @@ function chartRange(options: HeadlessPaneOptionValues): TimeRange | null {
  * charted listings' last December sessions, a venue's own calendar where it
  * is known.
  */
-export function yearToDateWindow(spec: ChartSpec, now = Date.now()): { start: string; end: string } {
+function yearToDateWindow(spec: ChartSpec, now = Date.now()): { start: string; end: string } {
   const today = new Date(now).toISOString().slice(0, 10);
   const venues = [...new Set(spec.series.flatMap((entry) => entry.source.kind === "security" ? [entry.source.instrument.exchange || undefined] : []))];
   const starts = (venues.length ? venues : [undefined]).flatMap((venue) => yearToDateBaseDay(today, venue, now) ?? []);
@@ -68,7 +68,7 @@ export function applyChartComposerCapabilityOptions(
   let next = spec;
   if ((options.rangePreset ?? options.range) === "YTD") {
     // A year of daily bars, shown from the prior year's last close.
-    next = { ...next, viewport: { ...next.viewport, range: "1Y", dateWindow: { ...yearToDateWindow(next), endAtLatestObservation: true } } };
+    next = { ...next, viewport: { ...next.viewport, range: "1Y", dateWindow: { ...yearToDateWindow(next), endAtLatestObservation: true, returnPeriod: "YTD" } } };
   }
   const selectedRange = chartRange(options);
   const range = capabilityId === "intraday-price-chart" && typeof options.session === "string"

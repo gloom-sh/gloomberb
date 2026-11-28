@@ -249,6 +249,40 @@ test("an external plugin that cannot register is marked failed and the app still
   expect(getSharedRegistry()).toBe(services.pluginRegistry);
 });
 
+test("an external plugin that registers a contribution without an id is marked failed and leaves no entry behind", async () => {
+  const bySetup = {
+    id: "by-setup",
+    name: "By setup",
+    version: "1",
+    setup(context: { registerCommand(command: unknown): void }) {
+      context.registerCommand({ id: "by-setup:ok", label: "Fine", keywords: [], category: "data", execute() {} });
+      context.registerCommand({ label: "Run it", keywords: [], category: "data", execute() {} });
+    },
+  };
+  const byPane = { id: "by-pane", name: "By pane", version: "1", panes: [{ name: "Unnamed", component: () => null, defaultPosition: "left" }] };
+  const healthy = { id: "healthy", name: "Healthy", version: "1" };
+  const externalPlugins = [
+    { plugin: bySetup, path: "/plugins/by-setup", directory: "by-setup" },
+    { plugin: byPane, path: "/plugins/by-pane", directory: "by-pane" },
+    { plugin: healthy, path: "/plugins/healthy", directory: "healthy" },
+  ];
+  const services = runtime({ plugins: [bySetup, byPane, healthy] as never, externalPlugins: externalPlugins as never });
+
+  await services.ready;
+
+  expect(externalPlugins[0]!.plugin).toBe(bySetup);
+  expect((externalPlugins[0] as { error?: string }).error).toBe(
+    'Registration failed: Plugin "by-setup" registered a command ("Run it") that has no id. Give every command a non-empty string `id`.',
+  );
+  expect((externalPlugins[1] as { error?: string }).error).toBe(
+    'Registration failed: Plugin "by-pane" registered a pane ("Unnamed") that has no id. Give every pane a non-empty string `id`.',
+  );
+  expect((externalPlugins[2] as { error?: string }).error).toBeUndefined();
+  expect([...services.pluginRegistry.allPlugins.keys()]).toEqual(["healthy"]);
+  expect([...services.pluginRegistry.commands.keys()].filter((id) => typeof id !== "string" || id.startsWith("by-"))).toEqual([]);
+  expect([...services.pluginRegistry.panes.keys()].filter((id) => typeof id !== "string")).toEqual([]);
+});
+
 test("a built-in that cannot register still fails startup", async () => {
   const services = runtime({
     plugins: [{ id: "builtin-broken", name: "Broken", version: "1", setup() { throw new Error("builtin broke"); } }],

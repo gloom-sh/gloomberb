@@ -4,12 +4,13 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { createPortal } from "react-dom";
 import type { BoxRenderable, HostPopoverProps } from "../../../ui";
 import { useThemeColors } from "../../../theme/theme-context";
+import { isImeComposing } from "../key-event";
 
 const VIEWPORT_MARGIN = 10;
 /** How far a popover kept inside its pane stays off the pane's edge. */
 const PANE_MARGIN = 4;
 const POPOVER_GAP = 6;
-const PANE_SELECTOR = '[data-gloom-role="pane-window"], [data-gloom-role="detached-pane-window"]';
+export const PANE_SELECTOR = '[data-gloom-role="pane-window"], [data-gloom-role="detached-pane-window"]';
 /** `.gloom-popover` in styles.css: above dialogs and toasts. */
 const POPOVER_Z_INDEX = 10_001;
 
@@ -43,7 +44,7 @@ function anchorEdges(anchor: BoxRenderable): Edges | null {
 }
 
 /** The area a popover must stay in: the window, and for `pane` the pane that holds its trigger too. */
-function placementEdges(wrapper: Element | null, boundary: HostPopoverProps["boundary"]): Edges {
+export function placementEdges(wrapper: Element | null, boundary: HostPopoverProps["boundary"]): Edges {
   const viewport = {
     left: VIEWPORT_MARGIN,
     top: VIEWPORT_MARGIN,
@@ -189,6 +190,7 @@ export function WebPopover({
       onOpenChange(false);
     };
     const handleKeyDown = (event: KeyboardEvent) => {
+      if (isImeComposing(event)) return;
       // Tab leaves a menu, as on every platform, and goes on to move focus.
       if (event.key === "Tab") {
         onOpenChange(false);

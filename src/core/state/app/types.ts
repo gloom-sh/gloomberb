@@ -113,6 +113,7 @@ export interface AppState {
   initialized: boolean;
   statusBarVisible: boolean;
   inputCaptured: boolean;
+  inputCaptureOwners?: ReadonlySet<object>;
   updateAvailable: ReleaseInfo | null;
   updateProgress: UpdateProgress | null;
   updateCheckInProgress: boolean;
@@ -172,7 +173,7 @@ export type AppAction =
   | { type: "SET_UPDATE_NOTICE"; notice: string | null }
   /** Plugins switched on or off; `focusedPaneId` moves focus off a pane that just went hidden. */
   | { type: "SET_DISABLED_PLUGINS"; disabledPlugins: string[]; focusedPaneId?: string | null }
-  | { type: "SET_INPUT_CAPTURED"; captured: boolean }
+  | { type: "SET_INPUT_CAPTURED"; captured: boolean; owner?: object }
   /** @deprecated Only writes the unused `AppState.exchangeRates`. Use `useFxRatesMap`. */
   | { type: "SET_EXCHANGE_RATE"; currency: string; rate: number }
   /** @deprecated Only writes the unused `AppState.exchangeRates`. Use `useFxRatesMap`. */

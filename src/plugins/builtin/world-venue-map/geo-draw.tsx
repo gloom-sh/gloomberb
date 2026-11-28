@@ -134,7 +134,7 @@ export function hitTestGeo(
 }
 
 /** A ship's class or a layer's icon as one terminal cell; anything unknown is a bullet. */
-export function cellGlyph(layerId: string, feature: GeoFeature): string {
+function cellGlyph(layerId: string, feature: GeoFeature): string {
   const symbol = featureSymbol(layerId, feature);
   if (symbol.id === "ship" || symbol.id === "ship-small" || symbol.id === "ship-other" || symbol.id === "ship-still") {
     return SHIP_CELLS[symbol.tone] ?? "•";

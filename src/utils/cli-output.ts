@@ -196,7 +196,7 @@ export function cliArrow(arrow: "→" | "←" | "↑" | "↓"): string {
  * the keys `←/→` "left/right". Text without an arrow is returned as it is.
  * For a plain table's cells and headers, never a whole output.
  */
-export function plainWords(text: string): string {
+function plainWords(text: string): string {
   if (!ARROW.test(text)) return text;
   return text
     .replace(/←\s*\/\s*→/g, "left/right")
@@ -297,7 +297,7 @@ function padDisplay(text: string, width: number, align: CliAlign = "left"): stri
 const graphemes = new Intl.Segmenter(undefined, { granularity: "grapheme" });
 
 /** Cuts text to `width` cells, ending in an ellipsis, without breaking escape codes or emoji. */
-export function truncateDisplay(text: string, width: number): string {
+function truncateDisplay(text: string, width: number): string {
   if (visibleLength(text) <= width) return text;
   if (width <= 0) return "";
   let output = "";

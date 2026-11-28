@@ -1,3 +1,4 @@
+import { formatDay } from "../../../utils/day-format";
 import type { GuidancePayload, KpiGuidance, KpiObservation, KpiSeries, KpiUnit, KpisPayload } from "../../../api-client/company-kpis";
 import type { DataTableColumn } from "../../../components";
 import { scalarPoint, staticSeries } from "../../../components/chart/static/series";
@@ -59,6 +60,29 @@ export function seriesDetail(row: Pick<CompanyRow, "basis" | "dimensions" | "ser
 /** A series named in plain words: "Revenue · Data Center", for a chart's series list and a detail title. */
 export const seriesName = (row: Pick<CompanyRow, "metric" | "basis" | "dimensions" | "seriesLabels">) => [row.metric.name, seriesDetail(row)].filter(Boolean).join(" · ");
 const KIND_ORDER = ["quarter", "half", "ytd", "year", "instant", "other"];
+type PeriodKind = CompanyRow["period"]["kind"];
+const PERIOD_VIEW_LABELS: Record<PeriodKind, string> = {
+  quarter: "Quarterly", half: "Half-yearly", ytd: "Year to date", year: "Annual", instant: "Balances", other: "Other periods",
+};
+/**
+ * The period kinds a KPI table has rows of, as its views, in reading order:
+ * Quarterly, Half-yearly, Year to date, Annual, Balances, Other periods. A
+ * company's quarterly and annual figures of one metric are separate series,
+ * and listed together they read as one series twice with two kinds of change.
+ */
+export function kpiPeriodViews(rows: readonly Pick<CompanyRow, "period">[]): { value: PeriodKind; label: string }[] {
+  const kinds = new Set(rows.map((row) => row.period.kind));
+  return (KIND_ORDER as PeriodKind[]).filter((kind) => kinds.has(kind)).map((kind) => ({ value: kind, label: PERIOD_VIEW_LABELS[kind] }));
+}
+/** The view a stored choice names while the table has it, else the first: quarters, when the company reports them. */
+export function kpiPeriodView(stored: string | null | undefined, views: readonly { value: PeriodKind }[]): PeriodKind | null {
+  return views.find((view) => view.value === stored)?.value ?? views[0]?.value ?? null;
+}
+/** What the change column sets a figure against, one comparison per view (observationChange). */
+const CHANGE_LABELS: Record<PeriodKind, string> = {
+  quarter: "Q/Q change", half: "H/H change", ytd: "Y/Y change", year: "Y/Y change", instant: "Prior change", other: "Prior change",
+};
+const periodChangeLabel = (kind: PeriodKind | null | undefined) => kind ? CHANGE_LABELS[kind] : "Prior change";
 const BASIS_ORDER = ["reported", "adjusted", "constant_currency", "organic"];
 /** Series in reading order: by metric, the consolidated figure before its parts, reported before other bases, a quarter before its year. */
 export function seriesOrder(a: CompanyRow, b: CompanyRow): number {
@@ -252,6 +276,11 @@ export function guidanceSeries(rows: KpiGuidance[], selected: KpiGuidance | unde
 }
 /** Columns that say nothing while every row is the company's consolidated, as-reported figure. */
 export const QUIET_COLUMNS = { basis: ["Reported"], scope: ["Consolidated"] };
+/** The ISO day a dated cell (Issued, Published) exports, which its text writes day first; null for any other cell. */
+export function companyCellDay(row: CompanyRow, column: string): string | null {
+  if (column === "issued") return isGuidance(row) ? row.issuedDate : null;
+  return column === "published" ? row.evidence[0]?.publishedAt.slice(0, 10) ?? null : null;
+}
 /** The text of a table cell as the pane draws it; the report prints the same words. */
 export function companyCellText(row: CompanyRow, column: string, observations: KpiObservation[]): string {
   const guide = isGuidance(row) ? row : null;
@@ -259,27 +288,37 @@ export function companyCellText(row: CompanyRow, column: string, observations: K
   return column === "metric" ? row.metric.name : column === "period" ? fiscalLabel(row) : column === "value" ? `${guide ? rangeText(guide) : observationValue(row as KpiObservation)}${guide?.status === "withdrawn" || guide?.hedge === "qualitative" ? "" : unitSuffix(row)}`
     : column === "unit" ? unitLabel(row)
     : column === "basis" ? basisLabel(row.basis) : column === "scope" ? dimensionLabel(row.dimensions) || "Consolidated"
-    : column === "issued" ? guide?.issuedDate ?? MISSING_VALUE : column === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : MISSING_VALUE
-    : column === "outcome" ? guide ? outcomeLabel(guide) : MISSING_VALUE : column === "published" ? row.evidence[0]!.publishedAt.slice(0, 10)
+    : column === "issued" ? formatDay(guide?.issuedDate) : column === "actual" ? guide?.actual ? `${valueText(row, guide.actual.value)}${unitSuffix(row)}` : MISSING_VALUE
+    : column === "outcome" ? guide ? outcomeLabel(guide) : MISSING_VALUE : column === "published" ? formatDay(row.evidence[0]!.publishedAt)
     : column === "confidence" ? `${Math.round(row.confidence * 100)}%` : column === "revision" ? `${row.revision} ${row.current ? "current" : "superseded"}` : row.evidence[0]!.quote;
 }
 /**
+ * What a narrow desktop pane gives up first in the evidence ledger: how sure
+ * and which revision, then the figure and its change, which the Table tab
+ * holds. The sentence and the day it was published stay.
+ */
+export const EVIDENCE_COLUMN_DROP_ORDER = ["revision", "confidence", "change", "value", "published"] as const;
+/**
  * The table's columns. `named` is the desktop's: the metric cell names the
  * series in plain words (seriesDetail), so no basis or scope column repeats it.
+ * `period` is the one kind of period the rows are, which names the change.
  */
-export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false, named = false): DataTableColumn[] {
+export function companyColumns(guidance: boolean, evidence: boolean, history: boolean, trend = false, named = false, period: PeriodKind | null = null): DataTableColumn[] {
   const columns: DataTableColumn[] = [
     { id: "metric", label: "Metric", width: 27, flexGrow: 1, align: "left" },
     { id: "period", label: "Fiscal period", width: 14, align: "left" },
     { id: "value", label: guidance ? "Guide" : "Value", width: guidance ? 26 : 16, align: "right" },
-    { id: "change", label: guidance ? "Action" : "Prior change", width: 13, align: "right" },
+    // One period kind's rows are set against one kind of prior period, which the header names.
+    { id: "change", label: guidance ? "Action" : periodChangeLabel(period), width: 13, align: "right" },
     ...(trend ? [{ id: "trend", label: "Trend", width: 16, align: "left" as const }] : []),
     ...(guidance ? [{ id: "issued", label: "Issued", width: 11, align: "left" as const },
       ...(history ? [{ id: "actual", label: "Actual", width: 16, align: "right" as const }, { id: "outcome", label: "Outcome", width: 10, align: "left" as const }] : [])] : []),
     { id: "basis", label: "Basis", width: 18, align: "left" },
     { id: "scope", label: "Scope", width: 24, align: "left" },
     ...(evidence ? [{ id: "published", label: "Published", width: 11, align: "left" as const }, { id: "confidence", label: "Confidence", width: 11, align: "right" as const },
-      { id: "revision", label: "Revision", width: 12, align: "left" as const }, { id: "quote", label: "Evidence", width: 54, align: "left" as const }] : []),
+      { id: "revision", label: "Revision", width: 12, align: "left" as const },
+      // The sentence gives up length before a narrow desktop pane gives up the column.
+      { id: "quote", label: "Evidence", width: 54, flexGrow: 1, align: "left" as const }] : []),
   ];
   const order = evidence ? ["metric", "period", "quote", "published", "confidence", "revision", "value", "basis", "scope", "issued", "change"]
     : history ? ["metric", "period", "actual", "outcome", "value", "issued", "change", "basis", "scope"] : null;
@@ -287,8 +326,8 @@ export function companyColumns(guidance: boolean, evidence: boolean, history: bo
   return order ? shown.sort((a, b) => order.indexOf(a.id) - order.indexOf(b.id)) : shown;
 }
 
-/** Cells a column gives up on a narrow pane, before any column is dropped: a date needs 10, a range about 19. */
-const NARROW_WIDTHS: Record<string, number> = { period: 13, value: 19, change: 11, issued: 10, actual: 12, outcome: 9, basis: 12, scope: 18 };
+/** Narrow column widths before any column is dropped. The issued date keeps all 11 characters. */
+const NARROW_WIDTHS: Record<string, number> = { period: 13, value: 19, change: 11, actual: 12, outcome: 9, basis: 12, scope: 18 };
 /** The metric keeps at least this much: a name such as "Revenue growth", and its series detail only when there is room. */
 const METRIC_FLOOR = 14;
 
@@ -302,7 +341,15 @@ const METRIC_FLOOR = 14;
 export function fitCompanyColumns(columns: readonly DataTableColumn[], width: number, history = false): DataTableColumn[] {
   const room = width - 1;
   if (getTableWidth(columns) <= room) return [...columns];
-  const narrow = (list: readonly DataTableColumn[]) => list.map((column) => column.id in NARROW_WIDTHS ? { ...column, width: Math.min(column.width, NARROW_WIDTHS[column.id]!) } : column);
+  const narrow = (list: readonly DataTableColumn[]) => list.map((column) => {
+    const width = NARROW_WIDTHS[column.id];
+    if (width === undefined) return column;
+    return {
+      ...column,
+      width: Math.min(column.width, width),
+      label: history && column.id === "period" ? "Period" : column.label,
+    };
+  });
   const attempt = (list: readonly DataTableColumn[]): DataTableColumn[] | null => {
     const tight = narrow(list);
     const metric = tight.find((column) => column.id === "metric");
@@ -319,9 +366,10 @@ export function fitCompanyColumns(columns: readonly DataTableColumn[], width: nu
   return markHiddenTableColumns(columns, narrow(shown));
 }
 
-export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[]): string | null {
+/** `Issued 21 Aug 2026; newer outlook 06 Nov 2026`, its days as `day` writes them (an export's ISO). */
+export function guidanceIssueNote(row: KpiGuidance, rows: readonly KpiGuidance[], day: (iso: string) => string = formatDay): string | null {
   const newest = rows.reduce((date, guide) => guide.issuedDate > date ? guide.issuedDate : date, row.issuedDate);
-  return row.issuedDate < newest ? `Issued ${row.issuedDate}; newer outlook ${newest}` : null;
+  return row.issuedDate < newest ? `Issued ${day(row.issuedDate)}; newer outlook ${day(newest)}` : null;
 }
 
 /** Companies to point an empty pane at, one that has data and one for when the pane is for the first. */

@@ -17,7 +17,7 @@ export interface CalculatorScreenshotSnapshot {
   surface: CalculatorSurfaceVol | null;
 }
 
-export type CalculatorEvidenceDraft = OptionCalcDraft & Required<Pick<OptionCalcDraft,
+type CalculatorEvidenceDraft = OptionCalcDraft & Required<Pick<OptionCalcDraft,
   "pricingModel" | "volSource" | "steps" | "dividends">>;
 
 export interface CalculatorEvidenceInput {
@@ -54,7 +54,7 @@ const metrics = ["price", "delta", "gamma", "thetaPerDay", "vegaPerPoint", "rhoP
 const sameNumber = (actual: number, expected: number): boolean => Math.abs(actual - expected) <= 1e-9 * Math.max(1, Math.abs(expected));
 
 /** Canonical field order keeps serialized input comparisons stable across pane and CLI construction. */
-export function normalizeCalculatorEvidenceDraft(draft: OptionCalcDraft): CalculatorEvidenceDraft {
+function normalizeCalculatorEvidenceDraft(draft: OptionCalcDraft): CalculatorEvidenceDraft {
   const reference = draft.marketReference;
   return {
     symbol: draft.symbol, side: draft.side, spot: draft.spot, strike: draft.strike, daysToExpiry: draft.daysToExpiry,
@@ -109,7 +109,7 @@ function noticesPreserved(draft: CalculatorEvidenceDraft, surface: CalculatorSur
 }
 
 /** Project the values actually rendered; verification reprices only when a capture is inspected. */
-export function calculatorSemanticEvidence(input: CalculatorEvidenceInput): CalculatorEvidence {
+function calculatorSemanticEvidence(input: CalculatorEvidenceInput): CalculatorEvidence {
   const draft = normalizeCalculatorEvidenceDraft(input.draft);
   const valuation = input.valuation ?? null;
   const surface = draft.volSource === "surface" ? input.surface ?? null : null;
@@ -132,7 +132,7 @@ export function useCalculatorEvidence(input: CalculatorEvidenceInput): void {
 }
 
 /** Reprice the selected exercise model, schedule, Greeks and IV before accepting rendered observations. */
-export function readCalculatorEvidence(value: unknown): CalculatorEvidence | null {
+function readCalculatorEvidence(value: unknown): CalculatorEvidence | null {
   if (!isRecord(value) || value.kind !== "options-calculator" || value.version !== 1 || typeof value.symbol !== "string"
     || !validDraft(value.draft) || value.symbol !== value.draft.symbol || !validValuation(value.valuation)
     || !validImplied(value.implied) || !nullableText(value.error) || !isStringArray(value.notices)

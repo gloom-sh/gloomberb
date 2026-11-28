@@ -5,7 +5,7 @@ import { wrapTextLines } from "../../utils/text-wrap";
 import { ClippedText } from "../ui/display";
 
 /** The terminal wraps a read onto at most this many rows; a longer one ends in an ellipsis on the last. */
-export const CHART_READ_MAX_ROWS = 3;
+const CHART_READ_MAX_ROWS = 3;
 /** The read's inset on each side, as on the query bar and the legend above it. */
 const READ_INSET = 1;
 
@@ -14,7 +14,7 @@ const READ_INSET = 1;
  * sentence on one row when it fits, otherwise wrapped at words onto up to
  * `CHART_READ_MAX_ROWS` rows. None when there is no read or no room for one.
  */
-export function terminalChartReadLines(text: string | null | undefined, width: number): string[] {
+function terminalChartReadLines(text: string | null | undefined, width: number): string[] {
   const room = Math.floor(width) - 2 * READ_INSET;
   const read = text?.trim();
   if (!read || room <= 0) return [];

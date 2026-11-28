@@ -1,7 +1,7 @@
 import { Box, useShortcutLabel, useUiCapabilities } from "../../../ui";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { TextAttributes, type ScrollBoxRenderable } from "../../../ui";
-import { COUNTRY_FLAG_CELLS, withCountryFlag } from "../../../components/ui/country-flag";
+import { withCountryFlag } from "../../../components/ui/country-flag";
 import {
   Button,
   DataTableStackView,
@@ -15,7 +15,7 @@ import {
 } from "../../../components";
 import { usePluginPaneState } from "../../runtime";
 import { useAppConfig, usePaneSettingValue } from "../../../public/react";
-import { readerTimeZone, timeZoneCity, zonedClock } from "../../../utils/utc-time";
+import { readerTimeZone, zonedClock } from "../../../utils/utc-time";
 import { usePaneInstance } from "../../../state/app/context";
 import { commandRequestParams } from "../shared/command-tab";
 import { useAsyncResource } from "../../../react/async-resource";
@@ -29,24 +29,23 @@ import { hasNoReleaseTime, hasNoStatedTime, isAllDayEvent, type EconEvent } from
 import { FRED_CATALOG_SERIES } from "./fred-catalog";
 import { ECON_PRINT_NOTIFICATIONS_ENABLED_KEY, retainVisiblePrintRefresh, setupHighImpactPrintNotifications } from "./print-watch";
 import { EconDetailView } from "./detail-view";
+import { countryColumnShown, econCalendarColumns } from "./columns";
 import {
   COUNTRY_CYCLE,
   COUNTRY_FILTER_HINT,
   countriesWithoutEvents,
   DEFAULT_IMPACT_FILTER,
   FILTER_CYCLE,
+  actualNoteWidth,
   attachEconCalendarPersistence,
-  actualColor,
-  actualMayBeBlank,
-  AWAITING_FIGURE_CELL,
   awaitsConsensus,
   figureGap,
   figureGapText,
-  NO_FIGURE_CELL,
   calendarDisplayRows,
-  CALENDAR_TIME_ZONE_LABEL,
   dayLabel,
   econEventName,
+  econFigureCell,
+  listedEventName,
   filteredEmptyTitle,
   formatStaleness,
   getCalendarCache,
@@ -70,18 +69,16 @@ import {
   shortCalendarEnd,
   shortDayLabel,
   timeLabel,
-  valueColumnWidth,
   type CountryFilter,
   type DisplayRow,
   type EconCalendarColumn,
   type EconCalendarLoadResult,
   type ImpactFilter,
 } from "./calendar-model";
-import { figureWithCurrency } from "./figures";
 import { MISSING_VALUE } from "../../../utils/format";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
+import { createDataTableCsv } from "../../../components/data-table/export";
 import { handleRefreshKey } from "../../../components/data-table/table-pane";
-import { tableColumnWidth } from "../../../components/ui/table-layout";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 
 const IMPACT_LABELS: Record<ImpactFilter, string> = {
@@ -94,10 +91,6 @@ const IMPACT_LABELS: Record<ImpactFilter, string> = {
 const NO_EVENTS: EconEvent[] = [];
 /** The start (UTC) of a YYYY-MM-DD day, to label it. */
 const dayStart = (day: string) => new Date(`${day}T00:00:00Z`);
-const SPELLED_IMPACT = "IMPACT";
-const SPELLED_COUNTRY = "COUNTRY";
-/** Event names this wide still read; past it the headers spell themselves out. */
-const SPELLED_HEADER_MIN_EVENT_WIDTH = 24;
 /** A result says whether a forced reload asked for it, so its answer can reset the cursor. */
 type CalendarResult = EconCalendarLoadResult & { forced?: boolean };
 const loadEvents = async (force: boolean): Promise<CalendarResult> => ({
@@ -287,56 +280,13 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
   const flagged = useUiCapabilities().nativePaneChrome === true;
   // A reader who set a time zone (`config set timezone`) gets their clock in a column beside UTC.
   const readerZone = readerTimeZone(useAppConfig().timezone);
-  const columns = useMemo<EconCalendarColumn[]>(() => {
-    // Named by its zone, as the reader's column is by its city: "TIME (UTC)" took 13
-    // cells over "07:00" while EVENT read "GDP Growth Ra…" (review, 12 Nov 2026).
-    const timeLabelText = CALENDAR_TIME_ZONE_LABEL;
-    const timeWidth = tableColumnWidth({ width: filtered.some(isAllDayEvent) ? "All day".length : 5, label: timeLabelText });
-    const compact = width < 58;
-    const showCountry = !compact || !/^[A-Z]{2}$/.test(countryFilter) || countryFilter === "EU";
-    const actualLabel = compact ? "ACT" : "ACTUAL";
-    const forecastLabel = compact ? "EST" : "FORECAST";
-    const actualWidth = tableColumnWidth({ width: valueColumnWidth(filtered, "actual", compact ? 3 : 9), label: actualLabel });
-    const forecastWidth = tableColumnWidth({ width: valueColumnWidth(filtered, "forecast", compact ? 3 : 10), label: forecastLabel });
-    const priorWidth = tableColumnWidth({ width: valueColumnWidth(filtered, "prior", compact ? 5 : 9), label: "PRIOR" });
-    const minEventWidth = tableColumnWidth({ width: compact ? 5 : 12, label: "EVENT" });
-    // The reader's clock, with the weekday on rows where it is another day than the UTC one they are listed under.
-    const readerLabel = readerZone ? timeZoneCity(readerZone).toUpperCase() : null;
-    const readerWidth = !readerZone || !readerLabel ? 0 : tableColumnWidth({ label: readerLabel,
-      width: filtered.some((ev) => !hasNoReleaseTime(ev) && zonedClock(ev.date.getTime(), readerZone).label.length > 5) ? 9 : 5 });
-    // Padding, one gap per column boundary, and the vertical scrollbar lane;
-    // one column short of that clipped the PRIOR values at the right edge.
-    const roomBeside = (count: number, timesWidth: number) => (impactWidth: number, countryWidth: number) => (
-      width - 3 - count + (showCountry ? 0 : 1) - (timesWidth + impactWidth + (showCountry ? countryWidth : 0) + actualWidth + forecastWidth + priorWidth)
-    );
-    const codeWidth = 2 + (flagged ? COUNTRY_FLAG_CELLS : 0);
-    // The reader's column only where the event names keep room to read beside it, under the short headers.
-    const withReader = readerWidth > 0 && roomBeside(8, timeWidth + readerWidth)(4, Math.max(3, codeWidth)) >= minEventWidth;
-    const eventRoom = withReader ? roomBeside(8, timeWidth + readerWidth) : roomBeside(7, timeWidth);
-    // IMPACT and COUNTRY in words while event names keep room to read; the
-    // short labels otherwise, with the word on hover where there is one.
-    const spelledImpactWidth = tableColumnWidth({ width: 1, label: SPELLED_IMPACT });
-    const spelledCountryWidth = Math.max(codeWidth, tableColumnWidth({ width: 1, label: SPELLED_COUNTRY }));
-    const spelled = eventRoom(spelledImpactWidth, spelledCountryWidth) >= SPELLED_HEADER_MIN_EVENT_WIDTH;
-    const impactColumn = spelled
-      ? { label: SPELLED_IMPACT, width: spelledImpactWidth }
-      : { label: "IMP", width: 4, title: "Impact" };
-    const countryColumn = spelled
-      ? { label: SPELLED_COUNTRY, width: spelledCountryWidth }
-      : { label: "CTY", width: Math.max(3, codeWidth), title: "Country" };
-    const eventWidth = Math.max(minEventWidth, eventRoom(tableColumnWidth(impactColumn), tableColumnWidth(countryColumn)));
-
-    return [
-      { id: "time", label: timeLabelText, width: timeWidth, align: "left" },
-      ...withReader ? [{ id: "readerTime" as const, label: readerLabel!, width: readerWidth, align: "left" as const, title: readerZone! }] : [],
-      { id: "impact", ...impactColumn, align: "left" },
-      ...showCountry ? [{ id: "country" as const, ...countryColumn, align: "left" as const }] : [],
-      { id: "event", label: "EVENT", width: eventWidth, align: "left" },
-      { id: "actual", label: actualLabel, title: "Actual", width: actualWidth, align: "right" },
-      { id: "forecast", label: forecastLabel, title: "Forecast", width: forecastWidth, align: "right", mayBeBlank: true },
-      { id: "prior", label: "PRIOR", width: priorWidth, align: "right", mayBeBlank: true },
-    ];
-  }, [countryFilter, filtered, flagged, readerZone, width]);
+  // `awaiting` under Actual on a release past its time: the column keeps the word whole.
+  const actualNote = useMemo(() => actualNoteWidth(filtered, now, events), [events, filtered, now]);
+  const { columns, exportColumns, exportInReaderOrder } = useMemo(
+    () => econCalendarColumns({ width, events: filtered, countryFilter, impactFilter, flagged, readerZone, actualNote }),
+    [actualNote, countryFilter, filtered, flagged, impactFilter, readerZone, width],
+  );
+  const countryShown = countryColumnShown(countryFilter);
   const separatorBg = blendHex(colors.bg, colors.border, 0.3);
   const staleness = fetchedAt ? formatStaleness(fetchedAt, now) : "";
   // The calendar has events and the filters hid them all: say which, with the way back.
@@ -512,25 +462,18 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
         const country = eventCountry(ev);
         return withCountryFlag({ text: country, color: colors.textMuted }, country, flagged);
       }
-      case "event":
-        return { text: econEventName(ev), color: colors.text };
-      // An amount reads with its currency beside it (-556.5B JPY), where the server says it.
+      case "event": {
+        // Beside its country a name leaves out the country's adjective; the export writes it whole.
+        const name = econEventName(ev);
+        const listed = listedEventName(ev, countryShown);
+        return { text: listed, color: colors.text, ...listed === name ? {} : { value: name } };
+      }
       case "actual":
-        // A release past its time whose figure is not in yet says so, or that the source has none; the footer says it whole.
-        const gap = figureGap(ev, now, events);
-        if (gap) return { text: gap === "none" ? NO_FIGURE_CELL : AWAITING_FIGURE_CELL, color: colors.warning, value: null };
-        return {
-          text: figureWithCurrency(ev.actual, ev.currency) ?? MISSING_VALUE,
-          color: actualColor(ev.actual, ev.forecast),
-          // A release still to come, or one with no figure to print: its dash is no figure lost.
-          ...(actualMayBeBlank(ev, now) ? { mayBeBlank: true } : {}),
-        };
       case "forecast":
-        return { text: figureWithCurrency(ev.forecast, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
       case "prior":
-        return { text: figureWithCurrency(ev.prior, ev.currency) ?? MISSING_VALUE, color: colors.textDim };
+        return econFigureCell(column.id, ev, now, events);
     }
-  }, [events, flagged, now, readerZone]);
+  }, [countryShown, events, flagged, now, readerZone]);
 
   const selectedEvent = filtered[selectedIdx];
   const filterControls = (
@@ -599,6 +542,11 @@ function EconCalendarPane({ focused, width, height }: PaneProps) {
       onActivate={openDisplayRow}
       renderSectionHeader={renderSectionHeader}
       renderCell={renderCell}
+      // Export CSV keeps every figure and the reader's clock at any width: only the table drawn leaves columns out,
+      // and what it fits beside the names never decides what the file holds. A column the reader moved stays moved.
+      exportCsv={(inReaderOrder) => createDataTableCsv({
+        columns: exportInReaderOrder ? inReaderOrder(exportColumns) : exportColumns, items: rows, renderCell, renderSectionHeader,
+      })}
       selectedTextOverridesCellColor
       status={{ loading: loading && !rows.length, error: !loading && !events.length ? error : null, subject: "economic events" }}
       emptyContent={filterEmptyTitle ? (

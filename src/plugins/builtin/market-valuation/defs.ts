@@ -220,7 +220,7 @@ export function zoneScaleFraction(indicator: IndicatorDef, value: number): numbe
 }
 
 /** Inverse of zoneScaleFraction: scale position back to the indicator's units. */
-export function zoneScaleValueAt(indicator: IndicatorDef, fraction: number): number {
+function zoneScaleValueAt(indicator: IndicatorDef, fraction: number): number {
   const edges = indicator.zoneScale.edges;
   const bands = edges.length - 1;
   if (bands <= 0) return 0;

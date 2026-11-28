@@ -2,88 +2,70 @@ import { unavailableText } from "../../../components/ui/status";
 import { apiClient } from "../../../api-client";
 import { isAccessDenied } from "../../../api-client/errors";
 import type { SocialMentionDayPosts, SocialMentionPost, SocialMentionsPayload, SocialMentionsRange } from "../../../api-client/social-mentions";
-import { createPluginCache, savedCopyForTransientFailure } from "../../../data/plugin-cache";
-import { markSavedCopy, stampRetrievedAt, withSavedCopyMarkOf } from "../../../data/saved-copies";
+import { createPluginCache } from "../../../data/plugin-cache";
+import { isCalendarDay, isFiniteNumber, isNonNegative, isNonNegativeInt, isNullableString, isStringArray } from "../../../utils/guards";
 import { CLOUD_SESSION_REQUIRED } from "../shared/research-cloud-session";
-import { unavailableOnServer } from "../shared/cloud-resource";
-import { logFailure } from "../../../utils/log-failure";
+import { createCloudEndpoint, type CloudResource } from "../shared/cloud-resource";
 
-export const socialMentionsCache = createPluginCache<SocialMentionsPayload>({
-  kind: "social-mentions", source: "gloom-cloud", schemaVersion: 1,
-  policy: { staleMs: 15 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
-});
 // A closed day's top posts only change by a few views; keep them a week.
 export const socialMentionPostsCache = createPluginCache<SocialMentionDayPosts>({
   kind: "social-mention-posts", source: "gloom-cloud", schemaVersion: 1,
   policy: { staleMs: 24 * 60 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
 });
 
-const day = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value)
-  && Number.isFinite(Date.parse(value)) && new Date(value).toISOString().slice(0, 10) === value;
-const count = (value: unknown) => value === null || Number.isInteger(value) && (value as number) >= 0;
-const stance = (value: unknown) => typeof value === "number" && Number.isFinite(value) && value >= -1 && value <= 1;
+const count = (value: unknown) => value === null || isNonNegativeInt(value);
+const stance = (value: unknown) => isFiniteNumber(value) && value >= -1 && value <= 1;
+const ascendingCounts = <T extends { day: string }>(rows: readonly T[] | undefined, read: (row: T) => unknown) =>
+  Array.isArray(rows) && rows.every((row: T, i) => isCalendarDay(row.day) && isNonNegativeInt(read(row)) && (i === 0 || row.day > rows[i - 1]!.day));
 function validPost(post: SocialMentionPost): boolean {
-  return !!post && /^\d{1,24}$/.test(post.id) && day(post.day) && typeof post.author === "string" && typeof post.text === "string"
+  return !!post && /^\d{1,24}$/.test(post.id) && isCalendarDay(post.day) && typeof post.author === "string" && typeof post.text === "string"
     && Number.isFinite(Date.parse(post.postedAt)) && [post.views, post.likes, post.reposts, post.replies].every(count)
     && typeof post.url === "string" && post.url.startsWith("https://x.com/") && (post.stance === null || stance(post.stance));
 }
 
 function validWikipedia(wiki: NonNullable<SocialMentionsPayload["wikipedia"]>): boolean {
-  return !!wiki && (wiki.article === null || typeof wiki.article === "string") && Array.isArray(wiki.days)
-    && wiki.days.every((row, i) => day(row.day) && Number.isInteger(row.views) && row.views >= 0 && (i === 0 || row.day > wiki.days[i - 1]!.day))
-    && (wiki.baseline === null || typeof wiki.baseline === "number" && wiki.baseline >= 0);
+  return !!wiki && isNullableString(wiki.article) && ascendingCounts(wiki.days, (row: { views: unknown }) => row.views)
+    && (wiki.baseline === null || isNonNegative(wiki.baseline));
 }
 
 function validReddit(reddit: NonNullable<SocialMentionsPayload["reddit"]>): boolean {
-  return !!reddit && Array.isArray(reddit.days)
-    && reddit.days.every((row, i) => day(row.day) && Number.isInteger(row.mentions) && row.mentions >= 0 && (i === 0 || row.day > reddit.days[i - 1]!.day))
-    && (reddit.baseline === null || typeof reddit.baseline === "number" && reddit.baseline >= 0);
+  return !!reddit && ascendingCounts(reddit.days, (row: { mentions: unknown }) => row.mentions)
+    && (reddit.baseline === null || isNonNegative(reddit.baseline));
 }
 
 /** Days ascending and unique, counts whole, stances in range, posts linking to X only. */
-export function validateSocialMentions(payload: SocialMentionsPayload, symbol: string, range: SocialMentionsRange): SocialMentionsPayload {
+function validateSocialMentions(payload: SocialMentionsPayload, symbol: string, range: SocialMentionsRange): SocialMentionsPayload {
   const days = payload?.x?.days;
   if (!payload || payload.symbol !== symbol || payload.range !== range || !Array.isArray(days)
-    || days.some((row, i) => !day(row.day) || !Number.isInteger(row.mentions) || row.mentions < 0 || typeof row.closed !== "boolean"
+    || days.some((row, i) => !isCalendarDay(row.day) || !isNonNegativeInt(row.mentions) || typeof row.closed !== "boolean"
       || i > 0 && row.day <= days[i - 1]!.day)
-    || !(payload.x.baseline === null || typeof payload.x.baseline === "number" && payload.x.baseline >= 0)
-    || !Array.isArray(payload.stance) || payload.stance.some((row) => !day(row.day) || !stance(row.score) || !Number.isInteger(row.posts))
+    || !(payload.x.baseline === null || isNonNegative(payload.x.baseline))
+    || !Array.isArray(payload.stance) || payload.stance.some((row) => !isCalendarDay(row.day) || !stance(row.score) || !Number.isInteger(row.posts))
     || !Array.isArray(payload.topPosts) || !payload.topPosts.every(validPost)
     || payload.wikipedia !== undefined && !validWikipedia(payload.wikipedia)
     || payload.reddit !== undefined && !validReddit(payload.reddit)
-    || !Array.isArray(payload.pending) || !Array.isArray(payload.warnings) || payload.warnings.some((warning) => typeof warning !== "string"))
+    || !Array.isArray(payload.pending) || !isStringArray(payload.warnings))
     throw new Error("Social mention history is invalid");
   return payload;
 }
 
-export async function fetchSocialMentions(symbol: string, range: SocialMentionsRange = "1y",
-  client: Pick<typeof apiClient, "getCloudSocialMentions"> = apiClient): Promise<SocialMentionsPayload> {
-  try { return validateSocialMentions(await client.getCloudSocialMentions(symbol, range), symbol, range); }
-  catch (error) { throw unavailableOnServer(error, unavailableText("social mentions")); }
-}
-export interface SocialMentionsResource {
-  payload: SocialMentionsPayload;
-  stale: boolean;
-  refreshError: string | null;
-  /** When the copy shown was saved, when it is one because its refresh failed. */
-  savedAt?: number;
-}
-const cacheKey = (symbol: string, range: SocialMentionsRange) => `${range}:${symbol}`;
-export function cachedSocialMentions(symbol: string, range: SocialMentionsRange): SocialMentionsResource | null {
-  const cached = socialMentionsCache.get(cacheKey(symbol, range), { allowExpired: true });
-  if (!cached) return null;
-  try {
-    const answer = { payload: validateSocialMentions(cached.data, symbol, range), stale: false, refreshError: null };
-    return cached.fromEarlierRun || cached.stale ? markSavedCopy(answer, cached.fetchedAt) : stampRetrievedAt(answer, cached.fetchedAt);
-  }
-  catch (error) { return logFailure("social-mentions.client", "Validate cached social mentions failed", null)(error); }
-}
-export async function loadSocialMentions(symbol: string, range: SocialMentionsRange, force = false): Promise<SocialMentionsResource> {
-  // A refusal (a signed-out session, any other 4xx but 408 and 429) or a reply that fails validation shows as itself.
-  const result = savedCopyForTransientFailure(await socialMentionsCache.load(cacheKey(symbol, range), () => fetchSocialMentions(symbol, range), { force }));
-  return withSavedCopyMarkOf(stampRetrievedAt({ payload: validateSocialMentions(result.data, symbol, range), stale: result.stale,
-    refreshError: result.refreshError ?? null, ...(result.source === "stale-fallback" ? { savedAt: result.fetchedAt } : {}) }, result.fetchedAt), result);
-}
+export type SocialMentionsResource = CloudResource<SocialMentionsPayload>;
+
+const socialMentionsEndpoint = createCloudEndpoint<{ symbol: string; range: SocialMentionsRange }, SocialMentionsPayload, Pick<typeof apiClient, "getCloudSocialMentions">>({
+  kind: "social-mentions", schemaVersion: 1, policy: { staleMs: 15 * 60_000, expireMs: 7 * 24 * 60 * 60_000 },
+  key: ({ symbol, range }) => `${range}:${symbol}`, defaultClient: apiClient,
+  fetch: ({ symbol, range }, client) => client.getCloudSocialMentions(symbol, range),
+  validate: (payload, { symbol, range }) => validateSocialMentions(payload, symbol, range),
+  unavailableMessage: unavailableText("social mentions"),
+});
+
+export const socialMentionsCache = socialMentionsEndpoint.cache;
+export const fetchSocialMentions = (symbol: string, range: SocialMentionsRange = "1y", client: Pick<typeof apiClient, "getCloudSocialMentions"> = apiClient) =>
+  socialMentionsEndpoint.fetch({ symbol, range }, { client });
+export const cachedSocialMentions = (symbol: string, range: SocialMentionsRange): SocialMentionsResource | null =>
+  socialMentionsEndpoint.cached({ symbol, range });
+export const loadSocialMentions = (symbol: string, range: SocialMentionsRange, force = false): Promise<SocialMentionsResource> =>
+  socialMentionsEndpoint.load({ symbol, range }, { force });
 
 /**
  * What the pane's sign-in wall keys on. The route answers a missing or

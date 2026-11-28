@@ -7,6 +7,7 @@
     "bin/gloom",
     "electrobun.config.ts",
     "scripts/install-electrobun-tui-shim.ts",
+    "scripts/smoke-des-render.ts",
     "scripts/benchmark-warm-start.ts",
     "scripts/warm-start/desktop-backend.ts",
     "scripts/warm-start/desktop-electroview.ts",
@@ -16,6 +17,9 @@
     "scripts/heap-probe.ts",
     // Built by path in scripts/pane-chrome/page.ts.
     "scripts/pane-chrome/fixture.tsx",
+    "scripts/pane-chrome/chat-fixture.tsx",
+    "scripts/pane-chrome/layout-fixture.tsx",
+    "scripts/pane-chrome/data-sweep-shot-worker.ts",
     // Built by path in scripts/pane-chrome/sync-poll.ts.
     "scripts/pane-chrome/sync-poll-fixture.ts",
     // Run by path in .github/workflows/windows-desktop-check.yml, through a
@@ -30,8 +34,9 @@
     "src/renderers/electrobun/view/native-stubs/backend-rpc.ts",
     "src/renderers/browser/main.tsx",
     "src/renderers/share/main.tsx",
-    // Built by path in es2023ArrayMethodsScript (src/renderers/dom/build-assets.ts).
-    "src/renderers/dom/es2023-array-methods.ts"
+    // Built by path in es2023ArrayMethodsScript and WORLD_MAP_DATA_SPECIFIER (src/renderers/dom/build-assets.ts).
+    "src/renderers/dom/es2023-array-methods.ts",
+    "src/plugins/builtin/world-venue-map/natural-earth/index.chunk.ts"
   ],
   "project": [
     "scripts/**/*.ts",
@@ -49,6 +54,7 @@
     "@types/three",
     // Loaded by package name through WEB_BUNDLED_PLUGIN_PACKAGES in src/plugins/web-bundled.ts.
     "gloom-polls",
-    "gloom-prediction-markets"
+    "gloom-prediction-markets",
+    "happy-dom"
   ]
 }

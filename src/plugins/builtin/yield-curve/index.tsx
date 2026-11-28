@@ -1,3 +1,4 @@
+import { dayCell } from "../../../components/ui/day-cell";
 import { MISSING_VALUE } from "../../../utils/format";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
@@ -139,7 +140,7 @@ function draftTextFilter(field: ReturnType<typeof useDraftField>, focused: boole
   };
 }
 
-export function YieldCurvePane({ focused, width, height }: PaneProps) {
+function YieldCurvePane({ focused, width, height }: PaneProps) {
   const [tab, setTab] = usePluginPaneState<GcTab>("yield-curve:tab", "curve");
   const [curveSetting, setCurve] = usePaneSettingValue<string>("curve", "us");
   const curve = curveIdOf(curveSetting) ?? "us";
@@ -352,7 +353,7 @@ function CurveTab({ curve, onCurveChange, focused, width, height }: {
   const strip = curveStrip(series, formatValue, { caption: differenceView ? "Change" : level ? `${level} %` : "Yield %", selectedPointId: selectedId });
   const renderCell = useCallback((row: YieldTenorRow, column: DataTableColumn) => {
     if (column.id === "tenor") return { text: row.id };
-    if (column.id === "asOf") return { text: row.asOf ?? MISSING_VALUE, color: colors.textMuted };
+    if (column.id === "asOf") return { ...dayCell(row.asOf), color: colors.textMuted };
     const value = row[column.id as "yield" | "compare" | "forward" | "change1d" | "change1w" | "change1m" | "changeCompare"];
     if (value == null) return { text: MISSING_VALUE, color: colors.textMuted };
     if (column.id === "yield" || column.id === "compare" || column.id === "forward") return { text: formatYield(value) };
@@ -421,7 +422,7 @@ const WORLD_COLUMNS: DataTableColumn[] = [
   { id: "thirtyYearChange", label: "1D", width: 5, align: "right" },
   { id: "twosTens", label: "2s10s", width: 6, align: "right" },
   { id: "twosTensChange", label: "1D", width: 5, align: "right" },
-  { id: "asOf", label: "As of", width: 10, align: "left" },
+  { id: "asOf", label: "As of", width: 11, align: "left" },
 ];
 const worldKey = (row: WorldRow) => row.id;
 const EMPTY_WORLD_ROWS: WorldRow[] = [];
@@ -497,7 +498,7 @@ function WorldTab({ onOpen, focused, width, height }: {
   const strip = curveStrip(series, formatYield, { caption: level ? `${level} %` : "Yield %" });
   const renderCell = useCallback((row: WorldRow, column: DataTableColumn) => {
     if (column.id === "market") return { text: row.market };
-    if (column.id === "asOf") return { text: row.asOf, color: colors.textMuted };
+    if (column.id === "asOf") return { ...dayCell(row.asOf), color: colors.textMuted };
     const value = row[column.id as "twoYear" | "tenYear" | "thirtyYear" | "twosTens" | "twoYearChange" | "tenYearChange"
       | "thirtyYearChange" | "twosTensChange"];
     if (value == null) return { text: MISSING_VALUE, color: colors.textMuted };
@@ -537,12 +538,7 @@ function WorldTab({ onOpen, focused, width, height }: {
 }
 
 export const yieldCurveModule: PluginModule = {
-  setup(ctx) {
-    for (const cache of [swapCurveCache, curveViewCache, worldCurvesCache]) cache.attach(ctx.persistence);
-  },
-  dispose() {
-    for (const cache of [swapCurveCache, curveViewCache, worldCurvesCache]) cache.reset();
-  },
+  caches: [swapCurveCache, curveViewCache, worldCurvesCache],
   series: [...TREASURY_SERIES, ...GOVERNMENT_BOND_SERIES],
   panes: [{
     id: "yield-curve",

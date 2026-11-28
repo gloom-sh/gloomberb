@@ -87,6 +87,43 @@ export function loadOptionsEntry(options: {
   });
 }
 
+function loadResourceEntry<T>({
+  dataProvider,
+  coalesceRefresh = false,
+  forceRefresh = false,
+  key,
+  store,
+  ttlMs,
+  runSingleFlight,
+  unsupportedMessage,
+  read,
+  isEmpty = (value) => Array.isArray(value) ? value.length === 0 : !value,
+}: Omit<AuxiliaryLoaderOptions<T>, "load"> & {
+  unsupportedMessage?: string;
+  read: (() => Promise<T>) | null;
+  isEmpty?: (value: T) => boolean;
+}): Promise<QueryEntry<T>> {
+  return loadAuxiliaryEntry({
+    dataProvider,
+    coalesceRefresh,
+    forceRefresh,
+    key,
+    store,
+    ttlMs,
+    runSingleFlight,
+    load: async (startedAt) => {
+      if (!read) {
+        const attempt = createAttempt(dataProvider.id, startedAt, "unsupported", "UNSUPPORTED_RANGE", unsupportedMessage ?? "Resource is not available");
+        return store.update(key, (current) => errorEntry(current, attempt));
+      }
+      const data = await read();
+      const empty = isEmpty(data);
+      const attempts = [createAttempt(dataProvider.id, startedAt, empty ? "empty" : "success", empty ? "NO_DATA" : undefined)];
+      return store.update(key, (current) => readyEntry(current, empty ? null : data, dataProvider.id, attempts, { keepLastGoodOnEmpty: true }));
+    },
+  });
+}
+
 export function loadSecFilingsEntry(options: {
   dataProvider: DataProvider;
   forceRefresh?: boolean;
@@ -95,29 +132,13 @@ export function loadSecFilingsEntry(options: {
   runSingleFlight: RunSingleFlight;
 }): Promise<QueryEntry<SecFilingItem[]>> {
   const { dataProvider, forceRefresh = false, request, store, runSingleFlight } = options;
-  const key = buildSecFilingsKey(request);
-  return loadAuxiliaryEntry({
-    dataProvider,
-    forceRefresh,
-    coalesceRefresh: true,
-    key,
-    store,
-    ttlMs: SEC_FILINGS_CACHE_TTL_MS,
-    runSingleFlight,
-    load: async (startedAt) => {
-      if (!dataProvider.getSecFilings) {
-        const attempt = createAttempt(dataProvider.id, startedAt, "unsupported", "UNSUPPORTED_RANGE", "SEC filings are not available");
-        return store.update(key, (current) => errorEntry(current, attempt));
-      }
-      const data = await dataProvider.getSecFilings(
-        request.instrument.symbol,
-        request.count ?? 50,
-        request.instrument.exchange ?? "",
-        { ...toMarketDataContext(request.instrument), ...(forceRefresh ? { cacheMode: "refresh" as const } : {}) },
-      );
-      const attempts = [createAttempt(dataProvider.id, startedAt, data.length > 0 ? "success" : "empty", data.length === 0 ? "NO_DATA" : undefined)];
-      return store.update(key, (current) => readyEntry(current, data.length > 0 ? data : null, dataProvider.id, attempts, { keepLastGoodOnEmpty: true }));
-    },
+  return loadResourceEntry({
+    dataProvider, forceRefresh, coalesceRefresh: true, key: buildSecFilingsKey(request), store, ttlMs: SEC_FILINGS_CACHE_TTL_MS, runSingleFlight,
+    unsupportedMessage: "SEC filings are not available",
+    read: dataProvider.getSecFilings
+      ? () => dataProvider.getSecFilings!(request.instrument.symbol, request.count ?? 50, request.instrument.exchange ?? "",
+        { ...toMarketDataContext(request.instrument), ...(forceRefresh ? { cacheMode: "refresh" as const } : {}) })
+      : null,
   });
 }
 
@@ -129,25 +150,10 @@ export function loadSecFilingContentEntry(options: {
   runSingleFlight: RunSingleFlight;
 }): Promise<QueryEntry<string | null>> {
   const { dataProvider, forceRefresh = false, filing, store, runSingleFlight } = options;
-  const key = buildSecContentKey(filing.accessionNumber);
-  return loadAuxiliaryEntry({
-    dataProvider,
-    forceRefresh,
-    coalesceRefresh: true,
-    key,
-    store,
-    ttlMs: SEC_CONTENT_CACHE_TTL_MS,
-    runSingleFlight,
-    load: async (startedAt) => {
-      if (!dataProvider.getSecFilingContent) {
-        const attempt = createAttempt(dataProvider.id, startedAt, "unsupported", "UNSUPPORTED_RANGE", "SEC filing content is not available");
-        return store.update(key, (current) => errorEntry(current, attempt));
-      }
-      const data = await dataProvider.getSecFilingContent(filing);
-      const status = data ? "success" : "empty";
-      const attempts = [createAttempt(dataProvider.id, startedAt, status, data ? undefined : "NO_DATA")];
-      return store.update(key, (current) => readyEntry(current, data, dataProvider.id, attempts, { keepLastGoodOnEmpty: true }));
-    },
+  return loadResourceEntry({
+    dataProvider, forceRefresh, coalesceRefresh: true, key: buildSecContentKey(filing.accessionNumber), store, ttlMs: SEC_CONTENT_CACHE_TTL_MS, runSingleFlight,
+    unsupportedMessage: "SEC filing content is not available",
+    read: dataProvider.getSecFilingContent ? () => dataProvider.getSecFilingContent!(filing) : null,
   });
 }
 
@@ -159,25 +165,10 @@ export function loadSecFilingDocumentsEntry(options: {
   runSingleFlight: RunSingleFlight;
 }): Promise<QueryEntry<SecFilingDocument[]>> {
   const { dataProvider, forceRefresh = false, filing, store, runSingleFlight } = options;
-  const key = buildSecDocumentsKey(filing.accessionNumber);
-  return loadAuxiliaryEntry({
-    dataProvider,
-    forceRefresh,
-    coalesceRefresh: true,
-    key,
-    store,
-    ttlMs: SEC_CONTENT_CACHE_TTL_MS,
-    runSingleFlight,
-    load: async (startedAt) => {
-      if (!dataProvider.getSecFilingDocuments) {
-        const attempt = createAttempt(dataProvider.id, startedAt, "unsupported", "UNSUPPORTED_RANGE", "SEC filing documents are not available");
-        return store.update(key, (current) => errorEntry(current, attempt));
-      }
-      const data = await dataProvider.getSecFilingDocuments(filing);
-      const status = data.length > 0 ? "success" : "empty";
-      const attempts = [createAttempt(dataProvider.id, startedAt, status, data.length > 0 ? undefined : "NO_DATA")];
-      return store.update(key, (current) => readyEntry(current, data.length > 0 ? data : null, dataProvider.id, attempts, { keepLastGoodOnEmpty: true }));
-    },
+  return loadResourceEntry({
+    dataProvider, forceRefresh, coalesceRefresh: true, key: buildSecDocumentsKey(filing.accessionNumber), store, ttlMs: SEC_CONTENT_CACHE_TTL_MS, runSingleFlight,
+    unsupportedMessage: "SEC filing documents are not available",
+    read: dataProvider.getSecFilingDocuments ? () => dataProvider.getSecFilingDocuments!(filing) : null,
   });
 }
 
@@ -188,19 +179,9 @@ export function loadArticleSummaryEntry(options: {
   runSingleFlight: RunSingleFlight;
 }): Promise<QueryEntry<string | null>> {
   const { dataProvider, url, store, runSingleFlight } = options;
-  const key = buildArticleSummaryKey(url);
-  return loadAuxiliaryEntry({
-    dataProvider,
-    key,
-    store,
-    ttlMs: ARTICLE_SUMMARY_CACHE_TTL_MS,
-    runSingleFlight,
-    load: async (startedAt) => {
-      const data = await dataProvider.getArticleSummary(url);
-      const status = data ? "success" : "empty";
-      const attempts = [createAttempt(dataProvider.id, startedAt, status, data ? undefined : "NO_DATA")];
-      return store.update(key, (current) => readyEntry(current, data, dataProvider.id, attempts, { keepLastGoodOnEmpty: true }));
-    },
+  return loadResourceEntry({
+    dataProvider, key: buildArticleSummaryKey(url), store, ttlMs: ARTICLE_SUMMARY_CACHE_TTL_MS, runSingleFlight,
+    read: () => dataProvider.getArticleSummary(url),
   });
 }
 

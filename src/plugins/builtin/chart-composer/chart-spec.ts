@@ -153,12 +153,3 @@ export function parseChartSpecOr(value: unknown, fallback: ChartSpec): ChartSpec
   }
   return parseChartSpec(value) ?? normalizeChartSpec(fallback, DEFAULT_CHART_SPEC);
 }
-
-export function serializeChartSpec(spec: ChartSpec): string {
-  const normalized = normalizeChartSpec(spec, DEFAULT_CHART_SPEC);
-  const validation = validateChartSpec(normalized);
-  if (!validation.valid) {
-    throw new Error(validation.errors.map((entry) => entry.message).join(" "));
-  }
-  return JSON.stringify(normalized);
-}

@@ -8,6 +8,7 @@ import { DataTableStackView } from "../data-table/stack-view";
 import { PriceSparkline } from "../price-sparkline/view";
 import { PaneStatusBody, StatGrid, statGridRows, type DataTableColumn, type DataTableCell, type StatItem } from "../ui";
 import { withCountryFlag, withFlagRoom } from "../ui/country-flag";
+import { formatDay } from "../ui/day-cell";
 import { getTableWidth } from "../ui/table-layout";
 
 export interface MarketBoardRow {
@@ -104,14 +105,10 @@ const MIN_GROW_WIDTH = 10;
 const MIN_LABEL_WIDTH = 6;
 /** The columns a board always has; any other is a pane's extra one. */
 const BOARD_COLUMN_IDS = new Set(["label", "labelDetail", "value", "change", "changeAsOf", "percentile", "history", "asOf"]);
-/** An as-of date without its year ("09-17"). */
-const SHORT_AS_OF_WIDTH = 5;
-/** The word a stale or partial row's date carries, with its space: "2026-09-17 stale", "2026-10-19 so far". */
+/** An as-of date without its year ("17 Sep"). */
+const SHORT_AS_OF_WIDTH = 6;
+/** The word a stale or partial row's date carries, with its space: "17 Sep 2026 stale", "19 Oct 2026 so far". */
 const STATUS_WORDS: Partial<Record<NonNullable<MarketBoardRow["status"]>, string>> = { stale: " stale", partial: " so far" };
-
-function shortIsoDate(text: string): string {
-  return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text.slice(5) : text;
-}
 
 /** Fit the board to the pane rather than cut its right edge mid-value. */
 function fitBoardColumns(candidates: DataTableColumn[], width: number, wordWidth: number): { columns: DataTableColumn[]; shortAsOf: boolean } {
@@ -153,7 +150,7 @@ function fitBoardColumns(candidates: DataTableColumn[], width: number, wordWidth
  * native sparklines, stable selection and a mouse/keyboard detail stack. */
 export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height, focused,
   selectedId, onSelectedIdChange, openId, onOpenIdChange, renderDetail, changeLabel = "1D", valueWidth = 12,
-  labelWidth = 18, labelHeader = "INSTRUMENT", labelDetailHeader = "DETAIL", labelDetailWidth = 22, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 10, signedChange = false, extraColumns,
+  labelWidth = 18, labelHeader = "INSTRUMENT", labelDetailHeader = "DETAIL", labelDetailWidth = 22, valueLabel = "LEVEL", percentileLabel = "PCTL 1Y", asOfWidth = 11, signedChange = false, extraColumns,
   rootBefore, emptyTitle = "No observations.", rowNote }: MarketBoardStackProps<T>) {
   const colors = useThemeColors();
   // A board of countries leads each name with its flag where one is drawn.
@@ -189,11 +186,11 @@ export function MarketBoardStack<T extends MarketBoardRow>({ rows, width, height
     if (column.id === "value") return { text: row.valueText, color: muted };
     if (column.id === "change") return { text: row.changeText,
       color: signedChange ? signedMoveColor(row.change, row.adverseMove, colors) : colors.textMuted };
-    if (column.id === "changeAsOf") return { text: row.changeAsOf ?? MISSING_VALUE, color: colors.textDim };
+    if (column.id === "changeAsOf") return { text: formatDay(row.changeAsOf), ...(row.changeAsOf ? { value: row.changeAsOf } : {}), color: colors.textDim };
     if (column.id === "percentile") return { text: row.percentileText ?? row.percentile?.toFixed(0) ?? MISSING_VALUE, color: row.percentile != null && (row.percentile <= 10 || row.percentile >= 90) ? colors.warning : colors.textMuted };
     if (column.id === "history") return { text: "", content: <PriceSparkline priceHistory={row.history} width={column.width} period="1Y" trend="neutral" /> };
-    const asOf = row.asOfText ?? row.asOf ?? MISSING_VALUE;
-    const asOfText = shortAsOf ? shortIsoDate(asOf) : asOf;
+    // A day is written day first, as every table writes one; a row's own wording of it (a gas day "est") is kept.
+    const asOfText = row.asOfText ?? formatDay(row.asOf, shortAsOf ? "no-year" : "full");
     // A narrow board drops the year; the export keeps the full date. The word
     // stays with the color, so a stale row is not color alone.
     const word = row.status ? STATUS_WORDS[row.status] ?? "" : "";

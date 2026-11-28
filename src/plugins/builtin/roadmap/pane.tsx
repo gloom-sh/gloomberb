@@ -18,9 +18,9 @@ import {
   type PaneHint,
   type SectionedRow,
 } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { DetailReader, type DetailFact } from "../../../components/reader/detail-reader";
-import { useAsyncResource, usePluginPaneState } from "../../../public/react";
+import { usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, TextAttributes, type ScrollBoxRenderable } from "../../../ui";
@@ -38,8 +38,8 @@ import {
 } from "./model";
 
 /** The roadmap calls the pane makes; tests hand it their own. */
-export type RoadmapClient = Pick<typeof apiClient, "getRoadmap" | "setRoadmapVote">;
-export const RoadmapClientContext = createContext<RoadmapClient | null>(null);
+type RoadmapClient = Pick<typeof apiClient, "getRoadmap" | "setRoadmapVote">;
+const RoadmapClientContext = createContext<RoadmapClient | null>(null);
 
 type Row = SectionedRow<RoadmapItem>;
 type ColumnId = "title" | "blurb" | "votes" | "shipped";
@@ -110,7 +110,9 @@ function RoadmapView({ focused, width, height }: PaneProps) {
   // read lands. A refresh of the same session keeps its list.
   const sessionKey = useCloudDisplayScope();
   const loader = useCallback((_force: boolean) => client.getRoadmap(), [client, sessionKey]);
-  const resource = useAsyncResource(loader, {
+  const resource = usePaneResource(loader, {
+    focused,
+    autoRefresh: false,
     savedCopy: !override && sessionKey ? { key: ["roadmap", sessionKey] } : null,
   });
   const sessionRef = useRef(sessionKey);
@@ -141,7 +143,6 @@ function RoadmapView({ focused, width, height }: PaneProps) {
   const detailScrollRef = useRef<ScrollBoxRenderable>(null);
 
   const inFlight = useRef(new Set<string>());
-  const reload = resource.reload;
   const toggleVote = useCallback(async (item: RoadmapItem) => {
     if (!canVote || !isVotable(item) || inFlight.current.has(item.id)) return;
     const voted = !item.voted;
@@ -162,8 +163,6 @@ function RoadmapView({ focused, width, height }: PaneProps) {
       inFlight.current.delete(item.id);
     }
   }, [canVote, client, setNote]);
-
-  usePaneRefreshKey(() => reload(), { focused });
 
   const target = open ?? selected;
   const hints = useMemo<PaneHint[]>(() => (

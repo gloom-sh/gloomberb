@@ -26,7 +26,7 @@ function optionalString(value: unknown): string | null {
 }
 
 /** Stripe's hosted invoice page, else null. */
-export function hostedInvoiceUrl(value: unknown): string | null {
+function hostedInvoiceUrl(value: unknown): string | null {
   if (typeof value !== "string") return null;
   try {
     const url = new URL(value);
@@ -38,7 +38,7 @@ export function hostedInvoiceUrl(value: unknown): string | null {
   }
 }
 
-export function readYearlyOffer(value: unknown): CloudYearlyOffer | null {
+function readYearlyOffer(value: unknown): CloudYearlyOffer | null {
   const offer = record(value);
   if (
     offer.currency !== "usd"

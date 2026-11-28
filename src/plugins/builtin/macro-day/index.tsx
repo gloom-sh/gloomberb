@@ -43,6 +43,5 @@ export const macroDayModule: PluginModule = {
     },
     headless: macroDayHeadless,
   }],
-  setup(ctx) { macroReleaseCache.attach(ctx.persistence); },
-  dispose() { macroReleaseCache.reset(); },
+  caches: [macroReleaseCache],
 };

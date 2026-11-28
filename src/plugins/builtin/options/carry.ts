@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { isPositiveNumber as positive } from "../../../utils/guards";
 import type { OptionContract } from "../../../types/financials";
 import { daysToExpiryFrom, optionMid, type OptionSide } from "../shared/volatility";
 import { optionSpread } from "./market-reference";
@@ -27,10 +28,6 @@ export interface OptionCarry {
 
 /** Less time than this to expiry and a yearly rate means nothing. */
 const MIN_CARRY_DAYS = 1;
-
-function positive(value: number | null | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
-}
 
 function optionIntrinsicValue(side: OptionSide, strike: number, spot: number): number {
   return Math.max(0, side === "call" ? spot - strike : strike - spot);

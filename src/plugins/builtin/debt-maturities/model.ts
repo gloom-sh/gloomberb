@@ -10,6 +10,7 @@ import type { DataTableColumn } from "../../../components";
 import { scalarPoint } from "../../../components/chart/static/series";
 import type { TimeSeriesPoint } from "../../../time-series/types";
 import { MISSING_VALUE, formatCompact, formatPercentileRank } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 
 export type DebtLatest = NonNullable<DebtMaturitiesPayload["latest"]>;
 export type DebtBucket = DebtLatest["buckets"][number];
@@ -22,7 +23,7 @@ export const debtMetricValue = (metric: DebtMetric) =>
     ? debtPercent(metric.value)
     : `${debtAmount(metric.value)} ${metric.unit}`;
 export const debtMetricCaption = (metric: DebtMetric) =>
-  `${formatPercentileRank(metric.percentile.value, "10Y")} · ${metric.asOf}`;
+  `${formatPercentileRank(metric.percentile.value, "10Y")} · ${formatDay(metric.asOf)}`;
 export function bucketShare(
   bucket: DebtBucket,
   latest: DebtLatest,
@@ -163,7 +164,7 @@ interface HistorySlots {
  * 2026-01-03 is fiscal 2025, so a retailer's years are not labelled one late
  * or twice.
  */
-export function fiscalYearOf(point: Pick<DebtHistoryPoint, "asOf" | "fy">): number {
+function fiscalYearOf(point: Pick<DebtHistoryPoint, "asOf" | "fy">): number {
   if (typeof point.fy === "number" && Number.isInteger(point.fy)) return point.fy;
   const year = Number(point.asOf.slice(0, 4));
   return point.asOf.slice(5, 7) === "01" && Number(point.asOf.slice(8, 10)) <= 7 ? year - 1 : year;

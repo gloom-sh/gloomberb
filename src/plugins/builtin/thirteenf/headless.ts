@@ -6,11 +6,11 @@ import type {
   HeadlessPaneLoadArgs,
   HeadlessShotState,
 } from "../../../types/plugin";
-import { formatShortDate } from "../../../utils/datetime-format";
 import { servedFromSavedCopy } from "../../../data/saved-copies";
-import { normalizeCik, searchThirteenFFunds, TOP_FUNDS_MAX_LIMIT } from "./api";
+import { type HoldingsSession, inHoldingsSession, normalizeCik, searchThirteenFFunds, TOP_FUNDS_MAX_LIMIT } from "./api";
 import { ApiRequestError } from "../../../api-client/errors";
-import { REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption, offsetOption } from "../shared/headless-options";
+import { numCol } from "../shared/headless-columns";
 import { buildFundOverlap, buildManagerEtfOverlap, overlapPeriod } from "./overlap";
 import type { FundMembersPayload, MemberFundsPayload } from "../../../api-client/members";
 import { fetchFunds, fetchMembers } from "../members/client";
@@ -18,6 +18,8 @@ import { coveredFund } from "../members/model";
 import { appendTickerHoldings, holdersTicker, loadCrowding, loadTickerHoldings, quarterFallbackText, type CrowdingRow, type TickerHoldings } from "./signals";
 import {
   AS_FILED_VALUE,
+  cappedHoldingsText,
+  cappedReadText,
   compareCrowding,
   crowdingForTicker,
   cutText,
@@ -28,6 +30,7 @@ import {
   holdingSplitNotes,
   isOptionType,
   isStaleFiling,
+  fundPositionText,
   markedPositionType,
   nextFilingText,
   OPTION_ROWS_NOTE,
@@ -82,7 +85,6 @@ import {
   formatPercentMaybe,
   formatRawPercentMaybe,
   formatShares,
-  FILING_DAY_FORMAT,
   formatWeightMaybe,
 } from "./format";
 import type {
@@ -92,6 +94,7 @@ import type {
   ThirteenFFund,
 } from "./types";
 import { finiteOrNull } from "../../../utils/guards";
+import { formatDaysInText } from "../../../utils/day-format";
 import { SEC_FILINGS } from "../shared/report-freshness";
 
 const money = (value: unknown) => formatMoneyCompact(finiteOrNull(value));
@@ -102,28 +105,18 @@ const weightPoints = (value: unknown) => {
   return change == null ? MISSING_VALUE : `${change > 0 ? "+" : ""}${(change * 100).toFixed(2)}pp`;
 };
 
+/** A filing day as the text prints Period beside it, day first (`14 Aug 2026`); JSON and CSV keep the ISO day. */
+const filedText = (value: unknown) => (typeof value === "string" && value ? formatDaysInText(value) : MISSING_VALUE);
+
 const BROWSER_COLUMNS: HeadlessPaneColumn[] = [
   { key: "name", header: "Fund" },
   { key: "cik", header: "CIK" },
   { key: "periodOfReport", header: "Period" },
-  {
-    key: "estQuarterReturn",
-    header: "Est 13F",
-    align: "right",
-    format: (value) => formatRawPercentMaybe(value == null ? null : Number(value)),
-  },
-  {
-    key: "tableValueTotal",
-    header: "Value (USD)",
-    align: "right",
-    format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
-  },
-  { key: "tableEntryTotal", header: "Rows", align: "right" },
-  {
-    key: "filedAsOfDate",
-    header: "Filed",
-    format: (value) => formatShortDate(typeof value === "string" ? value : null, FILING_DAY_FORMAT),
-  },
+  numCol("estQuarterReturn", "Est 13F", (value) => formatRawPercentMaybe(value == null ? null : Number(value))),
+  numCol("tableValueTotal", "Value (USD)", (value) => formatMoneyCompact(value == null ? null : Number(value))),
+  numCol("tableEntryTotal", "Rows"),
+  // The day as Period gives it, with its year: a fund that stopped filing did so years ago.
+  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE, textFormat: filedText },
 ];
 
 /** What a 13F position report notes after its table: the filing's limits, and what the option marker means when option rows are shown. */
@@ -133,61 +126,31 @@ function positionNotes(rows: readonly { type?: unknown }[]): string[] {
 
 const TYPE_COLUMN: HeadlessPaneColumn = { key: "type", header: "Type", textFormat: markedPositionType };
 
+/** A ticker's holder's position after its fund, CIK and type. */
+const TICKER_HOLDER_FIGURES: HeadlessPaneColumn[] = [
+  numCol("value", "Value (USD)", money), numCol("shares", "Shares", shares),
+  numCol("weight", "13F weight", weight), { key: "action", header: "Action" },
+];
+
 const HOLDING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "ticker", header: "Ticker" },
   TYPE_COLUMN,
   { key: "issuer", header: "Issuer" },
-  {
-    key: "value",
-    header: "Value (USD)",
-    align: "right",
-    format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
-  },
-  {
-    key: "estimatedPnl",
-    header: "Est P&L (USD)",
-    align: "right",
-    format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
-  },
-  {
-    key: "weight",
-    header: "13F %",
-    description: "Share of the filing's reported value, including underlying notional for options; not portfolio allocation.",
-    align: "right",
-    format: weight,
-  },
-  {
-    key: "shares",
-    header: "Shares",
-    align: "right",
-    format: (value) => formatShares(value == null ? null : Number(value)),
-  },
-  {
-    key: "sharesChange",
-    header: "QoQ",
-    align: "right",
-    format: (value) => formatChangeShares(value == null ? null : Number(value)),
-  },
+  numCol("value", "Value (USD)", (value) => formatMoneyCompact(value == null ? null : Number(value))),
+  numCol("estimatedPnl", "Est P&L (USD)", (value) => formatMoneyCompact(value == null ? null : Number(value))),
+  numCol("weight", "13F %", weight, { description: "Share of the filing's reported value, including underlying notional for options; not portfolio allocation." }),
+  numCol("shares", "Shares", (value) => formatShares(value == null ? null : Number(value))),
+  numCol("sharesChange", "QoQ", (value) => formatChangeShares(value == null ? null : Number(value))),
   { key: "actionLabel", header: "Action" },
 ];
 
 const FILING_COLUMNS: HeadlessPaneColumn[] = [
   { key: "periodOfReport", header: "Period" },
   // The whole day, as the period beside it: the list spans years.
-  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE },
-  {
-    key: "tableValueTotal",
-    header: "Value (USD)",
-    align: "right",
-    format: (value) => formatMoneyCompact(value == null ? null : Number(value)),
-  },
-  { key: "tableEntryTotal", header: "Rows", align: "right" },
-  {
-    key: "valueChangePercent",
-    header: "Value%",
-    align: "right",
-    format: (value) => formatPercentMaybe(value == null ? null : Number(value)),
-  },
+  { key: "filedAsOfDate", header: "Filed", format: (value) => (typeof value === "string" && value) || MISSING_VALUE, textFormat: filedText },
+  numCol("tableValueTotal", "Value (USD)", (value) => formatMoneyCompact(value == null ? null : Number(value))),
+  numCol("tableEntryTotal", "Rows"),
+  numCol("valueChangePercent", "Value%", (value) => formatPercentMaybe(value == null ? null : Number(value))),
   { key: "submissionType", header: "Form" },
   { key: "amendmentType", header: "Amendment" },
 ];
@@ -204,7 +167,7 @@ type HeadlessThirteenFView =
   | "holdings"
   | "filings";
 
-export interface ThirteenFHeadlessDependencies {
+interface ThirteenFHeadlessDependencies {
   loadBrowser(
     tab: ThirteenFBrowserTab,
     query: string,
@@ -212,11 +175,13 @@ export interface ThirteenFHeadlessDependencies {
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
   ): Promise<BrowserLoadResult>;
+  /** A fund read in the report's sign-in (`session`), which reads it again itself when that changes. */
   loadDetail(
     cik: string,
     name: string,
     args: HeadlessPaneLoadArgs,
     ctx: HeadlessPaneContext,
+    session?: HoldingsSession,
   ): Promise<FundDetailData>;
   /** The split factor of each of a fund's split candidates between its two quarter ends (loadSplitFactors), for its Est P&L; with `only`, of those rows alone. */
   loadSplitFactors?(detail: FundDetailData, ctx: HeadlessPaneContext, only?: ReadonlySet<string>): Promise<SplitFactors>;
@@ -275,7 +240,9 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
     { limit, onSavedCopy: noteSavedCopy(ctx) },
   ),
   // An overlap never shows a fund's missed quarter, so it does not ask EDGAR.
-  loadDetail: (cik, name, args, ctx) => loadFundDetail(cik, name, ctx.signal, { filingGap: !isOverlapLoad(args), onSavedCopy: noteSavedCopy(ctx) }),
+  loadDetail: (cik, name, args, ctx, session) => loadFundDetail(cik, name, ctx.signal, {
+    filingGap: !isOverlapLoad(args), onSavedCopy: noteSavedCopy(ctx), ...(session ? { session } : {}),
+  }),
   loadSplitFactors: (detail, ctx, only) => loadSplitFactors(
     detail,
     corporateSplitLookup(ctx.marketData),
@@ -292,6 +259,19 @@ const defaultDependencies: Required<ThirteenFHeadlessDependencies> = {
   loadEtfFunds: async (ctx) => (await fetchFunds(ctx.apiClient)).funds,
   loadEtfHoldings: (ticker, ctx) => fetchMembers(ticker, ctx.apiClient),
 };
+
+/**
+ * A report's 13F books and every input it waits on with them (a split lookup,
+ * a second fund, an ETF's holdings file), read in one sign-in from the first
+ * book to the last input. One that changes before they are all in throws them
+ * away, with the saved copies they answered from, and reads them again in the
+ * new one; a sign-in that keeps changing fails the report (inHoldingsSession).
+ */
+function inReportSession<T>(ctx: HeadlessPaneContext, read: (session: HoldingsSession) => Promise<T>): Promise<T> {
+  const entry = savedCopies.get(ctx);
+  const before = entry?.savedAt ?? null;
+  return inHoldingsSession(read, ctx.signal, { onRestart: () => { if (entry) entry.savedAt = before; } });
+}
 
 function isOverlapLoad(args: HeadlessPaneLoadArgs): boolean {
   return args.options.view === "overlap" || (typeof args.options.compare === "string" && args.options.compare.trim() !== "");
@@ -565,7 +545,7 @@ function thirteenFShotState(args: HeadlessPaneLoadArgs, metadata: Record<string,
   }
 }
 
-export function createThirteenFHeadless(
+function createThirteenFHeadless(
   overrides: ThirteenFHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   const dependencies: Required<ThirteenFHeadlessDependencies> = { ...defaultDependencies, ...overrides };
@@ -581,37 +561,14 @@ export function createThirteenFHeadless(
     },
     options: [
       // No defaults on view-specific options, so a flag the view does not use can be named as ignored.
-      { key: "rank", description: "Crowding order (crowding view; new when left out).", type: "enum", values: [{ value: "new" }, { value: "exits" }, { value: "increases" }, { value: "decreases" }] },
+      enumOption("rank", ["new", "exits", "increases", "decreases"], { description: "Crowding order (crowding view; new when left out)." }),
       { key: "compare", description: "Second fund name or CIK, or an ETF ticker MEMB covers such as SPY; implies the overlap view.", type: "string" },
-      { key: "offset", description: "Fund offset for ticker-holdings (0 when left out).", type: "integer", minimum: 0, maximum: 100000, shot: REPORT_PAGE },
-      {
-        key: "view",
-        description: "Fund browser mode or detail tab.",
-        type: "enum",
-        values: [
-          { value: "auto" },
-          { value: "crowding" },
-          { value: "overlap" },
-          { value: "ticker-holdings" },
-          { value: "performance" },
-          { value: "funds" },
-          { value: "by-ticker", aliases: ["ticker", "byTicker"] },
-          { value: "latest" },
-          { value: "holdings" },
-          { value: "filings" },
-        ],
-        defaultValue: "auto",
-      },
-      {
-        key: "limit",
-        aliases: ["count", "rows"],
-        description: "Maximum rows.",
-        type: "integer",
-        defaultValue: 50,
-        minimum: 1,
-        maximum: THIRTEENF_MAX_LIMIT,
-        shot: REPORT_ROWS,
-      },
+      offsetOption({ description: "Fund offset for ticker-holdings (0 when left out).", maximum: 100000 }),
+      enumOption("view", ["auto", "crowding", "overlap", "ticker-holdings", "performance", "funds",
+        { value: "by-ticker", aliases: ["ticker", "byTicker"] }, "latest", "holdings", "filings"], {
+        description: "Fund browser mode or detail tab.", defaultValue: "auto",
+      }),
+      limitOption({ aliases: ["count", "rows"], description: "Maximum rows.", defaultValue: 50, maximum: THIRTEENF_MAX_LIMIT }),
     ],
     describe: (args, result) => thirteenFTitle(args, result?.metadata),
     shotState: async (args, load) => thirteenFShotState(args, (await load()).metadata ?? {}),
@@ -643,7 +600,9 @@ export function createThirteenFHeadless(
         const fund = await resolveFund(query, args, ctx, dependencies);
         const other = await resolveComparison(compare, args, ctx, dependencies);
         if (other.kind === "etf") {
-          const [first, etf] = await Promise.all([dependencies.loadDetail(fund.cik, fund.name, args, ctx), dependencies.loadEtfHoldings(other.ticker, ctx)]);
+          const [first, etf] = await inReportSession(ctx, (session) => Promise.all([
+            dependencies.loadDetail(fund.cik, fund.name, args, ctx, session), dependencies.loadEtfHoldings(other.ticker, ctx),
+          ]));
           const overlap = buildManagerEtfOverlap(first, etf.members);
           const period = first.latestForm?.periodOfReport ?? null;
           const filed = first.latestForm?.filedAsOfDate ?? null;
@@ -687,7 +646,9 @@ export function createThirteenFHeadless(
             },
           };
         }
-        const [first, second] = await Promise.all([dependencies.loadDetail(fund.cik, fund.name, args, ctx), dependencies.loadDetail(other.cik, other.name, args, ctx)]);
+        const [first, second] = await inReportSession(ctx, (session) => Promise.all([
+          dependencies.loadDetail(fund.cik, fund.name, args, ctx, session), dependencies.loadDetail(other.cik, other.name, args, ctx, session),
+        ]));
         const comparedPeriod = overlapPeriod(first, second);
         const rows = buildFundOverlap(first, second);
         const cut = cutText(rows.length, limit, "positions");
@@ -749,7 +710,9 @@ export function createThirteenFHeadless(
         const summary = summarizeTickerHoldings({ ...metadata, offset, limit, loaded: rows });
         const shown = rows.slice(0, limit).map(row => ({ ...row }));
         return {
-          columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, TYPE_COLUMN, { key: "value", header: "Value (USD)", align: "right", format: money }, { key: "shares", header: "Shares", align: "right", format: shares }, { key: "weight", header: "13F weight", align: "right", format: weight }, { key: "action", header: "Action" }],
+          columns: [{ key: "fund", header: "Fund" }, { key: "cik", header: "CIK" }, TYPE_COLUMN, ...TICKER_HOLDER_FIGURES],
+          // As the pane: a type other than shares follows its fund, so no column reads SH down the page.
+          textColumns: [{ key: "fund", header: "Fund", textFormat: fundPositionText }, { key: "cik", header: "CIK" }, ...TICKER_HOLDER_FIGURES],
           rows: shown,
           notes: positionNotes(shown),
           metadata: {
@@ -775,7 +738,15 @@ export function createThirteenFHeadless(
 
       if (view === "holdings" || view === "filings") {
         const fund = await resolveFund(query, args, ctx, dependencies);
-        const detail = await dependencies.loadDetail(fund.cik, fund.name, args, ctx);
+        // A line that moved as across a split gets its Est P&L from its corporate actions: split-adjusted, as a trade, or none.
+        // The rows go largest value first, which no split moves, so only the rows shown have theirs read: a large
+        // filer's book holds hundreds of such lines (Citadel's 264 took 27 s), its top 50 a handful.
+        const { detail, splitFactors } = await inReportSession(ctx, async (session) => {
+          const detail = await dependencies.loadDetail(fund.cik, fund.name, args, ctx, session);
+          if (view === "filings") return { detail, splitFactors: undefined };
+          const shown = new Set(sortHoldingRows(buildFundHoldingRows(detail), DEFAULT_HOLDING_SORT).slice(0, limit).map((row) => row.id));
+          return { detail, splitFactors: await dependencies.loadSplitFactors(detail, ctx, shown) };
+        });
         const latestPeriod = detail.latestForm?.periodOfReport ?? null;
         const quartersBehind = quartersBehindLatest(latestPeriod);
         const gap = detail.filingGap ?? null;
@@ -805,14 +776,7 @@ export function createThirteenFHeadless(
             },
           };
         }
-        // A line that moved as across a split gets its Est P&L from its corporate actions: split-adjusted, as a trade, or none.
-        // The rows go largest value first, which no split moves, so only the rows shown have theirs read: a large
-        // filer's book holds hundreds of such lines (Citadel's 264 took 27 s), its top 50 a handful.
-        const shown = new Set(sortHoldingRows(buildFundHoldingRows(detail), DEFAULT_HOLDING_SORT).slice(0, limit).map((row) => row.id));
-        const all = sortHoldingRows(
-          buildFundHoldingRows(detail, await dependencies.loadSplitFactors(detail, ctx, shown)),
-          DEFAULT_HOLDING_SORT,
-        );
+        const all = sortHoldingRows(buildFundHoldingRows(detail, splitFactors), DEFAULT_HOLDING_SORT);
         const previousPeriod = detail.previousForm?.periodOfReport ?? null;
         const comparable = hasComparable13FQuarter(detail);
         const nextDue = nextThirteenFDue(latestPeriod);
@@ -833,10 +797,15 @@ export function createThirteenFHeadless(
             type: positionType(row),
             actionLabel: holdingActionLabel(row),
           }));
+        // Signed out, a large filing's first lines alone: said before the table, not among its errors after it.
+        const capped = cappedHoldingsText(detail);
+        const cappedReads = capped
+          ? [detail.latestReport, detail.previousReport].flatMap((report) => (report?.capped ? [cappedReadText(report)] : [])) : [];
+        const errors = (detail.warnings ?? []).filter((warning) => !cappedReads.includes(warning));
         return {
           columns: HOLDING_COLUMNS,
           rows,
-          ...(detail.warnings?.length ? { errors: detail.warnings } : {}),
+          ...(errors.length ? { errors } : {}),
           notes: positionNotes(rows),
           // Dated by the filing that made the positions public, with the quarter they report beside it.
           ...(latestPeriod ? { freshness: {
@@ -865,6 +834,7 @@ export function createThirteenFHeadless(
                 ...(detail.comparisonFailed ? [`QoQ: ${comparedWithText(detail)}`] : []),
                 ...(nextFiling ? [`Next 13F ${nextFiling.quarter}, ${nextFiling.due}`] : []),
               ].filter(Boolean).join(" | "),
+              ...(capped ? [capped] : []),
               AS_FILED_VALUE,
               ...(restated ? [restated] : []),
               ...holdingSplitNotes(rows),

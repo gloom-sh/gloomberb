@@ -1,3 +1,5 @@
+import { createListenerSet } from "../utils/listeners";
+
 /**
  * Asking Ask Gloom about a pane. Every pane offers it the same way, with no
  * code of its own: the button beside the `?` in a desktop pane header, Ask
@@ -32,11 +34,7 @@ export interface AskGloomPaneAttachment {
 type AskGloomPaneHandler = (attachment: AskGloomPaneAttachment) => void;
 
 const handlers = new Set<AskGloomPaneHandler>();
-const listeners = new Set<() => void>();
-
-function changed(): void {
-  for (const listener of [...listeners]) listener();
-}
+const listeners = createListenerSet();
 
 /**
  * Ask Gloom takes pane questions while it is registered. The shell offers the
@@ -45,9 +43,9 @@ function changed(): void {
  */
 export function registerAskGloomPaneHandler(handler: AskGloomPaneHandler): () => void {
   handlers.add(handler);
-  changed();
+  listeners.notify();
   return () => {
-    if (handlers.delete(handler)) changed();
+    if (handlers.delete(handler)) listeners.notify();
   };
 }
 
@@ -55,12 +53,7 @@ export function canAskGloomAboutPanes(): boolean {
   return handlers.size > 0;
 }
 
-export function subscribeAskGloomAboutPanes(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
-}
+export const subscribeAskGloomAboutPanes = listeners.subscribe;
 
 /** Hands the pane to Ask Gloom. False when nothing takes it. */
 export function askGloomAboutPane(attachment: AskGloomPaneAttachment): boolean {

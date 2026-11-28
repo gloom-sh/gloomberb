@@ -10,7 +10,7 @@
  * without a React render, and lets the OS screenshot detector toggle it
  * without touching component state.
  */
-export const SCREENSHOT_WATERMARK_ATTRIBUTE = "data-gloom-screenshot";
+const SCREENSHOT_WATERMARK_ATTRIBUTE = "data-gloom-screenshot";
 
 export const CHART_WATERMARK_ROLE = "chart-watermark";
 

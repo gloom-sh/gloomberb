@@ -402,6 +402,18 @@ export type ConfirmDialogOptions = Omit<ConfirmDialogProps, keyof PromptContext<
   closeOnClickOutside?: boolean;
 };
 
+function openConfirmPrompt(
+  dialog: DialogApi,
+  closeOnClickOutside: boolean,
+  props: Omit<ConfirmDialogProps, keyof PromptContext<boolean>>,
+  fallback?: boolean,
+): Promise<boolean | undefined> {
+  return dialog.prompt<boolean>({
+    closeOnClickOutside,
+    content: (context) => <ConfirmDialog {...context} {...props} />,
+  }).catch(logFailure("ui.confirm-dialog", "Open confirm dialog failed", fallback));
+}
+
 /**
  * Asks in a ConfirmDialog and resolves true only when the person confirms;
  * Cancel, Esc, a click outside or a failed dialog all resolve false.
@@ -410,11 +422,7 @@ export async function confirmDialog(
   dialog: DialogApi,
   { closeOnClickOutside = true, ...props }: ConfirmDialogOptions,
 ): Promise<boolean> {
-  const confirmed = await dialog.prompt<boolean>({
-    closeOnClickOutside,
-    content: (context) => <ConfirmDialog {...context} {...props} />,
-  }).catch(logFailure("ui.confirm-dialog", "Open confirm dialog failed", false));
-  return confirmed === true;
+  return (await openConfirmPrompt(dialog, closeOnClickOutside, props, false)) === true;
 }
 
 /**
@@ -427,10 +435,7 @@ export async function confirmDialogWithAnswer(
   { closeOnClickOutside = true, ...props }: ConfirmDialogOptions & { question: ConfirmDialogQuestion },
 ): Promise<ConfirmDialogAnswer | null> {
   let answer: ConfirmDialogAnswer = {};
-  const confirmed = await dialog.prompt<boolean>({
-    closeOnClickOutside,
-    content: (context) => <ConfirmDialog {...context} {...props} onAnswer={(next) => { answer = next; }} />,
-  }).catch(logFailure("ui.confirm-dialog", "Open confirm dialog failed", false));
+  const confirmed = await openConfirmPrompt(dialog, closeOnClickOutside, { ...props, onAnswer: (next) => { answer = next; } }, false);
   return confirmed === true ? answer : null;
 }
 
@@ -444,10 +449,7 @@ export async function confirmDialogChoice(
   dialog: DialogApi,
   { closeOnClickOutside = true, ...props }: ConfirmDialogOptions,
 ): Promise<"confirm" | "cancel" | null> {
-  const answer = await dialog.prompt<boolean>({
-    closeOnClickOutside,
-    content: (context) => <ConfirmDialog {...context} {...props} escapeLeaves />,
-  }).catch(logFailure("ui.confirm-dialog", "Open confirm dialog failed"));
+  const answer = await openConfirmPrompt(dialog, closeOnClickOutside, { ...props, escapeLeaves: true });
   if (answer === true) return "confirm";
   return answer === false ? "cancel" : null;
 }

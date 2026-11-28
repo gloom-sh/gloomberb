@@ -1,4 +1,5 @@
 import type { PriceHistoryIntegrity } from "../../../utils/price-history-integrity";
+import { isPositiveNumber as positive } from "../../../utils/guards";
 import type { OptionContract, OptionsChain, PricePoint } from "../../../types/financials";
 import {
   daysToExpiryFrom,
@@ -33,10 +34,6 @@ export interface OptionsSummary {
    * missing count is not read as zero, so any one leaves its total and ratio blank.
    */
   uncounted: { volume: number; openInterest: number };
-}
-
-function positive(value: number | undefined): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
 }
 
 function ratio(numerator: number | null, denominator: number | null): number | null {

@@ -9,8 +9,9 @@ import { perpFreshness } from "./freshness";
 import { aprFootnote, ASSET_FILTERS, BOARD_COLUMNS, BOARD_SORTS, collectedVenueCount, COMPARE_COLUMNS, compact, fundingSpread, HISTORY_METRICS, label, marketLabel, observed, openInterestFields, openingTab, PERP_TABS, perpCellText,
   perpColumnLabel, percent, perpHistoryProText, positioningFields, price, RANKING_COLUMNS, rankingRows, RANKINGS, ratioText, share, time, uncoveredVenueNote, VENUES, venueAprSummary, venueName, venuesOf, IDENTITY_VENUES,
   type PerpColumnId } from "./model";
+import { dayFirstEntries } from "../shared/day-entries";
 import { freePreviewNote } from "../shared/free-preview";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { argumentText, enumOption, limitOption } from "../shared/headless-options";
 import { basisSpotSymbol } from "../futures-curve/model";
 
 // Text columns only: the text report shows these, JSON keeps every field of every row. Rates, premiums and
@@ -123,16 +124,18 @@ function parityNote(rows: readonly PerpBoardRow[]): string | null {
   const coins = [...new Set(rows.filter((row) => row.qualityFlags.includes("stablecoin-usd-parity-assumed")).map((row) => row.quoteCurrency))].sort();
   return coins.length ? `OI USD values ${coins.join(" and ")} at 1 USD.` : null;
 }
+/** The hour a note names, as JSON and CSV have always written it (`11-26 00:00`); the text writes it day first (`observed`). */
+const exportedHour = (stamp: string) => `${stamp.slice(5, 10)} ${stamp.slice(11, 16)}`;
 /** When the Long % shares were counted: each venue's hourly bucket, which is not the row's Observed time. */
-function longShareNote(rows: readonly PerpBoardRow[]): string | null {
+function longShareNote(rows: readonly PerpBoardRow[], hour: (stamp: string) => string = exportedHour): string | null {
   const buckets = new Map<string, Set<string>>();
   for (const row of rows) {
     const bucket = row.longShortRatio?.bucketAt;
-    if (bucket) buckets.set(observed(bucket), (buckets.get(observed(bucket)) ?? new Set()).add(venueName(row.venue)));
+    if (bucket) buckets.set(bucket.slice(0, 16), (buckets.get(bucket.slice(0, 16)) ?? new Set()).add(venueName(row.venue)));
   }
   if (!buckets.size) return null;
-  const when = buckets.size === 1 ? `from ${[...buckets.keys()][0]} UTC`
-    : `(${[...buckets].sort(([a], [b]) => a.localeCompare(b)).map(([bucket, venues]) => `${[...venues].sort().join(", ")} ${bucket}`).join("; ")} UTC)`;
+  const when = buckets.size === 1 ? `from ${hour([...buckets.keys()][0]!)} UTC`
+    : `(${[...buckets].sort(([a], [b]) => a.localeCompare(b)).map(([bucket, venues]) => `${[...venues].sort().join(", ")} ${hour(bucket)}`).join("; ")} UTC)`;
   return `Long % is each venue's hourly account bucket ${when}, not its Observed time.`;
 }
 // The APR % column is the current rate carried forward a year at each market's own interval, so a table that shows it says how;
@@ -140,10 +143,12 @@ function longShareNote(rows: readonly PerpBoardRow[]): string | null {
 // `aprRows` are every row an APR is shown for, where a line beside the table annualises more markets than it lists.
 const aprNote = (rows: readonly PerpBoardRow[], { apr = true, longShare = true, aprRows = rows }: { apr?: boolean; longShare?: boolean; aprRows?: readonly PerpBoardRow[] } = {}) => {
   const notes = [apr ? aprFootnote(aprRows) : null, parityNote(rows), longShare ? longShareNote(rows) : null].filter((note): note is string => !!note);
-  return notes.length ? { notes } : {};
+  // The text writes the Long % hour day first, as the pane does.
+  const textNotes = [apr ? aprFootnote(aprRows) : null, parityNote(rows), longShare ? longShareNote(rows, observed) : null].filter((note): note is string => !!note);
+  return notes.length ? { notes, textNotes } : {};
 };
 
-const requestedOf = (args: HeadlessPaneLoadArgs) => String(Array.isArray(args.argument) ? args.argument.join(" ") : args.argument ?? "").trim();
+const requestedOf = (args: HeadlessPaneLoadArgs) => argumentText(args.argument).trim();
 // No tab named: a market opens its history, nothing opens the board, as the pane does.
 const tabOf = (args: HeadlessPaneLoadArgs) => PERP_TABS.find((tab) => tab === args.options.tab) ?? openingTab(requestedOf(args));
 // A free account's market opens its latest values under the title, so the title names the function, not the Pro history: a table the free view
@@ -191,14 +196,14 @@ export const perpsHeadless: HeadlessPaneDefinition<"bundle"> = {
   shape: "bundle", argument: { kind: "free-text", optional: true, placeholder: "market",
     description: "A base asset, underlying, canonical market identity or Market column label, such as BTC, hyperliquid:xyz:TSLA or xyz:TSLA. Opens its history on Pro and its evidence signed out or free (see --tab); with --tab board it searches the board, with --tab compare, liquidations or depth it is the base asset. Without one, the board." },
   options: [
-    { key: "tab", type: "enum", settingKey: "tab", values: PERP_TABS.map((value) => ({ value })), description: "Board, rankings, compare, liquidations, depth, history or evidence. Without a market, the board. With one, History on Pro; signed out or free, the pane and shot open Evidence, and the report the market's latest values, as History is Pro." },
-    { key: "asset-class", type: "enum", settingKey: "assetClass", values: ASSET_FILTERS.map((value) => ({ value })), defaultValue: "all", description: "Board and rankings asset class." },
-    { key: "venue", type: "enum", settingKey: "venue", values: ["all", ...VENUES].map((value) => ({ value })), defaultValue: "all", invalidValueHint: uncoveredVenueNote,
-      description: "Board venue; with a market, opens that venue's contract when the board lists it." },
-    { key: "sort", type: "enum", settingKey: "sort", values: BOARD_SORTS.map((value) => ({ value })), defaultValue: "oi", description: "Board order: open interest, funding, open-interest change, premium or long share of accounts." },
-    { key: "days", type: "enum", settingKey: "days", values: ["1", "7", "30", "90", "365"].map((value) => ({ value })), defaultValue: "7", description: "History lookback in days." },
-    { key: "metric", type: "enum", settingKey: "metric", values: HISTORY_METRICS.map((value) => ({ value })), defaultValue: "funding", description: "Displayed history chart; JSON retains every series." },
-    { key: "limit", type: "integer", shot: REPORT_ROWS, minimum: 1, maximum: 5000, description: "Rows to list in each table, in its order: every row unless given.", example: "--limit 10" },
+    enumOption("tab", PERP_TABS, { settingKey: "tab", description: "Board, rankings, compare, liquidations, depth, history or evidence. Without a market, the board. With one, History on Pro; signed out or free, the pane and shot open Evidence, and the report the market's latest values, as History is Pro." }),
+    enumOption("asset-class", ASSET_FILTERS, { settingKey: "assetClass", defaultValue: "all", description: "Board and rankings asset class." }),
+    enumOption("venue", ["all", ...VENUES], { settingKey: "venue", defaultValue: "all", invalidValueHint: uncoveredVenueNote,
+      description: "Board venue; with a market, opens that venue's contract when the board lists it." }),
+    enumOption("sort", BOARD_SORTS, { settingKey: "sort", defaultValue: "oi", description: "Board order: open interest, funding, open-interest change, premium or long share of accounts." }),
+    enumOption("days", ["1", "7", "30", "90", "365"], { settingKey: "days", defaultValue: "7", description: "History lookback in days." }),
+    enumOption("metric", HISTORY_METRICS, { settingKey: "metric", defaultValue: "funding", description: "Displayed history chart; JSON retains every series." }),
+    limitOption({ maximum: 5000, description: "Rows to list in each table, in its order: every row unless given.", example: "--limit 10" }),
   ],
   discovery: { aliases: ["PERP"], dataRequirements: ["Perpetual market observations"], limitations: ["Free accounts see a fixed preview of the board, rankings and comparisons, and latest values for one market.", "Pro unlocks every market, full rankings and history.", "Rankings list up to ten markets each.", "Rates, premiums and changes are fractions in JSON.", "Open-interest history begins at first collection.", "Funding APR is a simple annualization, not a forecast.",
     "Long/short account shares: venue definitions differ; history begins at first collection.",
@@ -295,7 +300,8 @@ async function loadPerpTab(args: HeadlessPaneLoadArgs, ctx: HeadlessPaneContext)
       const locked = lockedTable(data.locked);
       const entries = (["long24h", "short24h", "long7d", "short7d"] as const).map((key) => ({ key, label: `${key.startsWith("long") ? "Longs" : "Shorts"} liquidated ${key.endsWith("24h") ? "24h" : "7d"}`,
         value: data.totals[key], formatted: `${compact(data.totals[key])} USD` }));
-      return { sections: [{ title: "Totals", entries: [...entries, { key: "collectingSince", label: "Collecting since", value: data.collectingSince, formatted: time(data.collectingSince) }] },
+      // The figures' days read first in the text; JSON and CSV keep them in ISO.
+      return { sections: [{ title: "Totals", ...dayFirstEntries([...entries, { key: "collectingSince", label: "Collecting since", value: data.collectingSince, formatted: time(data.collectingSince) }]) },
         { title: "By contract", columns: LIQUIDATION_TEXT_COLUMNS, rows: data.markets.map((row) => ({ ...row })) },
         { title: "Hourly", columns: HOURLY_COLUMNS, rows: data.hourly.map((row) => ({ ...row })), ...locked },
         // The prints are the window's, not the 24 hours beside them: the heading says which.
@@ -340,13 +346,14 @@ async function loadPerpTab(args: HeadlessPaneLoadArgs, ctx: HeadlessPaneContext)
   if (tab === "evidence") return {
     sections: [marketSection("Market evidence", MARKET_COLUMNS, market.rows), ...venues,
       // Where the figures were read, as the pane's Evidence names it: the venue's own endpoint and its time.
-      { title: "Source", entries: [{ key: "sourceUrl", label: "URL", value: selected.sourceUrl },
-        { key: "sourceAsOf", label: "Venue as of", value: selected.sourceAsOf, formatted: time(selected.sourceAsOf) }] },
+      // Each line's days read first in the text; JSON and CSV keep them in ISO.
+      { title: "Source", ...dayFirstEntries([{ key: "sourceUrl", label: "URL", value: selected.sourceUrl },
+        { key: "sourceAsOf", label: "Venue as of", value: selected.sourceAsOf, formatted: time(selected.sourceAsOf) }]) },
       // The open interest's own read, which the market's source and time above do not date, and how its USD was made.
-      { title: "Open interest", entries: openInterestFields(selected).map((field) => ({ key: field.key, label: field.label, value: field.value,
-        formatted: field.detail ? `${field.text} · ${field.detail}` : field.text })) },
-      ...(positioning ? [{ title: "Positioning", entries: positioning.map((field) => ({ key: field.key, label: field.label, value: field.value,
-        formatted: field.detail ? `${field.text} · ${field.detail}` : field.text })) }] : []),
+      { title: "Open interest", ...dayFirstEntries(openInterestFields(selected).map((field) => ({ key: field.key, label: field.label, value: field.value,
+        formatted: field.detail ? `${field.text} · ${field.detail}` : field.text }))) },
+      ...(positioning ? [{ title: "Positioning", ...dayFirstEntries(positioning.map((field) => ({ key: field.key, label: field.label, value: field.value,
+        formatted: field.detail ? `${field.text} · ${field.detail}` : field.text }))) }] : []),
       { title: "Observation revisions", columns: REVISION_COLUMNS, rows: market.evidence.map((row) => ({ ...row })), ...lockedTable(market.access !== "pro") }],
     // Positioning dates the long share itself.
     complete: market.access === "pro" && market.status === "ok", ...aprNote(market.rows, { longShare: false, aprRows }), freshness,

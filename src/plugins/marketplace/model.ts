@@ -566,7 +566,7 @@ export function isManaged(entry: MarketplaceEntry): boolean {
 }
 
 /** Short label for a plugin that cannot run on the current renderer. */
-export function unsupportedLabel(entry: MarketplaceEntry): string | null {
+function unsupportedLabel(entry: MarketplaceEntry): string | null {
   if (!entry.unsupportedHere) return null;
   if (entry.targets.length === 0) return "Unavailable here";
   const desktop = entry.targets.includes("desktop");

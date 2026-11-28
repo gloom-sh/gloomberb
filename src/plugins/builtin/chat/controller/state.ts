@@ -23,6 +23,8 @@ export const TRANSCRIPT_CACHE_POLICY = {
   expireMs: 90 * 24 * 60 * 60_000,
 };
 export const DRAFT_SYNC_DEBOUNCE_MS = 250;
+/** Typing without a pause this long still saves the draft, so a crash costs seconds of it, not all. */
+export const DRAFT_SYNC_MAX_WAIT_MS = 2_000;
 export const VERIFICATION_POLL_MS = 5_000;
 export const SESSION_RETRY_MS = 30_000;
 export const SAFETY_REFRESH_MS = 30_000;
@@ -35,11 +37,14 @@ export interface PersistedSessionState {
 }
 
 export interface PersistedChannelState {
-  draft: string;
-  draftClientMessageId?: string | null;
-  replyToId: string | null;
   lastCursor: string | null;
   lastViewedMessageId?: string | null;
+}
+
+export interface PersistedComposerState {
+  draft: string;
+  draftClientMessageId: string | null;
+  replyToId: string | null;
 }
 
 export interface PersistedTranscript {
@@ -99,6 +104,7 @@ export interface ChatControllerSnapshot {
   /** Undefined until the first scoped read, then authoritative even when empty. */
   mentionCandidates?: ChatMentionCandidate[];
   draft: string;
+  composerScope: object | null;
   /** Images waiting in the composer for the next message. */
   draftAttachments: ChatDraftAttachment[];
   replyToId: string | null;
@@ -161,12 +167,17 @@ export interface ChannelRuntimeState {
   wsConnection: ChatConnection | null;
   wsConnected: boolean;
   draftSyncTimer: ReturnType<typeof setTimeout> | null;
+  draftSyncMaxTimer: ReturnType<typeof setTimeout> | null;
   openViewCount: number;
   focusedViewCount: number;
 }
 
 export function channelStateKey(channelId: string): string {
   return `channel:${channelId}`;
+}
+
+export function composerStateKey(accountId: string, channelId: string): string {
+  return `composer:${JSON.stringify([accountId, channelId])}`;
 }
 
 export function normalizeChannelId(channelId: string | null | undefined): string {
@@ -198,6 +209,7 @@ export function createEmptyChannelState(): ChannelRuntimeState {
     wsConnection: null,
     wsConnected: false,
     draftSyncTimer: null,
+    draftSyncMaxTimer: null,
     openViewCount: 0,
     focusedViewCount: 0,
   };
@@ -229,11 +241,6 @@ export function hydrateChannelRuntimeState({
   persistedChannel: PersistedChannelState | null;
   userId: string | null;
 }): void {
-  channel.draft = persistedChannel?.draft ?? "";
-  channel.draftClientMessageId = channel.draft.trim()
-    ? persistedChannel?.draftClientMessageId ?? createClientMessageId()
-    : null;
-  channel.replyToId = persistedChannel?.replyToId ?? null;
   channel.messages = messages;
   // The cursor follows the cached transcript, so a persisted cursor that ran
   // ahead of the cache is never sent to the server.
@@ -241,4 +248,10 @@ export function hydrateChannelRuntimeState({
   channel.lastViewedMessageId = userId
     ? persistedChannel?.lastViewedMessageId ?? getLatestMessageId(messages)
     : null;
+}
+
+export function hydrateComposerState(channel: ChannelRuntimeState, saved: PersistedComposerState | null): void {
+  channel.draft = saved?.draft ?? "";
+  channel.draftClientMessageId = channel.draft.trim() ? saved?.draftClientMessageId ?? createClientMessageId() : null;
+  channel.replyToId = saved?.replyToId ?? null;
 }

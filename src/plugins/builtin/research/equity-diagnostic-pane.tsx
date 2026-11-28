@@ -9,20 +9,19 @@ import type {
 } from "../../../api-client";
 import { apiClient } from "../../../api-client";
 import { ApiRequestError } from "../../../api-client/errors";
-import { Button, ChoiceDialog, EmptyState, PaneStatusBody, SectionHeading, Spinner, usePaneFooter, usePaneMenuItems } from "../../../components";
+import { Button, EmptyState, PaneStatusBody, SectionHeading, Spinner, usePaneFooter, usePaneMenuItems } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { ExternalLinkText, PaneLinkMenu } from "../../../components/ui";
+import { choiceDialog, ExternalLinkText, PaneLinkMenu } from "../../../components/ui";
 import { ClippedText } from "../../../components/ui/display";
 import { t, tf } from "../../../i18n";
 import { colors } from "../../../theme/colors";
 import { Box, ScrollBox, Text, TextAttributes, useRendererHost, useUiCapabilities } from "../../../ui";
-import { useOptionalDialog, type PromptContext } from "../../../ui/dialog";
+import { useOptionalDialog } from "../../../ui/dialog";
 import { formatTimeAgo } from "../../../utils/datetime-format";
 import { ProWall, SignInWall } from "../cloud/auth-actions";
 import { useCloudPlanAction, useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { usePlanAccess } from "../../../api-client/plan-access";
 import { useBoundTicker } from "../shared/ticker-request";
-import { logFailure } from "../../../utils/log-failure";
 
 const FOOTER_ID = "equity-diagnostic";
 /** Width of the "Observed"/"Reading" label column before the layout stacks. */
@@ -508,19 +507,15 @@ export function EquityDiagnosticView({ focused, width, height }: {
       void rendererHost.openExternal(only.url);
       return;
     }
-    void dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (context: PromptContext<string>) => (
-        <ChoiceDialog
-          {...context}
-          title={t("Open Source")}
-          choices={sources.map((source) => ({ id: source.id, label: source.label, description: source.finding }))}
-        />
-      ),
+    void choiceDialog(dialog, {
+      title: t("Open Source"),
+      choices: sources.map((source) => ({ id: source.id, label: source.label, description: source.finding })),
+      logSource: "research.equity-diagnostic-pane",
+      logMessage: "Open diagnostic source choices failed",
     }).then((sourceId) => {
       const source = sources.find((entry) => entry.id === sourceId);
       if (source) void rendererHost.openExternal(source.url);
-    }).catch(logFailure("research.equity-diagnostic-pane", "Open diagnostic source choices failed"));
+    });
   }, [dialog, rendererHost, sources]);
 
   // The preview's pitch sits in the body, not an empty state, so its buttons

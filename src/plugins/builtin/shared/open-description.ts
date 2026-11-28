@@ -1,8 +1,9 @@
 import { useCallback } from "react";
+import type { PaneHint } from "../../../components";
 import { useAppGetState } from "../../../state/app/context";
 import { TICKER_RESEARCH_PANE_ID } from "../../../types/config";
 import { canonicalExchange, isUsListingExchange, parsePublicTickerKey, publicTickerKey } from "../../../utils/exchanges";
-import { usePluginTickerActions } from "../../runtime";
+import { usePluginAppActions, usePluginTickerActions } from "../../runtime";
 
 /**
  * Opens a listing's DES the way a ticker link does: the research pane already open for that listing comes
@@ -26,4 +27,25 @@ export function useOpenDescription(): (ticker: string, exchange?: string) => voi
       : isUsListingExchange(venue);
     pinTicker(bare ? symbol : key, { floating: true, paneType: TICKER_RESEARCH_PANE_ID });
   }, [getState, pinTicker]);
+}
+
+/** Standard `d` (DES), `f` (FA), `g` (Graph) footer jump hints for a ticker row. */
+export function useTickerJumpHints() {
+  const openDescription = useOpenDescription();
+  const { createPaneFromTemplate } = usePluginAppActions();
+  return useCallback((
+    symbol: string | null | undefined,
+    options: {
+      exchange?: string;
+      ids?: { des?: string; fa?: string; graph?: string };
+    } = {},
+  ): PaneHint[] => {
+    if (!symbol) return [];
+    const target = options.exchange ? publicTickerKey(symbol, options.exchange) : symbol;
+    return [
+      { id: options.ids?.des ?? "description", key: "d", label: "es", onPress: () => openDescription(symbol, options.exchange) },
+      { id: options.ids?.fa ?? "financials", key: "f", label: "a", onPress: () => createPaneFromTemplate("financial-analysis-pane", { symbol: target }) },
+      { id: options.ids?.graph ?? "chart", key: "g", label: "raph", onPress: () => createPaneFromTemplate("chart-composer-pane", { arg: target }) },
+    ];
+  }, [createPaneFromTemplate, openDescription]);
 }

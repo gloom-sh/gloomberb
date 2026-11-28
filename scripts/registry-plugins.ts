@@ -1,5 +1,5 @@
 import { execFileSync } from "child_process";
-import { mkdirSync, rmSync } from "fs";
+import { existsSync, mkdirSync, rmSync } from "fs";
 import { dirname, join } from "path";
 
 import { loadRegistry } from "../src/plugins/marketplace/feed";
@@ -21,12 +21,26 @@ export function annotate(level: "error" | "warning", message: string): void {
   console.log(process.env.GITHUB_ACTIONS ? `::${level}::${message}` : `${level}: ${message}`);
 }
 
-function run(command: string, args: string[], cwd: string): void {
-  execFileSync(command, args, { cwd, stdio: ["ignore", "ignore", "pipe"] });
-}
-
 function git(args: string[], cwd: string): string {
   return execFileSync("git", args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }).trim();
+}
+
+async function runAsync(command: string, args: string[], cwd: string): Promise<string> {
+  const proc = Bun.spawn([command, ...args], {
+    cwd,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
+  });
+  const [code, stdout, stderr] = await Promise.all([
+    proc.exited,
+    new Response(proc.stdout).text(),
+    new Response(proc.stderr).text(),
+  ]);
+  if (code !== 0) {
+    throw new Error(`${command} ${args.join(" ")} failed (exit ${code}): ${stderr.trim() || stdout.trim()}`);
+  }
+  return stdout.trim();
 }
 
 const FULL_COMMIT = /^[0-9a-f]{40}$/i;
@@ -63,6 +77,48 @@ export function checkoutRegistryPlugin(
   }
 }
 
+async function checkoutRegistryPluginAsync(
+  plugin: Pick<RegistryPlugin, "ref" | "commit">,
+  url: string,
+  dir: string,
+): Promise<void> {
+  if (!plugin.commit) {
+    await runAsync("git", ["clone", "--quiet", "--depth", "1", ...(plugin.ref ? ["--branch", plugin.ref] : []), "--", url, dir], dirname(dir));
+    return;
+  }
+  if (!FULL_COMMIT.test(plugin.commit)) throw new Error(`the registry's commit "${plugin.commit}" is not a full 40-character commit id`);
+  const commit = plugin.commit.toLowerCase();
+  mkdirSync(dir);
+  try {
+    await runAsync("git", ["init", "--quiet"], dir);
+    await runAsync("git", ["fetch", "--quiet", "--depth", "1", "--", url, commit], dir);
+    await runAsync("git", ["-c", "advice.detachedHead=false", "checkout", "--quiet", "--detach", "FETCH_HEAD"], dir);
+    const head = await runAsync("git", ["rev-parse", "HEAD"], dir);
+    if (head !== commit) throw new Error(`checked out ${head.slice(0, 12)}, the registry reviewed ${plugin.commit}`);
+  } catch (error) {
+    rmSync(dir, { recursive: true, force: true });
+    throw error;
+  }
+}
+
+export async function runWithConcurrency<T>(
+  items: readonly T[],
+  concurrency: number,
+  worker: (item: T) => Promise<void>,
+): Promise<void> {
+  let next = 0;
+  const count = Math.max(1, Math.min(concurrency, items.length));
+  await Promise.all(
+    Array.from({ length: count }, async () => {
+      while (true) {
+        const index = next++;
+        if (index >= items.length) break;
+        await worker(items[index]!);
+      }
+    }),
+  );
+}
+
 export interface RegistryPluginCheckout {
   id: string;
   dir: string;
@@ -76,7 +132,10 @@ export interface RegistryPluginCheckout {
  * was cloned; `listed` is how many plugins the registry lists, 0 when it
  * could not be read.
  */
-export async function cloneRegistryPlugins(pluginsDir: string): Promise<{ cloned: RegistryPluginCheckout[]; listed: number }> {
+export async function cloneRegistryPlugins(
+  pluginsDir: string,
+  options: { concurrency?: number; reuseExisting?: boolean } = {},
+): Promise<{ cloned: RegistryPluginCheckout[]; listed: number }> {
   const feed = await loadRegistry();
   const listed = feed.plugins.filter((plugin) => plugin.repo && !plugin.bundled);
   if (listed.length === 0) {
@@ -84,25 +143,31 @@ export async function cloneRegistryPlugins(pluginsDir: string): Promise<{ cloned
     return { cloned: [], listed: 0 };
   }
 
-  const cloned: RegistryPluginCheckout[] = [];
-  for (const plugin of listed) {
+  const concurrency = options.concurrency ?? 8;
+  const clonedByIndex = new Array<RegistryPluginCheckout | undefined>(listed.length);
+
+  await runWithConcurrency(listed.map((plugin, index) => ({ plugin, index })), concurrency, async ({ plugin, index }) => {
     const dir = join(pluginsDir, plugin.repo!.split("/")[1]!);
+    if (options.reuseExisting && existsSync(dir)) {
+      clonedByIndex[index] = { id: plugin.id, dir };
+      return;
+    }
     try {
-      checkoutRegistryPlugin(plugin, `https://github.com/${plugin.repo}.git`, dir);
-      cloned.push({ id: plugin.id, dir });
+      await checkoutRegistryPluginAsync(plugin, `https://github.com/${plugin.repo}.git`, dir);
+      clonedByIndex[index] = { id: plugin.id, dir };
     } catch (error) {
       const at = plugin.commit ?? plugin.ref;
       annotate("warning", `${plugin.id}: could not check out ${plugin.repo}${at ? ` at ${at}` : ""}: ${error}`);
+      return;
     }
-  }
-
-  for (const { id, dir } of cloned) {
     try {
       // Peers are the host and sibling plugins.
-      run("bun", ["install", "--production", "--omit", "peer", "--ignore-scripts"], dir);
+      await runAsync("bun", ["install", "--production", "--omit", "peer", "--ignore-scripts"], dir);
     } catch (error) {
-      annotate("warning", `${id}: bun install failed: ${error}`);
+      annotate("warning", `${plugin.id}: bun install failed: ${error}`);
     }
-  }
+  });
+
+  const cloned = clonedByIndex.filter((entry): entry is RegistryPluginCheckout => entry !== undefined);
   return { cloned, listed: listed.length };
 }

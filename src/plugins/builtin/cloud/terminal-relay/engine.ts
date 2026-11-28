@@ -1,3 +1,4 @@
+import { isRecord } from "../../../../utils/guards";
 import type {
   RemoteCallContext,
   RemoteControlRequest,
@@ -113,10 +114,6 @@ interface PlannedCall {
   confirmKey?: string;
   /** A call that acts on what is on screen, checked again right before it runs (policy.ts). */
   recheck?: UiCallPlan["recheck"];
-}
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
 function asItems(value: unknown): unknown[] {

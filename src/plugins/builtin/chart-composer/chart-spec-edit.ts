@@ -4,6 +4,7 @@ import type {
   ChartSeriesSpec,
   ChartSpec,
   ChartStudySpec,
+  SecuritySeriesSource,
   SeriesAxis,
   SeriesPeriod,
   SeriesStyle,
@@ -365,17 +366,77 @@ function ensureRequiredPanels(
   ];
 }
 
+type SecuritySeries = ChartSeriesSpec & { source: SecuritySeriesSource };
+
+/** A ticker's price as a comparison counts it: its OHLCV bars or its closes. */
+function isComparablePriceField(fieldId: string): boolean {
+  const field = getTimeSeriesField(fieldId)?.id;
+  return field === CHART_FIELD_IDS.price || field === CHART_FIELD_IDS.close;
+}
+
+/**
+ * The first price the chart draws rebased (CMP's closes as % change, or an
+ * index of 100), which a ticker's price added to the chart joins: one it
+ * shows before one hidden from the legend.
+ */
+function rebasedPriceLeg(spec: ChartSpec): SecuritySeries | null {
+  const legs = spec.series.filter((entry): entry is SecuritySeries => (
+    entry.source.kind === "security"
+    && isComparablePriceField(entry.source.fieldId)
+    && (entry.transform === "percent" || entry.transform === "index100")
+  ));
+  return legs.find((entry) => entry.visible !== false) ?? legs[0] ?? null;
+}
+
+/**
+ * `instrument`'s price drawn as `leg`, a leg of a comparison, is: the same
+ * field, style, transform, axis, panel and period, so the chart compares one
+ * more ticker. Its own id; its colour comes with its place in the chart.
+ */
+export function buildComparisonLeg(
+  instrument: { symbol: string; exchange?: string; label?: string },
+  leg: SecuritySeries,
+  index: number,
+): ChartSeriesSpec {
+  const { symbol, exchange, label } = instrument;
+  const built = buildSeriesSpec({
+    kind: "security",
+    symbol,
+    ...(exchange ? { exchange } : {}),
+    ...(label ? { label } : {}),
+    fieldId: leg.source.fieldId,
+  }, index, { style: leg.style, transform: leg.transform, axis: leg.axis, panelId: leg.panelId });
+  return built.source.kind === "security" && leg.source.period
+    ? { ...built, source: { ...built.source, period: leg.source.period } }
+    : built;
+}
+
 export function appendChartSeries(
   spec: ChartSpec,
   expression: ParsedSeriesExpression,
+  options: {
+    /**
+     * Whether a ticker's price joins the prices the chart draws rebased
+     * (`buildComparisonLeg`); false for a formula's legs, which the formula
+     * reads at their price. At its own defaults, SPY added to `CMP SMH, QQQ,
+     * RSP` drew raw candles on a dollar axis beside the legs' % lines, and
+     * the chart stopped comparing them.
+     */
+    joinComparison?: boolean;
+  } = {},
 ): { spec: ChartSpec; series: ChartSeriesSpec } {
-  const built = coerceOhlcPanelCollision(
-    placeAppendedSeriesByDefault(
-      buildSeriesSpec(expression, spec.series.length),
-      spec,
-    ),
-    spec.series,
-  );
+  const leg = options.joinComparison !== false && expression.kind === "security" && isComparablePriceField(expression.fieldId)
+    ? rebasedPriceLeg(spec)
+    : null;
+  const built = leg && expression.kind === "security"
+    ? buildComparisonLeg(expression, leg, spec.series.length)
+    : coerceOhlcPanelCollision(
+      placeAppendedSeriesByDefault(
+        buildSeriesSpec(expression, spec.series.length),
+        spec,
+      ),
+      spec.series,
+    );
   const series = {
     ...built,
     id: uniqueSeriesId(spec.series, built.id),

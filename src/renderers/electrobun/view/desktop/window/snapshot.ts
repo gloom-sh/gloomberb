@@ -24,7 +24,7 @@ function collectPaneStateIds(snapshot: DesktopSharedStateSnapshot, paneId: strin
   return ids;
 }
 
-export function detachedSnapshotKey(snapshot: DesktopSharedStateSnapshot, paneId: string): string {
+function detachedSnapshotKey(snapshot: DesktopSharedStateSnapshot, paneId: string): string {
   const paneStateIds = collectPaneStateIds(snapshot, paneId);
   return JSON.stringify({
     theme: snapshot.config.theme,

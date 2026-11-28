@@ -73,7 +73,7 @@ function orderTerms(order: Pick<BrokerOrder, "orderType" | "limitPrice" | "stopP
   return [...price, ...(order.tif ? [ticketTifName[order.tif] ?? order.tif] : []), ...(order.outsideRth ? ["Outside RTH"] : [])].join(" · ");
 }
 
-export function ticketQuoteAge(quote: Quote | undefined, now = Date.now()): string {
+function ticketQuoteAge(quote: Quote | undefined, now = Date.now()): string {
   return quoteAgeText(quote?.lastTradeTime ?? quote?.lastUpdated, now);
 }
 /** The decimals a price step needs: 0.01 and 0.05 take two, 0.0001 four. Never fewer than two. */

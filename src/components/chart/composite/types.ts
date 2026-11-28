@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import type { PinnedMoment } from "../../../state/app/tab-cursor";
 import type { CompositeAxisValueFormatter } from "./format";
 import type { CompositeChartLevels } from "./levels";
 import type { SeriesLineCue } from "./series-cues";
@@ -289,6 +290,8 @@ interface CompositeCursorLink {
   pinned?(): boolean;
   /** Pins the shared cursor at a time no pointer moves, or unpins it with null. */
   pin?(time: number | null): void;
+  /** The pinned moment, the same object until the pin moves; null while nothing is pinned. */
+  pinnedMoment?(): PinnedMoment | null;
 }
 
 export interface CompositeChartProps {
@@ -352,6 +355,21 @@ export interface CompositeChartProps {
    * with a time axis in a pane shares its layout tab's; null keeps it out.
    */
   cursorLink?: CompositeCursorLink | null;
+  /**
+   * The pane's keys pin the tab's crosshair here though the chart is not
+   * focused, for a chart over a table whose arrows step the table: `p` (the
+   * footer's pin) pins it at the chart's cursor or lifts it, and while it is
+   * pinned Left and Right move the pin a bar and Esc lifts it. Set it only
+   * while the pane is focused.
+   */
+  pinKeys?: boolean;
+  /**
+   * Told the tab's pinned moment each time it moves, and null when it lifts,
+   * for an owner whose own cursor follows the pin (the table under a chart
+   * selects the row at it). A chart that does not share the tab's crosshair
+   * (a custom x axis) never tells it a pin.
+   */
+  onPinnedMomentChange?: (moment: PinnedMoment | null) => void;
   viewport?: {
     start: Date;
     end: Date;

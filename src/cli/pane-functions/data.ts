@@ -62,6 +62,7 @@ export async function loadBrokerMarkedHolding(context: MarketContext, symbol: st
 export async function fetchTickerFinancials(
   context: MarketContext,
   symbol: string,
+  datesChangeBasis = false,
 ): Promise<{
   tickerFile: TickerRecord | null;
   financials: TickerFinancials;
@@ -71,7 +72,8 @@ export async function fetchTickerFinancials(
   const instrument = parsePublicTickerKey(normalized);
   const tickerFile = await loadStoredShotTicker(context, symbol);
   const exchange = instrument.exchange ?? tickerFile?.metadata.exchange ?? "";
-  const financials = await context.dataProvider.getTickerFinancials(instrument.symbol, exchange);
+  const financials = await context.dataProvider.getTickerFinancials(instrument.symbol, exchange,
+    datesChangeBasis ? { datesChangeBasis } : undefined);
   return { tickerFile, financials, instrument: { symbol: instrument.symbol, ...(exchange ? { exchange } : {}) } };
 }
 

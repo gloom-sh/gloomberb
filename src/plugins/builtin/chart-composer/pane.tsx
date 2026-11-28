@@ -6,7 +6,6 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTabCursorLink } from "../../../state/app/tab-cursor";
 import { Box, useUiCapabilities } from "../../../ui";
 import {
-  ChoiceDialog,
   EmptyState,
   QueryBar,
   usePaneFooter,
@@ -14,9 +13,10 @@ import {
   type PaneFooterPressEvent,
 } from "../../../components";
 import {
+  choiceDialog,
   MultiSelectDialogButton,
   NumberPromptDialog,
-  TextPromptDialog,
+  textPromptDialog,
   type MultiSelectDialogButtonHandle,
   type MultiSelectRowAction,
   type MultiSelectRowChoice,
@@ -163,6 +163,7 @@ import { editPriceLevels, parsePriceLevels, PRICE_LEVELS_KEY, priceLevelTickerKe
 import { canonicalExchange } from "../../../utils/exchanges";
 import { resolveInstrumentForPane } from "../../../core/state/app/instrument";
 import { CHART_FOLLOW_SERIES_SETTING_KEY, rebindFollowChartSpec, resolveFollowSeriesIds } from "./follow-binding";
+import { retitledChart } from "./chart-title";
 import type { InstrumentRef } from "../../../market-data/request-types";
 
 const RANGE_OPTIONS = RANGES.map((range, index) => ({ label: range, value: range, hint: String(index + 1) }));
@@ -699,23 +700,19 @@ function ChartComposerSurface({
   const editVwapAnchors = useCallback(async (): Promise<string | { close: true } | void> => {
     const anchors = builtinVwapAnchors(specRef.current);
     const labels = new Map((resolution.legendSeries ?? []).map((entry) => [entry.id, entry.label] as const));
-    const choice = await dialog.prompt<string>({
-      closeOnClickOutside: true,
-      content: (ctx: PromptContext<string>) => (
-        <ChoiceDialog
-          {...ctx}
-          title="VWAP anchors"
-          choices={[
-            { id: "pick", label: "Pick a bar on the chart" },
-            { id: "date", label: "Enter a date" },
-            ...anchors.map((anchor) => {
-              const avwap = [...labels].find(([id]) => id.endsWith(`:${anchor}`))?.[1];
-              return { id: `remove:${anchor}`, label: `Remove ${avwap ?? new Date(anchor).toISOString().slice(0, 16).replace("T", " ")}` };
-            }),
-          ]}
-        />
-      ),
-    }).catch(logFailure("chart-composer.pane", "Open VWAP anchor choices failed"));
+    const choice = await choiceDialog(dialog, {
+      title: "VWAP anchors",
+      choices: [
+        { id: "pick", label: "Pick a bar on the chart" },
+        { id: "date", label: "Enter a date" },
+        ...anchors.map((anchor) => {
+          const avwap = [...labels].find(([id]) => id.endsWith(`:${anchor}`))?.[1];
+          return { id: `remove:${anchor}`, label: `Remove ${avwap ?? new Date(anchor).toISOString().slice(0, 16).replace("T", " ")}` };
+        }),
+      ],
+      logSource: "chart-composer.pane",
+      logMessage: "Open VWAP anchor choices failed",
+    });
     if (choice === "pick") {
       pickAnchorAfterDialogRef.current = true;
       return { close: true };
@@ -727,11 +724,14 @@ function ChartComposerSurface({
       return chartStudySettingLabel("anchored-vwap", nextSpec);
     }
     if (choice !== "date") return;
-    const text = await dialog.prompt<string>({
-      content: (ctx: PromptContext<string>) => (
-        <TextPromptDialog {...ctx} title="Anchor VWAP at" placeholder="2026-09-30 or 2026-09-30 10:00" confirmLabel="Anchor" width={44} />
-      ),
-    }).catch(logFailure("chart-composer.pane", "Open VWAP date prompt failed"));
+    const text = await textPromptDialog(dialog, {
+      title: "Anchor VWAP at",
+      placeholder: "2026-09-30 or 2026-09-30 10:00",
+      confirmLabel: "Anchor",
+      width: 44,
+      logSource: "chart-composer.pane",
+      logMessage: "Open VWAP date prompt failed",
+    });
     if (!text) return;
     const anchor = parseVwapAnchor(text, anchorInputRef.current);
     if (anchor === null) {
@@ -750,21 +750,25 @@ function ChartComposerSurface({
     appliesTo: (value, selected) => selected && (isPeriodStudy(value) || isNumberSettingStudy(value) || value === "anchored-vwap"),
     run: async (value) => {
       if (value === "anchored-vwap") return editVwapAnchors();
-      if (isNumberSettingStudy(value)) {
-        const { min, max } = STUDY_NUMBER_SETTINGS[value];
-        const current = builtinStudySetting(specRef.current, value);
-        const next = await dialog.prompt<number>({
+      const promptNumber = (title: string, initialValue: number, min: number, max: number) => (
+        dialog.prompt<number>({
           content: (ctx: PromptContext<number>) => (
             <NumberPromptDialog
               {...ctx}
-              title={value === "vwap" ? "VWAP bands (standard deviations, 0 for none)" : "Volume profile rows"}
-              initialValue={current}
+              title={title}
+              initialValue={initialValue}
               min={min}
               max={max}
               invalidMessage={`Whole number from ${min} to ${max}`}
             />
           ),
-        });
+        })
+      );
+      if (isNumberSettingStudy(value)) {
+        const { min, max } = STUDY_NUMBER_SETTINGS[value];
+        const current = builtinStudySetting(specRef.current, value);
+        const title = value === "vwap" ? "VWAP bands (standard deviations, 0 for none)" : "Volume profile rows";
+        const next = await promptNumber(title, current, min, max);
         if (next === undefined || next === current) return;
         const nextSpec = setBuiltinStudySetting(specRef.current, value, next);
         updateSpec(nextSpec);
@@ -772,18 +776,7 @@ function ChartComposerSurface({
       }
       if (!isPeriodStudy(value)) return;
       const current = builtinStudyPeriod(specRef.current, value) ?? STUDY_PERIOD_MIN;
-      const next = await dialog.prompt<number>({
-        content: (ctx: PromptContext<number>) => (
-          <NumberPromptDialog
-            {...ctx}
-            title={chartStudyPeriodTitle(value)}
-            initialValue={current}
-            min={STUDY_PERIOD_MIN}
-            max={STUDY_PERIOD_MAX}
-            invalidMessage={`Whole number from ${STUDY_PERIOD_MIN} to ${STUDY_PERIOD_MAX}`}
-          />
-        ),
-      });
+      const next = await promptNumber(chartStudyPeriodTitle(value), current, STUDY_PERIOD_MIN, STUDY_PERIOD_MAX);
       if (next === undefined || next === current) return;
       const nextSpec = setBuiltinStudyPeriod(specRef.current, value, next);
       updateSpec(nextSpec);
@@ -853,12 +846,12 @@ function ChartComposerSurface({
   const activatePane = useCallback(() => {
     if (!focused) dispatch({ type: "FOCUS_PANE", paneId });
   }, [dispatch, focused, paneId]);
-  useEffect(() => () => {
-    if (runtimeViewportTimerRef.current !== null) {
-      clearTimeout(runtimeViewportTimerRef.current);
-      runtimeViewportTimerRef.current = null;
-    }
+  const clearRuntimeViewportTimer = useCallback(() => {
+    if (runtimeViewportTimerRef.current === null) return;
+    clearTimeout(runtimeViewportTimerRef.current);
+    runtimeViewportTimerRef.current = null;
   }, []);
+  useEffect(() => clearRuntimeViewportTimer, [clearRuntimeViewportTimer]);
   // The view this pane last saved, so its own write coming back through the
   // settings is not mistaken for another device's view: that would cancel the
   // load a pan still in progress has scheduled and put its window back.
@@ -866,10 +859,7 @@ function ChartComposerSurface({
   useEffect(() => {
     if (persistedInteractionViewport && requestViewportOwnerRef.current === authoredViewportKey
       && JSON.stringify(persistedInteractionViewport) === savedInteractionViewportRef.current) return;
-    if (runtimeViewportTimerRef.current !== null) {
-      clearTimeout(runtimeViewportTimerRef.current);
-      runtimeViewportTimerRef.current = null;
-    }
+    clearRuntimeViewportTimer();
     const restored = runtimeViewportFromSetting(
       persistedInteractionViewport,
       authoredViewportKey,
@@ -879,7 +869,7 @@ function ChartComposerSurface({
     requestViewportOwnerRef.current = authoredViewportKey;
     setRuntimeViewportState((current) => current?.key === authoredViewportKey ? current : restored);
     if (persistedInteractionViewport && !restored) setStoredInteractionViewport(null);
-  }, [authoredViewportKey, persistedInteractionViewport, setStoredInteractionViewport]);
+  }, [authoredViewportKey, clearRuntimeViewportTimer, persistedInteractionViewport, setStoredInteractionViewport]);
   // The bars loaded so far, and whether the source has said nothing older exists.
   const loadedHistory = useMemo(() => loadedMarketHistory(plottedSeries), [plottedSeries]);
   const loadedHistoryRef = useRef(loadedHistory);
@@ -919,10 +909,7 @@ function ChartComposerSurface({
     next: { start: Date; end: Date } | null,
     _interaction: "pan" | "reset" | "zoom",
   ) => {
-    if (runtimeViewportTimerRef.current !== null) {
-      clearTimeout(runtimeViewportTimerRef.current);
-      runtimeViewportTimerRef.current = null;
-    }
+    clearRuntimeViewportTimer();
     if (!next) {
       adaptiveViewportRef.current = null;
       requestViewportRef.current = null;
@@ -956,7 +943,7 @@ function ChartComposerSurface({
       runtimeViewportTimerRef.current = null;
       commitRuntimeViewport();
     }, AUTO_VIEWPORT_DEBOUNCE_MS);
-  }, [authoredViewportKey, commitRuntimeViewport, setStoredInteractionViewport, spec.viewport.resolution]);
+  }, [authoredViewportKey, clearRuntimeViewportTimer, commitRuntimeViewport, setStoredInteractionViewport, spec.viewport.resolution]);
   // The view the pane keeps (the window a pan asked for, the one saved with the
   // pane and restored when it reopens) is the pane's to clear with the chart's
   // own, whether or not the chart holds a moved view of its own.
@@ -965,8 +952,7 @@ function ChartComposerSurface({
   });
   usePaneSharePreparation(paneId, async () => {
     if (runtimeViewportTimerRef.current !== null) {
-      clearTimeout(runtimeViewportTimerRef.current);
-      runtimeViewportTimerRef.current = null;
+      clearRuntimeViewportTimer();
       commitRuntimeViewport();
     }
     await new Promise((resolve) => setTimeout(resolve, SHARE_SETTLE_DELAY_MS));
@@ -982,21 +968,25 @@ function ChartComposerSurface({
     ),
   });
 
-  const openSeriesEditor = useCallback(async () => {
+  const withPromptCapture = useCallback(async (action: () => Promise<void>) => {
     setInteractionCaptured("prompt", true);
     try {
-      const next = await dialog.prompt<ChartSpec | null>({
-        closeOnClickOutside: true,
-        size: "large",
-        content: (context: PromptContext<ChartSpec | null>) => (
-          <SeriesEditorDialog {...context} initialSpec={spec} />
-        ),
-      }).catch(logFailure("chart-composer.pane", "Open chart series editor failed", null));
-      if (next) setSpec(next);
+      await action();
     } finally {
       setInteractionCaptured("prompt", false);
     }
-  }, [dialog, setInteractionCaptured, setSpec, spec]);
+  }, [setInteractionCaptured]);
+
+  const openSeriesEditor = useCallback(() => withPromptCapture(async () => {
+    const next = await dialog.prompt<ChartSpec | null>({
+      closeOnClickOutside: true,
+      size: "large",
+      content: (context: PromptContext<ChartSpec | null>) => (
+        <SeriesEditorDialog {...context} initialSpec={spec} />
+      ),
+    }).catch(logFailure("chart-composer.pane", "Open chart series editor failed", null));
+    if (next) setSpec(next);
+  }), [dialog, setSpec, spec, withPromptCapture]);
 
   const resetChartView = useChartViewReset();
   /** The range the bar shows as selected; a fixed window or a period count leaves a range to pick. */
@@ -1028,68 +1018,62 @@ function ChartComposerSurface({
     }
     setResolution("auto");
   }, [availableResolutions, setResolution, spec.viewport.resolution]);
-  const openResolutionPicker = useCallback(async () => {
-    setInteractionCaptured("prompt", true);
-    try {
-      const next = await dialog.prompt<string>({
-        closeOnClickOutside: true,
-        content: (context: PromptContext<string>) => (
-          <ChoiceDialog
-            {...context}
-            title="Bar Size"
-            selectedChoiceId={spec.viewport.resolution}
-            choices={[
-              ...dialogResolutions.map((value) => ({
-                id: value,
-                label: formatChartResolution(value),
-                description: describeChartResolution(value),
-              })),
-              ...(hasMarketSeries ? [{ id: CUSTOM_BAR_SIZE_CHOICE, label: "Custom…", description: "Type any number of minutes, hours, days, weeks or months." }] : []),
-            ]}
-          />
-        ),
-      }).catch(logFailure("chart-composer.pane", "Open chart bar size choices failed", ""));
-      if (next === CUSTOM_BAR_SIZE_CHOICE) {
-        // A row picked with the mouse closes on mousedown; the field opens after the
-        // click has placed the focus, or the desktop leaves it on the dialog.
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        const typed = await dialog.prompt<string>({
-          content: (ctx: PromptContext<string>) => (
-            <TextPromptDialog {...ctx} title="Custom Bar Size" placeholder="10m, 90m, 4h, 2D, 3W, 6mo" confirmLabel="Chart" width={44} />
-          ),
-        }).catch(logFailure("chart-composer.pane", "Open custom chart bar size prompt failed"));
-        if (!typed) return;
-        const size = parseChartBarSize(typed);
-        const count = /^\s*(\d+)\s*M\s*$/.exec(typed)?.[1];
-        if (!size) {
-          notify({
-            body: count
-              ? `Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
-              : `${typed} is not a bar size. Use a number and a unit: 10m, 4h, 2D, 3W, 6mo; up to a day of minutes or hours, a year of days or weeks, or 12 months.`,
-            type: "error",
-          });
-          return;
-        }
-        if (!availableOf(withChartBarSize([], size)).includes(size)) {
-          notify({ body: `${formatChartResolution(size)} bars are unavailable for this range.`, type: "error" });
-          return;
-        }
-        setResolution(size);
+  const openResolutionPicker = useCallback(() => withPromptCapture(async () => {
+    const next = await choiceDialog(dialog, {
+      title: "Bar Size",
+      selectedChoiceId: spec.viewport.resolution,
+      choices: [
+        ...dialogResolutions.map((value) => ({
+          id: value,
+          label: formatChartResolution(value),
+          description: describeChartResolution(value),
+        })),
+        ...(hasMarketSeries ? [{ id: CUSTOM_BAR_SIZE_CHOICE, label: "Custom…", description: "Type any number of minutes, hours, days, weeks or months." }] : []),
+      ],
+      logSource: "chart-composer.pane",
+      logMessage: "Open chart bar size choices failed",
+    });
+    if (next === CUSTOM_BAR_SIZE_CHOICE) {
+      // A row picked with the mouse closes on mousedown; the field opens after the
+      // click has placed the focus, or the desktop leaves it on the dialog.
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const typed = await textPromptDialog(dialog, {
+        title: "Custom Bar Size",
+        placeholder: "10m, 90m, 4h, 2D, 3W, 6mo",
+        confirmLabel: "Chart",
+        width: 44,
+        logSource: "chart-composer.pane",
+        logMessage: "Open custom chart bar size prompt failed",
+      });
+      if (!typed) return;
+      const size = parseChartBarSize(typed);
+      const count = /^\s*(\d+)\s*M\s*$/.exec(typed)?.[1];
+      if (!size) {
+        notify({
+          body: count
+            ? `Write ${count}m for ${count} minutes or ${count}mo for ${count} months.`
+            : `${typed} is not a bar size. Use a number and a unit: 10m, 4h, 2D, 3W, 6mo; up to a day of minutes or hours, a year of days or weeks, or 12 months.`,
+          type: "error",
+        });
         return;
       }
-      if (dialogResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
-    } finally {
-      setInteractionCaptured("prompt", false);
+      if (!availableOf(withChartBarSize([], size)).includes(size)) {
+        notify({ body: `${formatChartResolution(size)} bars are unavailable for this range.`, type: "error" });
+        return;
+      }
+      setResolution(size);
+      return;
     }
-  }, [
+    if (dialogResolutions.includes(next as ChartResolution)) setResolution(next as ChartResolution);
+  }), [
     availableOf,
     dialog,
     dialogResolutions,
     hasMarketSeries,
     notify,
-    setInteractionCaptured,
     setResolution,
     spec.viewport.resolution,
+    withPromptCapture,
   ]);
   const toggleSeries = useCallback((seriesId: string) => {
     const next = toggleChartSeries(spec, seriesId);
@@ -1283,11 +1267,7 @@ function ChartComposerSurface({
         ? { ...option, label: standard.days === 0 ? `Standard, after ${notice}` : `Standard, ${standard.days}d before ${notice}` }
         : option);
     if (!rollOptions.some((option) => option.value === roll)) rollOptions.push({ value: roll, label: futuresGenericRollLabel(generic) });
-    const update = (change: Parameters<typeof setChartFuturesGeneric>[1]) => {
-      const next = setChartFuturesGeneric(specRef.current, change);
-      specRef.current = next;
-      setSpec(next);
-    };
+    const update = (change: Parameters<typeof setChartFuturesGeneric>[1]) => updateSpec(setChartFuturesGeneric(specRef.current, change));
     return [
       { id: "roll", label: "Roll", value: roll, options: rollOptions, title: "Roll rule",
         onChange: (value: string) => {
@@ -1297,7 +1277,26 @@ function ChartComposerSurface({
       { id: "adjust", label: "Adjust", value: generic.adjust, options: GENERIC_ADJUST_OPTIONS, title: "Adjustment",
         onChange: (value: string) => update({ adjust: value as FuturesGenericAdjust }) },
     ];
-  }, [generic, setSpec]);
+  }, [generic, updateSpec]);
+
+  const viewportToggleFilter = (
+    show: boolean,
+    id: string,
+    label: string,
+    short: string,
+    key: "extendedHours" | "totalReturn",
+    value: boolean,
+  ) => (show ? [{
+    id,
+    kind: "toggle" as const,
+    label,
+    short,
+    value,
+    onChange: (next: boolean) => {
+      const { [key]: _previous, ...viewport } = specRef.current.viewport;
+      updateSpec({ ...specRef.current, viewport: next ? { ...viewport, [key]: true } : viewport });
+    },
+  }] : []);
 
   // Pre-market and after-hours bars exist for US listings' intraday history.
   // The toggle stays while it is on, so it can always be turned off.
@@ -1310,35 +1309,25 @@ function ChartComposerSurface({
   const extendedHoursShownRef = useRef(false);
   // Keep the last answer while a reload has none, so the bar does not jump.
   if (extendedHoursListing !== null) extendedHoursShownRef.current = extendedHoursListing;
-  const extendedHoursFilters = extendedHoursOn || extendedHoursShownRef.current
-    ? [{
-      id: "extended-hours",
-      kind: "toggle" as const,
-      label: "Extended hours",
-      short: "Ext hours",
-      value: extendedHoursOn,
-      onChange: (value: boolean) => {
-        const { extendedHours: _previous, ...viewport } = specRef.current.viewport;
-        updateSpec({ ...specRef.current, viewport: value ? { ...viewport, extendedHours: true } : viewport });
-      },
-    }]
-    : [];
+  const extendedHoursFilters = viewportToggleFilter(
+    extendedHoursOn || extendedHoursShownRef.current,
+    "extended-hours",
+    "Extended hours",
+    "Ext hours",
+    "extendedHours",
+    extendedHoursOn,
+  );
 
   // Returns of two or more prices compare as price returns; the toggle reinvests their cash distributions.
   const totalReturnOn = spec.viewport.totalReturn === true;
-  const totalReturnFilters = totalReturnOn || priceComparisonSeriesIds(spec) !== null
-    ? [{
-      id: "total-return",
-      kind: "toggle" as const,
-      label: "Total return",
-      short: "Total ret",
-      value: totalReturnOn,
-      onChange: (value: boolean) => {
-        const { totalReturn: _previous, ...viewport } = specRef.current.viewport;
-        updateSpec({ ...specRef.current, viewport: value ? { ...viewport, totalReturn: true } : viewport });
-      },
-    }]
-    : [];
+  const totalReturnFilters = viewportToggleFilter(
+    totalReturnOn || priceComparisonSeriesIds(spec) !== null,
+    "total-return",
+    "Total return",
+    "Total ret",
+    "totalReturn",
+    totalReturnOn,
+  );
 
   // A company that reports no quarterly figures says so, and where its annual ones are.
   const unreported = resolution.legendSeries?.find((entry) => entry.unreportedPeriod && entry.points.length === 0);
@@ -1515,10 +1504,17 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
     () => follows ? rebindFollowChartSpec(stored, previousTarget.current, target, ownedIds) : unlinkedFrom ?? stored,
     [follows, ownedIds, stored, target, unlinkedFrom],
   );
-  const setSpec = useCallback((next: ChartSpec) => updateSettings({
+  const setSpec = useCallback((next: ChartSpec, retitle?: (title: string | undefined) => string | null) => updateSettings({
     [CHART_SPEC_SETTING_KEY]: next,
     ...(follows ? { [CHART_FOLLOW_SERIES_SETTING_KEY]: resolveFollowSeriesIds(next, target, target, ownedIds) } : {}),
-  }), [follows, ownedIds, target, updateSettings]);
+  }, retitle), [follows, ownedIds, target, updateSettings]);
+  // A title the chart's series gave it (`CMP SMH · QQQ · RSP`) follows the series the user adds or removes.
+  const specRef = useRef(spec);
+  specRef.current = spec;
+  const editSpec = useCallback(
+    (next: ChartSpec) => setSpec(next, (title) => retitledChart(title, specRef.current, next)),
+    [setSpec],
+  );
   // The rebound spec is saved once per target. A spec synced in from another device, whose list
   // cursor sits elsewhere, is rebound for display only: saving it would push it back, and two
   // devices following the same list would rewrite each other on every sync.
@@ -1565,7 +1561,7 @@ export function ChartComposerPane({ paneId, focused, width, height }: PaneProps)
   return (
     <ChartComposerSurface
       spec={spec}
-      setSpec={setSpec}
+      setSpec={editSpec}
       focused={focused}
       width={width}
       height={height}

@@ -5,7 +5,7 @@ import {
   findExactTickerSearchMatch,
   type TickerSearchCandidate,
 } from "../../../../tickers/search";
-import { MAJOR_COIN_NAMES } from "../../../../utils/crypto-pair";
+import { exactCoinNameListing, MAJOR_COIN_NAMES } from "../../../../utils/crypto-pair";
 import {
   assetClassMarketSymbol,
   instrumentClassCode,
@@ -90,6 +90,7 @@ export function isExactTickerResultMatch(item: ResultItem, rawQuery: string): bo
     || answersToFutureName(item, query)
     // BTC is how bitcoin is typed; its own symbol is BTC-USD.
     || majorCoinPairSymbol(query) === parsePublicTickerKey(item.label.trim().toUpperCase()).symbol
+    || exactCoinNameListing(query)?.symbol === parsePublicTickerKey(item.label.trim().toUpperCase()).symbol
     // SPX is how the S&P 500 is typed; its own symbol is ^SPX.
     || indexRootFor(query)?.symbol === parsePublicTickerKey(item.label.trim().toUpperCase()).symbol
   ));
@@ -343,6 +344,7 @@ export function wordNamesCommand(query: string, items: readonly ResultItem[]): b
 }
 
 function commandNamedBy(query: string, item: ResultItem): boolean {
+  if (item.exactViewMatch) return true;
   const word = query.trim();
   return /^[a-z]{4,}$/.test(word) && (item.kind === "command" || item.kind === "action") && !item.disabled
     && commandWords(item).some((part) => part.startsWith(word));

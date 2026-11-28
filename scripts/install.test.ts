@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterAll, describe, expect, test } from "bun:test";
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { join } from "path";
@@ -19,6 +19,7 @@ interface FakeMachine {
 }
 
 interface InstallRun {
+  workDir: string;
   exitCode: number;
   stdout: string;
   stderr: string;
@@ -33,14 +34,16 @@ interface InstallRun {
   temporaryFiles: string[];
 }
 
-let workDir = "";
+const createdWorkDirs: string[] = [];
 
-beforeEach(() => {
-  workDir = mkdtempSync(join(tmpdir(), "gloomberb-install-"));
-});
+function createWorkDir(): string {
+  const dir = mkdtempSync(join(tmpdir(), "gloomberb-install-"));
+  createdWorkDirs.push(dir);
+  return dir;
+}
 
-afterEach(() => {
-  rmSync(workDir, { recursive: true, force: true });
+afterAll(() => {
+  for (const dir of createdWorkDirs.splice(0)) rmSync(dir, { recursive: true, force: true });
 });
 
 function writeStub(binDir: string, name: string, body: string) {
@@ -54,17 +57,19 @@ function writeStub(binDir: string, name: string, body: string) {
  * Unspecified downloads fail, allowing architecture checks to stop at download.
  */
 async function runInstall(machine: FakeMachine, options: {
+  workDir?: string;
   downloads?: Record<string, string | Uint8Array>;
   script?: string;
   /** A `gloomberb` binary from before the rename, in the install folder. */
   existingInstall?: string;
   /** Puts other files in the install folder before the run. */
-  prepare?: (installDir: string) => void;
+  prepare?: (installDir: string, workDir: string) => void;
   /** The install folder is on PATH, as `~/.local/bin` is on most Linux desktops (the default). */
   installDirOnPath?: boolean;
   /** The login shell, `$SHELL`. */
   shell?: string;
 } = {}): Promise<InstallRun> {
+  const workDir = options.workDir ?? createWorkDir();
   const binDir = join(workDir, "bin");
   const installDir = join(workDir, "install");
   const appDir = join(workDir, "Applications");
@@ -75,7 +80,7 @@ async function runInstall(machine: FakeMachine, options: {
   mkdirSync(appDir, { recursive: true });
   mkdirSync(tempDir);
   if (options.existingInstall) writeFileSync(join(installDir, "gloomberb"), options.existingInstall);
-  options.prepare?.(installDir);
+  options.prepare?.(installDir, workDir);
 
   writeStub(binDir, "uname", [
     'case "$1" in',
@@ -157,6 +162,7 @@ async function runInstall(machine: FakeMachine, options: {
   ]);
 
   return {
+    workDir,
     exitCode,
     stdout,
     stderr,
@@ -180,7 +186,7 @@ describe("install.sh architecture detection", () => {
   // https://github.com/gloom-sh/gloomberb/issues/539: an Intel Mac used to get
   // the arm64 app and only found out at launch, with "Bad CPU type in
   // executable". It now gets the x64 terminal build, never the app bundle.
-  test("installs the x64 terminal build on a genuine Intel Mac", async () => {
+  test.concurrent("installs the x64 terminal build on a genuine Intel Mac", async () => {
     const run = await runInstall({
       unameSystem: "Darwin",
       unameMachine: "x86_64",
@@ -195,7 +201,7 @@ describe("install.sh architecture detection", () => {
     expect(run.stderr).toContain("https://term.gloom.sh");
   });
 
-  test("installs the arm64 app from an x86_64 shell translated by Rosetta", async () => {
+  test.concurrent("installs the arm64 app from an x86_64 shell translated by Rosetta", async () => {
     const run = await runInstall({
       unameSystem: "Darwin",
       unameMachine: "x86_64",
@@ -206,7 +212,7 @@ describe("install.sh architecture detection", () => {
     expect(run.stderr).not.toContain("does not support Intel Macs");
   });
 
-  test("installs the arm64 app on an Apple Silicon Mac", async () => {
+  test.concurrent("installs the arm64 app on an Apple Silicon Mac", async () => {
     const run = await runInstall({
       unameSystem: "Darwin",
       unameMachine: "arm64",
@@ -218,7 +224,7 @@ describe("install.sh architecture detection", () => {
     expect(run.downloadLog).toContain("releases/latest/download/stable-macos-arm64-Gloomberb.app.zip");
   });
 
-  test("installs the x64 binary on Linux", async () => {
+  test.concurrent("installs the x64 binary on Linux", async () => {
     const run = await runInstall({
       unameSystem: "Linux",
       unameMachine: "x86_64",
@@ -228,7 +234,7 @@ describe("install.sh architecture detection", () => {
   });
 
   // Git Bash said only "Unsupported OS: MINGW64_NT-10.0-26100".
-  test.each(["MINGW64_NT-10.0-26100", "MSYS_NT-10.0-26100", "CYGWIN_NT-10.0-26100"])("points Windows shells (%s) at the PowerShell install, downloading nothing", async (unameSystem) => {
+  test.concurrent.each(["MINGW64_NT-10.0-26100", "MSYS_NT-10.0-26100", "CYGWIN_NT-10.0-26100"])("points Windows shells (%s) at the PowerShell install, downloading nothing", async (unameSystem) => {
     const run = await runInstall({ unameSystem, unameMachine: "x86_64" });
 
     expect(run.exitCode).toBe(1);
@@ -236,7 +242,7 @@ describe("install.sh architecture detection", () => {
     expect(run.downloadLog).toBe("");
   });
 
-  test("installs the arm64 binary on Linux", async () => {
+  test.concurrent("installs the arm64 binary on Linux", async () => {
     const run = await runInstall({
       unameSystem: "Linux",
       unameMachine: "aarch64",
@@ -247,7 +253,7 @@ describe("install.sh architecture detection", () => {
 
   // The glibc binary crashed at startup on Alpine: "Error relocating
   // libopentui.so: getcontext: symbol not found".
-  test.each([
+  test.concurrent.each([
     ["x86_64", "gloomberb-linux-x64-musl.gz"],
     ["aarch64", "gloomberb-linux-arm64-musl.gz"],
   ])("installs the musl binary on Alpine (%s)", async (unameMachine, asset) => {
@@ -280,27 +286,27 @@ function released(name: string, contents: string | Uint8Array, checksum?: string
 }
 
 describe("install.sh verification", () => {
-  test("verifies the selected release asset before installing without sudo", async () => {
+  test.concurrent("verifies the selected release asset before installing without sudo", async () => {
     const run = await runInstall(linuxMachine, { downloads: released(assetName, compressed) });
 
     expect(run.exitCode).toBe(0);
     expect(run.installed).toBe(binary);
     expect(run.stdout).toContain(`Verified SHA-256 for ${assetName}`);
     expect(run.stdout).toContain(assetUrl);
-    expect(run.stdout).toContain(join(workDir, "install", "gloom"));
+    expect(run.stdout).toContain(join(run.workDir, "install", "gloom"));
     expect(run.temporaryFiles).toEqual([]);
   });
 
   // ~/.local/bin is not on a new Mac's PATH: "Run 'gloom' to start." then
   // failed with "command not found". The first run goes by the path, and the
   // line that puts the folder on PATH is the login shell's.
-  test.each([
+  test.concurrent.each([
     ["/bin/zsh", `echo 'export PATH="$HOME/install:$PATH"' >> ~/.zshrc`],
     ["/bin/bash", `echo 'export PATH="$HOME/install:$PATH"' >> ~/.bashrc`],
     ["/usr/bin/fish", "fish_add_path <install>"],
   ])("names the command by its path when the install folder is not on PATH (%s)", async (shell, hint) => {
     const run = await runInstall(linuxMachine, { downloads: released(assetName, compressed), installDirOnPath: false, shell });
-    const installDir = join(workDir, "install");
+    const installDir = join(run.workDir, "install");
 
     expect(run.exitCode).toBe(0);
     expect(run.stdout).not.toContain("Run 'gloom' to start.");
@@ -310,7 +316,7 @@ describe("install.sh verification", () => {
 
   // Installs from before the rename have the binary itself at gloomberb.
   // Reinstalling puts it at gloom and leaves gloomberb as a link that runs it.
-  test("an install from before the rename becomes gloom, with gloomberb still running it", async () => {
+  test.concurrent("an install from before the rename becomes gloom, with gloomberb still running it", async () => {
     const run = await runInstall(linuxMachine, {
       downloads: released(assetName, compressed),
       existingInstall: "old binary",
@@ -325,7 +331,7 @@ describe("install.sh verification", () => {
 
   // Another program can own the name gloom. The script keeps its file and
   // installs Gloom as gloomberb, the way the app leaves such a file alone.
-  test("keeps another program's gloom and installs gloomberb", async () => {
+  test.concurrent("keeps another program's gloom and installs gloomberb", async () => {
     const run = await runInstall(linuxMachine, {
       downloads: released(assetName, compressed),
       existingInstall: "old binary",
@@ -340,7 +346,7 @@ describe("install.sh verification", () => {
     expect(run.stdout).toContain("Run 'gloomberb' to start.");
   });
 
-  test.each([
+  test.concurrent.each([
     ["the binary an earlier run installed", (installDir: string) => {
       writeFileSync(join(installDir, "gloom"), "old binary");
       symlinkSync("gloom", join(installDir, "gloomberb"));
@@ -361,7 +367,7 @@ describe("install.sh verification", () => {
     expect(run.stdout).toContain("Run 'gloom' to start.");
   });
 
-  test("rejects a checksum mismatch without replacing an existing install", async () => {
+  test.concurrent("rejects a checksum mismatch without replacing an existing install", async () => {
     const run = await runInstall(linuxMachine, {
       downloads: released(assetName, compressed, `${"0".repeat(64)}  ${assetName}\n`),
       existingInstall: "old binary",
@@ -374,7 +380,7 @@ describe("install.sh verification", () => {
     expect(run.temporaryFiles).toEqual([]);
   });
 
-  test("a macOS app checksum mismatch aborts before extraction or terminal fallback", async () => {
+  test.concurrent("a macOS app checksum mismatch aborts before extraction or terminal fallback", async () => {
     const run = await runInstall({ unameSystem: "Darwin", unameMachine: "arm64" }, {
       downloads: released("stable-macos-arm64-Gloom.app.zip", "corrupt archive", "0".repeat(64)),
       existingInstall: "old binary",
@@ -388,7 +394,7 @@ describe("install.sh verification", () => {
     expect(run.temporaryFiles).toEqual([]);
   });
 
-  test("reads a checksum file holding the bare checksum, in either case", async () => {
+  test.concurrent("reads a checksum file holding the bare checksum, in either case", async () => {
     const run = await runInstall(linuxMachine, { downloads: released(assetName, compressed, `${digest.toUpperCase()}\n`) });
 
     expect(run.exitCode).toBe(0);
@@ -397,7 +403,7 @@ describe("install.sh verification", () => {
   });
 
   // It used to warn and install anyway when no checksum could be had, as when the API's rate limit hid the digests.
-  test.each([
+  test.concurrent.each([
     ["cannot be read", null, "could not read the SHA-256 checksum"],
     ["holds no checksum", "Not Found\n", "holds no SHA-256 checksum"],
   ] as const)("stops, installing nothing, when the checksum file %s", async (_, checksum, message) => {
@@ -412,7 +418,7 @@ describe("install.sh verification", () => {
     expect(run.temporaryFiles).toEqual([]);
   });
 
-  test("a script truncated before the last invocation does not download or install", async () => {
+  test.concurrent("a script truncated before the last invocation does not download or install", async () => {
     const source = readFileSync(installScript, "utf8");
     const run = await runInstall(linuxMachine, {
       script: source.slice(0, source.lastIndexOf('main "$@"')),
@@ -434,7 +440,7 @@ describe("install.sh on an Apple Silicon Mac", () => {
   const hasZip = Bun.which("zip") && Bun.which("unzip");
 
   /** A zipped app bundle named `bundle`, holding the given terminal commands. */
-  function zippedApp(commands: string[], bundle = "Gloom.app"): Uint8Array {
+  function zippedApp(workDir: string, commands: string[], bundle = "Gloom.app"): Uint8Array {
     const root = mkdtempSync(join(workDir, "app-"));
     const resources = join(root, bundle, "Contents", "Resources");
     mkdirSync(resources, { recursive: true });
@@ -452,10 +458,10 @@ describe("install.sh on an Apple Silicon Mac", () => {
     return Object.assign({}, ...Object.entries(archives).map(([name, archive]) => released(name, archive)));
   }
 
-  const resources = (bundle = "Gloom.app") => join(workDir, "Applications", bundle, "Contents", "Resources");
+  const resources = (workDir: string, bundle = "Gloom.app") => join(workDir, "Applications", bundle, "Contents", "Resources");
 
   /** An installed app at `Applications/<bundle>`, with the Info.plist Electrobun writes for `identifier`. */
-  function installedApp(bundle: string, identifier: string): string {
+  function installedApp(workDir: string, bundle: string, identifier: string): string {
     const app = join(workDir, "Applications", bundle);
     mkdirSync(join(app, "Contents", "Resources"), { recursive: true });
     writeFileSync(join(app, "Contents", "Info.plist"), [
@@ -474,32 +480,36 @@ describe("install.sh on an Apple Silicon Mac", () => {
   // gloom.sh/install serves this script from main, so it meets releases from
   // before the rename, which ship Gloomberb.app (and before that, only the
   // gloomberb command). The app goes in as Gloom.app either way.
-  test.skipIf(!hasZip).each([
+  test.skipIf(!hasZip).concurrent.each([
     ["a release that ships Gloom.app", { [appAsset]: ["Gloom.app", ["gloom", "gloomberb"]] }, "gloom"],
     ["a release from before the app's rename", { [legacyAsset]: ["Gloomberb.app", ["gloom", "gloomberb"]] }, "gloom"],
     ["a release from before the command's rename", { [legacyAsset]: ["Gloomberb.app", ["gloomberb"]] }, "gloomberb"],
   ] as const)("installs Gloom.app and links gloom and gloomberb for %s", async (_, archives, gloomTarget) => {
+    const workDir = createWorkDir();
     const run = await runInstall(mac, {
-      downloads: release(Object.fromEntries(Object.entries(archives).map(([name, [bundle, commands]]) => [name, zippedApp([...commands], bundle)]))),
+      workDir,
+      downloads: release(Object.fromEntries(Object.entries(archives).map(([name, [bundle, commands]]) => [name, zippedApp(workDir, [...commands], bundle)]))),
       existingInstall: "old binary",
     });
 
     expect(run.exitCode).toBe(0);
     expect(readdirSync(join(workDir, "Applications"))).toEqual(["Gloom.app"]);
-    expect(run.links).toEqual({ gloom: join(resources(), gloomTarget), gloomberb: join(resources(), "gloomberb") });
+    expect(run.links).toEqual({ gloom: join(resources(workDir), gloomTarget), gloomberb: join(resources(workDir), "gloomberb") });
     expect(run.stdout).toContain("Run 'gloom' to start.");
   });
 
   // The links into the old bundle move wherever the app itself would move
   // them: the install folder, ~/.local/bin, ~/bin, Homebrew's and PATH's
   // folders. Left pointing at the removed bundle, they would run nothing.
-  test.skipIf(!hasZip)("replaces a Gloomberb.app install and moves its command links to Gloom.app", async () => {
+  test.skipIf(!hasZip).concurrent("replaces a Gloomberb.app install and moves its command links to Gloom.app", async () => {
+    const workDir = createWorkDir();
     const localBin = join(workDir, ".local", "bin");
     const homeBin = join(workDir, "bin");
     const run = await runInstall(mac, {
-      downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]), [legacyAsset]: zippedApp(["gloom", "gloomberb"], "Gloomberb.app") }),
+      workDir,
+      downloads: release({ [appAsset]: zippedApp(workDir, ["gloom", "gloomberb"]), [legacyAsset]: zippedApp(workDir, ["gloom", "gloomberb"], "Gloomberb.app") }),
       prepare: (installDir) => {
-        const legacy = installedApp("Gloomberb.app", "com.vincelwt.gloomberb");
+        const legacy = installedApp(workDir, "Gloomberb.app", "com.vincelwt.gloomberb");
         symlinkSync(join(legacy, "Contents", "Resources", "gloom"), join(installDir, "gloom"));
         symlinkSync(join(legacy, "Contents", "Resources", "gloomberb"), join(installDir, "gloomberb"));
         mkdirSync(localBin, { recursive: true });
@@ -512,20 +522,22 @@ describe("install.sh on an Apple Silicon Mac", () => {
     expect(run.exitCode).toBe(0);
     expect(run.downloadLog).not.toContain(legacyAsset);
     expect(readdirSync(join(workDir, "Applications"))).toEqual(["Gloom.app"]);
-    expect(run.links).toEqual({ gloom: join(resources(), "gloom"), gloomberb: join(resources(), "gloomberb") });
+    expect(run.links).toEqual({ gloom: join(resources(workDir), "gloom"), gloomberb: join(resources(workDir), "gloomberb") });
     expect(readlinkSync(join(localBin, "gloom"))).toBe("../../Applications/Gloom.app/Contents/Resources/gloom");
-    expect(readlinkSync(join(homeBin, "gloomberb"))).toBe(join(resources(), "gloomberb"));
+    expect(readlinkSync(join(homeBin, "gloomberb"))).toBe(join(resources(workDir), "gloomberb"));
     // Into another bundle under the old name: not this install's.
     expect(readlinkSync(join(homeBin, "gloom"))).toBe("/opt/other/Gloomberb.app/Contents/Resources/gloom");
   });
 
-  test.skipIf(!hasZip || process.getuid?.() === 0)("keeps Gloomberb.app while a link into it sits in a folder the user cannot write", async () => {
+  test.skipIf(!hasZip || process.getuid?.() === 0).concurrent("keeps Gloomberb.app while a link into it sits in a folder the user cannot write", async () => {
+    const workDir = createWorkDir();
     const localBin = join(workDir, ".local", "bin");
     try {
       const run = await runInstall(mac, {
-        downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]) }),
+        workDir,
+        downloads: release({ [appAsset]: zippedApp(workDir, ["gloom", "gloomberb"]) }),
         prepare: () => {
-          const legacy = installedApp("Gloomberb.app", "com.vincelwt.gloomberb");
+          const legacy = installedApp(workDir, "Gloomberb.app", "com.vincelwt.gloomberb");
           mkdirSync(localBin, { recursive: true });
           symlinkSync(join(legacy, "Contents", "Resources", "gloom"), join(localBin, "gloom"));
           chmodSync(localBin, 0o555);
@@ -534,7 +546,7 @@ describe("install.sh on an Apple Silicon Mac", () => {
 
       expect(run.exitCode).toBe(0);
       expect(readdirSync(join(workDir, "Applications")).sort()).toEqual(["Gloom.app", "Gloomberb.app"]);
-      expect(readlinkSync(join(localBin, "gloom"))).toBe(join(resources("Gloomberb.app"), "gloom"));
+      expect(readlinkSync(join(localBin, "gloom"))).toBe(join(resources(workDir, "Gloomberb.app"), "gloom"));
       expect(run.stdout).toContain(`Kept ${join(workDir, "Applications", "Gloomberb.app")}`);
       expect(run.stdout).toContain(join(localBin, "gloom"));
     } finally {
@@ -545,47 +557,53 @@ describe("install.sh on an Apple Silicon Mac", () => {
   // Only a Gloom.app with this app's bundle identifier is replaced. Another
   // program's stays, and Gloom goes in under its old name, which the app keeps
   // while the new one is taken.
-  test.skipIf(!hasZip).each([
+  test.skipIf(!hasZip).concurrent.each([
     ["this app's", "com.vincelwt.gloomberb", ["Gloom.app"], "Gloom.app"],
     ["this app's, under the identifier it moves to", "sh.gloom.desktop", ["Gloom.app"], "Gloom.app"],
     ["another program's", "com.example.gloom", ["Gloom.app", "Gloomberb.app"], "Gloomberb.app"],
   ] as const)("an existing Gloom.app that is %s", async (_, identifier, apps, installedAs) => {
+    const workDir = createWorkDir();
     const run = await runInstall(mac, {
-      downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]) }),
-      prepare: () => { installedApp("Gloom.app", identifier); },
+      workDir,
+      downloads: release({ [appAsset]: zippedApp(workDir, ["gloom", "gloomberb"]) }),
+      prepare: () => { installedApp(workDir, "Gloom.app", identifier); },
     });
 
     expect(run.exitCode).toBe(0);
     expect(readdirSync(join(workDir, "Applications")).sort()).toEqual([...apps]);
-    expect(run.links).toEqual({ gloom: join(resources(installedAs), "gloom"), gloomberb: join(resources(installedAs), "gloomberb") });
+    expect(run.links).toEqual({ gloom: join(resources(workDir, installedAs), "gloom"), gloomberb: join(resources(workDir, installedAs), "gloomberb") });
     // The installed commands are the release's; another program's Gloom.app is untouched.
-    expect(readFileSync(join(resources(installedAs), "gloom"), "utf8")).toBe("#!/bin/sh\n");
-    if (installedAs !== "Gloom.app") expect(readFileSync(join(resources(), "gloom"), "utf8")).toBe(`Gloom.app ${identifier}`);
+    expect(readFileSync(join(resources(workDir, installedAs), "gloom"), "utf8")).toBe("#!/bin/sh\n");
+    if (installedAs !== "Gloom.app") expect(readFileSync(join(resources(workDir), "gloom"), "utf8")).toBe(`Gloom.app ${identifier}`);
   });
 
-  test("refuses when Gloom.app and Gloomberb.app both belong to other programs", async () => {
+  test.concurrent("refuses when Gloom.app and Gloomberb.app both belong to other programs", async () => {
+    const workDir = createWorkDir();
     const run = await runInstall(mac, {
+      workDir,
       downloads: release({ [appAsset]: new Uint8Array([1]) }),
       prepare: () => {
-        installedApp("Gloom.app", "com.example.gloom");
-        installedApp("Gloomberb.app", "com.example.gloomberb");
+        installedApp(workDir, "Gloom.app", "com.example.gloom");
+        installedApp(workDir, "Gloomberb.app", "com.example.gloomberb");
       },
     });
 
     expect(run.exitCode).not.toBe(0);
     expect(run.stderr).toContain("both belong to other apps. Nothing was installed.");
     expect(run.downloadLog).not.toContain(appAsset);
-    expect(readFileSync(join(resources(), "gloom"), "utf8")).toBe("Gloom.app com.example.gloom");
+    expect(readFileSync(join(resources(workDir), "gloom"), "utf8")).toBe("Gloom.app com.example.gloom");
   });
 
-  test.skipIf(!hasZip)("keeps another program's gloom link and links gloomberb", async () => {
+  test.skipIf(!hasZip).concurrent("keeps another program's gloom link and links gloomberb", async () => {
+    const workDir = createWorkDir();
     const run = await runInstall(mac, {
-      downloads: release({ [appAsset]: zippedApp(["gloom", "gloomberb"]) }),
+      workDir,
+      downloads: release({ [appAsset]: zippedApp(workDir, ["gloom", "gloomberb"]) }),
       prepare: (installDir) => symlinkSync("/opt/other/bin/gloom", join(installDir, "gloom")),
     });
 
     expect(run.exitCode).toBe(0);
-    expect(run.links).toEqual({ gloom: "/opt/other/bin/gloom", gloomberb: join(resources(), "gloomberb") });
+    expect(run.links).toEqual({ gloom: "/opt/other/bin/gloom", gloomberb: join(resources(workDir), "gloomberb") });
     expect(run.stdout).toContain("Run 'gloomberb' to start.");
   });
 });

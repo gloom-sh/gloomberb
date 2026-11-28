@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { createListenerSet } from "../../../utils/listeners";
 import type { CombinedPaneFooter, PaneFooterSegment } from "./footer/model";
 
 /**
@@ -7,23 +8,16 @@ import type { CombinedPaneFooter, PaneFooterSegment } from "./footer/model";
  * was taken, without the action keys, which mean nothing in a picture.
  */
 let stamp: { paneId: string; text: string } | null = null;
-const listeners = new Set<() => void>();
+const listeners = createListenerSet();
 
 export function setPaneCaptureStamp(paneId: string, text: string | null): void {
   stamp = text ? { paneId, text } : stamp?.paneId === paneId ? null : stamp;
-  for (const listener of listeners) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => {
-    listeners.delete(listener);
-  };
+  listeners.notify();
 }
 
 /** The status line of the picture being taken of this pane, or null. */
 export function usePaneCaptureStamp(paneId: string): string | null {
-  return useSyncExternalStore(subscribe, () => (stamp?.paneId === paneId ? stamp.text : null), () => null);
+  return useSyncExternalStore(listeners.subscribe, () => (stamp?.paneId === paneId ? stamp.text : null), () => null);
 }
 
 export function captureStampFooter(footer: CombinedPaneFooter, text: string | null): CombinedPaneFooter {

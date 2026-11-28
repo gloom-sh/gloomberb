@@ -35,7 +35,7 @@ const DESKTOP_CODE_ROWS = 2;
  * the default size allows within `availablePx`, or null when even the
  * smallest a camera reads does not fit.
  */
-export function desktopQrModulePx(modules: number, availablePx: number, cellHeightPx: number): number | null {
+function desktopQrModulePx(modules: number, availablePx: number, cellHeightPx: number): number | null {
   const target = Math.max(MIN_QR_MODULE_PX, Math.round(cellHeightPx * QR_MODULE_ROWS));
   const fits = Math.floor(availablePx / modules);
   const size = Math.min(target, fits);

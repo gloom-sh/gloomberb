@@ -8,8 +8,9 @@ import { buildSectionedRows, ChartTableHeader, DataTableView, EmptyState, KeyVal
   type StatItem } from "../../../components";
 import { openFormModal } from "../../../components/form-modal";
 import { tf } from "../../../i18n";
+import { usePaneResource } from "../shared/pane-resource";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
-import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePaneTitle, usePluginAppActions, usePluginPaneState } from "../../../public/react";
+import { usePaneSettingValue, usePaneTitle, usePluginAppActions, usePluginPaneState } from "../../../public/react";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { Box, ScrollBox, useRendererHost, useUiCapabilities } from "../../../ui";
@@ -122,7 +123,7 @@ function History({ market, live = false, venues, venueApr, accessKey, width, hei
 }) {
   const colors = useThemeColors();
   const loader = useCallback((force: boolean) => loadPerpsHistoryForRange(market.marketId, Number(range), accessKey, force), [market.marketId, range, accessKey]);
-  const resource = useAsyncResource(loader, { clearOnError: isAccessDenied });
+  const resource = usePaneResource(loader, { focused, clearOnError: isAccessDenied, autoRefresh: { intervalMs: 60_000 }, refreshKey: false });
   const data = resource.data?.payload;
   const rows = useMemo(() => historyRows(data, metric), [data, metric]);
   const columns = useMemo(() => historyColumns(metric, market.quoteCurrency, !!data?.candles.length), [metric, market.quoteCurrency, data?.candles.length]);
@@ -133,7 +134,6 @@ function History({ market, live = false, venues, venueApr, accessKey, width, hei
   const seriesName = metric === "long-short" ? `${marketLabel(market)} · ${venueLabel(market)}` : marketLabel(market);
   const series = useMemo(() => historySeries(data, metric, seriesName, colors.warning), [data, metric, seriesName, colors.warning]);
   const upgrade = useCloudUpgradeAction("perp");
-  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(() => { refreshMarket(); resource.reload(); }, { focused });
   const lastTime = rows.at(-1)?.time;
   // The market row dates the figures beside the series. Its funding is the current estimate, unless the series is paid funding.
@@ -260,7 +260,7 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   // Asset class, search and order are the server's; the venue narrows what it returned.
   const query = useMemo(() => ({ ...(asset !== "all" ? { assetClass: asset } : {}), ...(search.trim() ? { search: boardSearchText(search) } : {}), sort }), [asset, search, sort]);
   const loader = useCallback((force: boolean) => loadPerpsBoard(query, accessKey, force), [query, accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsBoard(query, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
+  const resource = usePaneResource(loader, { focused: focused && !querySearch.active, initialData: () => cachedPerpsBoard(query, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope, autoRefresh: { intervalMs: 60_000 } });
   const data = resource.data?.payload;
   const venues = useMemo(() => venuesOf(data?.rows ?? []), [data]);
   const fetchedRows = useMemo(() => venue === "all" ? data?.rows ?? [] : (data?.rows ?? []).filter((row) => row.venue === venue), [data, venue]);
@@ -275,8 +275,6 @@ function Board({ accessKey, width, height, focused, onPick, onOpen }: ListTabPro
   const columns = useMemo(() => boardColumns(width), [width]);
   const renderCell = useCallback((row: PerpBoardRow, column: { id: string }) => perpCell(row, column.id as PerpColumnId, colors), [colors]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
-  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
   const narrow = (apply: () => void) => { apply(); setSelected(null); };
   const lock = locked ? <LockedPreview text={moreText(locked, "markets")} onPress={upgrade} role="perps-board-upgrade" /> : null;
   const queryBar = <QueryBar width={width} search={{ focused, value: search, onChange: (value) => narrow(() => setSearch(value)), placeholder: "Search markets", debounceMs: 300, ...querySearch.searchProps }}
@@ -317,7 +315,7 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   const [openingAsset] = usePaneSettingValue("assetClass", "all");
   const [asset, setAsset] = usePluginPaneState<string>("perps:asset", openingAsset);
   const loader = useCallback((force: boolean) => loadPerpsRankings(accessKey, force, asset), [accessKey, asset]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsRankings(accessKey, asset), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
+  const resource = usePaneResource(loader, { focused, initialData: () => cachedPerpsRankings(accessKey, asset), clearOnError: isAccessDenied, keepPreviousData: session.displayScope, autoRefresh: { intervalMs: 60_000 } });
   const data = resource.data?.payload;
   const fetchedItems = useMemo(() => buildSectionedRows(RANKINGS.map((ranking) => ({ label: ranking.label, emptyLabel: "None",
     items: rankingRows(data, ranking.key).map((row): Ranked => ({ list: ranking.key, row })) })), rankedKey), [data]);
@@ -328,8 +326,6 @@ function Rankings({ accessKey, width, height, focused, onPick, onOpen }: ListTab
   const selected = ranked.find((item) => rankedKey(item) === selectedId) ?? ranked[0] ?? null;
   useEffect(() => { onPick(selected?.row ?? null); }, [selected, onPick]);
   const columns = useMemo(() => rankingColumns(width), [width]);
-  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { resource.reload(); }, { focused });
   // The ranked rows on screen are dated; only the funding lists show funding.
   const shownRanked = useMemo(() => stream.shown.flatMap((entry) => entry.kind === "item" ? [entry.item] : []), [stream.shown]);
   const rankedRows = useMemo(() => shownRanked.map((item) => item.row), [shownRanked]);
@@ -369,7 +365,7 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   const querySearch = useQueryBarSearch();
   const base = asset.trim().toUpperCase() || "BTC";
   const loader = useCallback((force: boolean) => loadPerpsCompare(base, accessKey, force), [base, accessKey]);
-  const resource = useAsyncResource(loader, { initialData: () => cachedPerpsCompare(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope });
+  const resource = usePaneResource(loader, { focused: focused && !querySearch.active, initialData: () => cachedPerpsCompare(base, accessKey), clearOnError: isAccessDenied, keepPreviousData: session.displayScope, autoRefresh: { intervalMs: 60_000 } });
   const data = resource.data?.payload;
   const fetchedRows = useMemo(() => data?.rows ?? [], [data]);
   const stream = useLivePerpTableRows(fetchedRows, rowItself, replaced, { pinned: fetchedRows.find((row) => row.marketId === selectedId) ?? null });
@@ -380,8 +376,6 @@ function Compare({ asset, onAssetChange, accessKey, width, height, focused, onPi
   const line = usePerpStatusLine(stream.shown, stream.shown, resource.updatedAt, stream.live);
   const spread = useMemo(() => fundingSpread(rows), [rows]);
   const locked = typeof data?.locked === "number" ? data.locked : 0;
-  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
-  usePaneRefreshKey(() => { resource.reload(); }, { focused: focused && !querySearch.active });
   usePaneStatusFooter({ registrationId: "perps:compare", loading: resource.loading, error: data ? resource.error : null, stale: resource.data?.stale, info: line });
   usePaneNoticeFooter({ registrationId: "perps:compare-notice", focused, notices: resource.data?.refreshError ? [resource.data.refreshError] : [] });
   if (!data && isCloudSessionRequired(resource.error)) return <SignInWall placement="perps-signin" action="compare perpetual venues" needsVerification={session.needsVerification} />;
@@ -449,7 +443,7 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const metric: HistoryMetric = HISTORY_METRICS.includes(metricValue as HistoryMetric) ? metricValue as HistoryMetric : "funding";
   // One market's selection only loads for its own tabs; the lists bring their own rows.
   const loader = useCallback((force: boolean) => loadPerpSelection(search, accessKey, force, true), [search, accessKey]);
-  const resource = useAsyncResource(marketTab ? loader : null, { initialData: () => cachedPerpSelection(search, accessKey, true), clearOnError: isAccessDenied });
+  const resource = usePaneResource(marketTab ? loader : null, { focused, initialData: () => cachedPerpSelection(search, accessKey, true), clearOnError: isAccessDenied, autoRefresh: { intervalMs: 60_000 }, refreshKey: false });
   const data = marketTab ? resource.data?.payload : undefined;
   const venueApr = useMemo(() => venueAprSummary(data?.venues ?? []), [data?.venues]);
   const fetchedActive = data?.rows[0] ?? null;
@@ -478,7 +472,6 @@ export function PerpsPane({ width, height, focused, marketAction }: Pick<PanePro
   const tabItems = useMemo(() => PERP_TABS.map((value) => ({ value, label: label(value) })), []);
   const { strip, rows: tabRows } = usePaneTabs({ tabs: tabItems, activeValue: tab, onSelect: selectTab, focused, dense: true });
   const refreshMarket = useCallback(() => { resource.reload(); }, [resource.reload]);
-  useAutoRefresh(resource.updatedAt, resource.load, { intervalMs: 60_000 });
   usePaneRefreshKey(refreshMarket, { focused: focused && marketTab && !querySearch.active && (tab !== "history" || !active) });
   // The listed stock or fund a market tracks opens the way a ticker link does, on the DES already open for that
   // listing when there is one; crypto, indices and commodities have none.

@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, statSync } from "fs";
+import { readFileSync, statSync } from "fs";
 import { join } from "path";
 import { makePrivateDirSync, writePrivateFileSync } from "../utils/private-files";
+import { createNodeReportStateStore, readSentMap } from "./node-report-state";
 import type { StallReportState, StallReporterHost } from "./stall-reports";
 
 /** Next to config.json: one line per stall, newest last. */
@@ -20,19 +21,6 @@ function readCounts(value: unknown): StallReportState["pending"] {
     }
   }
   return pending;
-}
-
-/** The saved state, keeping only entries of the right shape. */
-function parseStallReportState(text: string): StallReportState {
-  const parsed: unknown = JSON.parse(text);
-  const record = parsed && typeof parsed === "object" ? parsed as Record<string, unknown> : {};
-  const sent: Record<string, number> = {};
-  if (record.sent && typeof record.sent === "object") {
-    for (const [key, at] of Object.entries(record.sent as Record<string, unknown>)) {
-      if (typeof at === "number" && Number.isFinite(at)) sent[key] = at;
-    }
-  }
-  return { sent, pending: readCounts(record.pending), recent: readTimes(record.recent) };
 }
 
 function readTimes(value: unknown): NonNullable<StallReportState["recent"]> {
@@ -62,30 +50,24 @@ export function createNodeStallReporterHost(options: {
   /** The profile's data folder, or null before the config is loaded. */
   getDataDir(): string | null;
 }): StallReporterHost {
-  const pathFor = (file: string) => {
-    const dir = options.getDataDir();
-    return dir ? join(dir, file) : null;
-  };
+  const stateStore = createNodeReportStateStore<StallReportState>({
+    fileName: STATE_FILE,
+    getDataDir: options.getDataDir,
+    empty: () => ({ sent: {}, pending: {}, recent: {} }),
+    parse: (record) => ({ sent: readSentMap(record.sent), pending: readCounts(record.pending), recent: readTimes(record.recent) }),
+    privateFile: true,
+  });
   return {
     platform: process.platform,
     arch: process.arch,
     appendLog: (line) => {
-      const path = pathFor(STALL_LOG_FILE);
-      if (!path) return;
-      makePrivateDirSync(join(path, ".."));
+      const dir = options.getDataDir();
+      if (!dir) return;
+      const path = join(dir, STALL_LOG_FILE);
+      makePrivateDirSync(dir);
       writePrivateFileSync(path, `${line}\n`, { append: true });
       trimLog(path);
     },
-    load: () => {
-      const path = pathFor(STATE_FILE);
-      if (!path || !existsSync(path)) return { sent: {}, pending: {}, recent: {} };
-      return parseStallReportState(readFileSync(path, "utf-8"));
-    },
-    save: (state) => {
-      const path = pathFor(STATE_FILE);
-      if (!path) return;
-      makePrivateDirSync(join(path, ".."));
-      writePrivateFileSync(path, JSON.stringify(state));
-    },
+    ...stateStore,
   };
 }

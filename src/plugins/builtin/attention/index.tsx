@@ -15,6 +15,5 @@ export const attentionModule: PluginModule = {
     headless: attentionHeadless, createInstance: (_ctx, options) => ({ placement: "floating", settings: { window: attentionWindow(options?.values?.window), symbol: (options?.arg ?? options?.symbol)?.trim().toUpperCase() ?? "" } }) },
     { id: "attention-trending-pane", paneId: "attention-trending", label: "Gloom Trending", description: "Compact daily research attention for a home workspace.", keywords: ["trending", "home"], createInstance: () => ({ placement: "floating" }) }],
   series: ATTENTION_SERIES,
-  setup(ctx) { attentionCache.attach(ctx.persistence); },
-  dispose() { attentionCache.reset(); },
+  caches: [attentionCache],
 };

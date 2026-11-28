@@ -10,7 +10,8 @@ import {
   type ScreenRow,
 } from "../../../api-client/equity-screener";
 import { KPI_COVERAGE_NOTE } from "../company-kpis/model";
-import { EXTENDED_SESSION_LABELS, type ExtendedSession } from "../../../market-data/market/status";
+import type { ExtendedSession } from "../../../market-data/market/status";
+import { extendedPriceColumn } from "../shared/extended-print";
 import { buildQuoteKey } from "../../../market-data/selectors";
 import type { Quote } from "../../../types/financials";
 import { MISSING_VALUE, formatCurrency, formatPercentRaw } from "../../../utils/format";
@@ -26,7 +27,7 @@ import {
   unmatchedCategoryText,
   unmatchedCategoryValues,
 } from "./categories";
-import { REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption } from "../shared/headless-options";
 import { shellWord } from "../../../utils/shell-word";
 import { findNamedCollection, readWatchlistArgument } from "../../../portfolio/collection-name";
 import {
@@ -111,16 +112,10 @@ const price = (value: unknown, row: Record<string, unknown>) =>
 const percent = (value: unknown) => typeof value === "number" ? formatPercentRaw(value) : MISSING_VALUE;
 
 /** The pre-market, after-hours or overnight print and its move from the close in Last, for the rows that have one. */
-function extendedColumn(session: ExtendedSession): HeadlessPaneColumn {
-  return {
-    key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
-    align: "right",
-    format: (value, row) => row.extendedSession === session && typeof value === "number"
-      ? `${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`
-      : MISSING_VALUE,
-  };
-}
+const extendedColumn = (session: ExtendedSession): HeadlessPaneColumn => extendedPriceColumn(
+  session,
+  (value, row) => `${price(value, row)}${row.extendedMark ? " mid" : ""} ${percent(row.extendedChangePercent)}`,
+);
 
 /** Rows a report lists without `--limit`: one page, as the pane loads before it pages. */
 const SCREEN_PAGE_ROWS = 100;
@@ -319,47 +314,27 @@ export const equityScreenerHeadless: HeadlessPaneDefinition<"bundle"> = {
       shot: { reportOnly: "opens a saved screen for the report; open it from Saved in the EQS pane" },
       replaces: ["definition"],
     },
-    {
-      key: "preset",
-      type: "enum",
+    enumOption("preset", SCREEN_IDEAS.map((entry) => entry.id), {
       description: `A ready screen from Ideas, ranked by its own metric unless --metric says otherwise: ${SCREEN_IDEAS.map((entry) => `${entry.id} (${entry.name})`).join(", ")}. Cannot be combined with --saved or --definition.`,
-      values: SCREEN_IDEAS.map((entry) => ({ value: entry.id })),
-      example: "--preset golden-cross",
-      replaces: ["definition", "saved"],
-    },
+      example: "--preset golden-cross", replaces: ["definition", "saved"],
+    }),
     {
-      key: "definition",
-      type: "string",
-      placeholder: "json",
-      description: screenDefinitionSyntax(),
-      example: EXAMPLE_DEFINITION_OPTION,
-      examples: [`--definition '${spacedJson(WATCHLIST_SCREEN_DEFINITION)}'`],
-      normalize: (value) => {
-        readDefinition(value);
-        return value;
-      },
+      key: "definition", type: "string", placeholder: "json", description: screenDefinitionSyntax(),
+      example: EXAMPLE_DEFINITION_OPTION, examples: [`--definition '${spacedJson(WATCHLIST_SCREEN_DEFINITION)}'`],
+      normalize: (value) => { readDefinition(value); return value; },
     },
-    {
-      key: "metric",
-      type: "enum",
+    enumOption("metric", NUMERIC_FIELDS, {
       list: true,
       // No default: a preset leads with its own metric, anything else with marketCap.
       description:
         "Metric to display with its source date and covered-universe rank: marketCap, or the preset's own metric. Several, as a comma list or the flag again, add a column each after the first.",
       example: "--metric trailingPE --metric dividendYieldPercent",
-      values: NUMERIC_FIELDS.map((value) => ({ value })),
       normalize: (value) => readMetrics(value).join(","),
-    },
-    {
-      key: "limit",
-      type: "integer",
-      shot: REPORT_ROWS,
-      minimum: 1,
-      maximum: SCREEN_ROW_LIMIT,
-      defaultValue: SCREEN_PAGE_ROWS,
-      description: `Matching rows to list, in the screen's order, up to ${SCREEN_ROW_LIMIT}.`,
-      example: "--limit 40",
-    },
+    }),
+    limitOption({
+      maximum: SCREEN_ROW_LIMIT, defaultValue: SCREEN_PAGE_ROWS,
+      description: `Matching rows to list, in the screen's order, up to ${SCREEN_ROW_LIMIT}.`, example: "--limit 40",
+    }),
   ],
   describe: "Equity screener",
   discovery: {

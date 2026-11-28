@@ -30,7 +30,7 @@ export interface GooglePromptNotification {
   getDismissedReason?(): string;
 }
 
-export interface GoogleIdConfiguration {
+interface GoogleIdConfiguration {
   client_id: string;
   callback(response: GoogleCredentialResponse): void;
   auto_select?: boolean;

@@ -1,20 +1,18 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiClient, TeamRevisionConflictError } from "../../../api-client";
 import { DataTableView } from "../../../components/data-table/view";
-import { ChoiceDialog } from "../../../components/ui/choice-dialog";
-import { useDialog, type PromptContext } from "../../../ui/dialog";
+import { choiceDialog, textPromptDialog } from "../../../components/ui";
+import { useDialog } from "../../../ui/dialog";
 import { getSharedRegistry } from "../../registry";
 import { teamPrefix } from "../../../team/model";
 import { teamStore } from "../../../team/store";
 import { teamViewsStore } from "../cloud/team/views";
 import { setPaneSettings } from "../../../pane-settings";
 import { customViewInstanceSettings } from "./index";
-import type { DataTableColumn } from "../../../components/ui/data-table/types";
-import { PaneStatusBody, TextPromptDialog, usePaneFooter } from "../../../components";
+import { PaneStatusBody, usePaneFooter } from "../../../components";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useShortcut } from "../../../react/input";
 import { isPlainKey } from "../../../utils/keyboard";
-import { logFailure } from "../../../utils/log-failure";
 import { usePaneInstance, usePaneAppConfig } from "../../../state/app/context";
 import { colors } from "../../../theme/colors";
 import type { PaneProps } from "../../../types/plugin";
@@ -36,14 +34,13 @@ import {
   viewStreamTargets,
   type ViewRowRange,
 } from "./live-quotes";
-import { loadViewSource, type LoadedView } from "./loader";
+import { loadViewSource } from "./loader";
+import { sizeViewColumns, viewCellColumns, viewCellExportValue, viewCellText, type ViewTableColumn } from "./table";
 import {
   applyViewProjection,
   EXAMPLE_VIEW_SPEC,
-  formatViewValue,
   growViewColumnDecimals,
   parseViewSpecOr,
-  type ViewColumn,
   type ViewRow,
   type ViewSort,
   type ViewSpec,
@@ -52,9 +49,6 @@ import {
 export const CUSTOM_VIEW_PANE_ID = "custom-view";
 export const CUSTOM_VIEW_SPEC_SETTING = "spec";
 
-type Column = DataTableColumn & { key: string; transform?: ViewColumn["transform"] };
-
-const DEFAULT_COLUMN_WIDTH = 14;
 const NO_ROWS: ViewRow[] = [];
 const NO_SYMBOLS: readonly (string | null)[] = [];
 const NO_TARGETS: QuoteSubscriptionTarget[] = [];
@@ -72,24 +66,15 @@ function sameSymbols(left: readonly (string | null)[], right: readonly (string |
   return left.length === right.length && left.every((symbol, index) => symbol === right[index]);
 }
 
-function columnsFor(spec: ViewSpec, loaded: LoadedView | null): Column[] {
-  const known = new Map((loaded?.columns ?? []).map((column) => [column.key, column]));
-  const picked: ViewColumn[] = spec.projection.columns.length > 0
-    ? spec.projection.columns
-    : (loaded?.columns ?? []).map((column) => ({ key: column.key }));
-  return picked.map((column, index) => {
-    const source = known.get(column.key);
-    const align = column.align ?? source?.align ?? "left";
-    return {
-      id: column.key,
-      key: column.key,
-      label: column.label ?? source?.header ?? column.key,
-      align: align === "right" ? "right" : "left",
-      width: column.width ?? (index === 0 ? 18 : DEFAULT_COLUMN_WIDTH),
-      ...(index === 0 ? { flexGrow: 1 } : {}),
-      transform: column.transform,
-    };
-  });
+/** The first number a column holds, which an `index100` column is rebased to. */
+function indexBases(columns: readonly { key: string; transform?: string }[], rows: readonly ViewRow[]): Map<string, number> {
+  const bases = new Map<string, number>();
+  for (const column of columns) {
+    if (column.transform !== "index100") continue;
+    const first = rows.find((row) => typeof row[column.key] === "number")?.[column.key];
+    if (typeof first === "number") bases.set(column.key, first);
+  }
+  return bases;
 }
 
 /** What an empty view says: ask for one, or open one from a spec that works as typed. */
@@ -125,7 +110,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     setSort(undefined);
   }, [spec]);
 
-  const columns = useMemo(() => (spec ? columnsFor(spec, data) : []), [data, spec]);
+  const columns = useMemo(() => (spec ? viewCellColumns(spec, data?.columns ?? []) : []), [data?.columns, spec]);
   const symbolKey = spec?.presentation.symbolKey ?? (columns.some((column) => column.key === "symbol") ? "symbol" : null);
 
   // Price, change and volume columns of rows that name a symbol stream through
@@ -182,15 +167,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
   useEffect(() => {
     setStreamOrder((current) => (sameSymbols(current, displayedSymbols) ? current : displayedSymbols));
   }, [displayedSymbols]);
-  const baseByColumn = useMemo(() => {
-    const bases = new Map<string, number>();
-    for (const column of columns) {
-      if (column.transform !== "index100") continue;
-      const first = rows.find((row) => typeof row[column.key] === "number")?.[column.key];
-      if (typeof first === "number") bases.set(column.key, first);
-    }
-    return bases;
-  }, [columns, rows]);
+  const baseByColumn = useMemo(() => indexBases(columns, rows), [columns, rows]);
   const decimalFloors = useMemo(() => liveViewDecimalFloors(sourceRows, liveFields), [liveFields, sourceRows]);
   // A column's decimals only grow while this spec is shown, so a tick that
   // crosses 100 or lands on a whole number never reflows the column.
@@ -205,15 +182,27 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
     heldDecimals.current = { spec, decimals };
     return decimals;
   }, [columns, decimalFloors, rows, spec]);
+  // Sized on the rows as loaded, so a live tick never moves a column; again only when a column's decimals grow.
+  const liveKeys = useMemo(() => new Set(liveFields.keys()), [liveFields]);
+  const tableColumns = useMemo(() => {
+    const bases = indexBases(columns, sourceRows);
+    return sizeViewColumns(columns, sourceRows, (row, column) => (
+      viewCellText(row, column, bases.get(column.key), decimalsByColumn.get(column.key))
+    ), liveKeys);
+  }, [columns, decimalsByColumn, liveKeys, sourceRows]);
   const activeSort = sort === undefined ? spec?.projection.sort ?? null : sort;
   // Memoized so the table's row memo holds while the selection moves.
   const rowKey = useCallback((row: ViewRow, index: number) => (
     `${symbolKey && typeof row[symbolKey] === "string" ? row[symbolKey] : ""}:${index}`
   ), [symbolKey]);
-  const renderRowCell = useCallback((row: ViewRow, column: Column) => ({
-    text: formatViewValue(row[column.key], column.transform, baseByColumn.get(column.key), decimalsByColumn.get(column.key)),
-    color: column.key === symbolKey ? colors.textBright : undefined,
-  }), [baseByColumn, decimalsByColumn, symbolKey]);
+  const renderRowCell = useCallback((row: ViewRow, column: ViewTableColumn) => {
+    const value = viewCellExportValue(row, column);
+    return {
+      text: viewCellText(row, column, baseByColumn.get(column.key), decimalsByColumn.get(column.key)),
+      ...(value !== undefined ? { value } : {}),
+      color: column.key === symbolKey ? colors.textBright : undefined,
+    };
+  }, [baseByColumn, decimalsByColumn, symbolKey]);
 
   /**
    * Publishes this view to a team. An inline view becomes a new team view
@@ -232,21 +221,18 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
         const current = teamViewsStore.get(spec.source.viewId) ?? (await apiClient.getTeamView(spec.source.viewId));
         if (!current) throw new Error("This team view no longer exists.");
         const currentParsed = parseViewSpecOr(current.spec);
-        const specText = await dialog.prompt<string>({
+        const specText = await textPromptDialog(dialog, {
           size: "large",
-          content: (context: PromptContext<string>) => (
-            <TextPromptDialog
-              {...context}
-              title={`Publish a revision of ${current.name}`}
-              body={[`Edit the spec, or ask Gloom to. Enter publishes r${current.revision + 1}.`]}
-              initialValue={JSON.stringify("spec" in currentParsed ? currentParsed.spec : current.spec, null, 2)}
-              multiline
-              rows={10}
-              confirmLabel="Publish"
-              footer="Shift+Enter newline · Esc cancel"
-            />
-          ),
-        }).catch(logFailure("custom-view.pane", "The view revision prompt failed"));
+          title: `Publish a revision of ${current.name}`,
+          body: [`Edit the spec, or ask Gloom to. Enter publishes r${current.revision + 1}.`],
+          initialValue: JSON.stringify("spec" in currentParsed ? currentParsed.spec : current.spec, null, 2),
+          multiline: true,
+          rows: 10,
+          confirmLabel: "Publish",
+          footer: "Shift+Enter newline · Esc cancel",
+          logSource: "custom-view.pane",
+          logMessage: "The view revision prompt failed",
+        });
         const edited = specText ? parseViewSpecOr(specText) : null;
         if (!edited) return;
         if ("error" in edited) throw new Error(edited.error);
@@ -260,20 +246,17 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
           reload();
         } catch (error) {
           if (!(error instanceof TeamRevisionConflictError)) throw error;
-          const choice = await dialog.prompt<string>({
+          const choice = await choiceDialog(dialog, {
             closeOnClickOutside: false,
-            content: (context: PromptContext<string>) => (
-              <ChoiceDialog
-                {...context}
-                title={`A teammate published r${error.currentRevision} first`}
-                choices={[
-                  { id: "overwrite", label: "Overwrite with mine", description: `Publishes yours as r${error.currentRevision + 1}.` },
-                  { id: "reload", label: "Take theirs", description: "This pane follows their revision." },
-                ]}
-                selectedChoiceId="reload"
-              />
-            ),
-          }).catch(logFailure("custom-view.pane", "The view conflict prompt failed"));
+            title: `A teammate published r${error.currentRevision} first`,
+            choices: [
+              { id: "overwrite", label: "Overwrite with mine", description: `Publishes yours as r${error.currentRevision + 1}.` },
+              { id: "reload", label: "Take theirs", description: "This pane follows their revision." },
+            ],
+            selectedChoiceId: "reload",
+            logSource: "custom-view.pane",
+            logMessage: "The view conflict prompt failed",
+          });
           if (choice === "overwrite") {
             const published = await apiClient.publishTeamViewRevision(current.id, {
               spec: edited.spec as unknown as Record<string, unknown>,
@@ -290,30 +273,23 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
       const defaultTeam = teamStore.getDefaultTeamId();
       const teamId = teams.length === 1
         ? teams[0]!.id
-        : await dialog.prompt<string>({
-          closeOnClickOutside: true,
-          content: (context: PromptContext<string>) => (
-            <ChoiceDialog
-              {...context}
-              title="Publish this view to"
-              choices={teams.map((team) => ({ id: team.id, label: `${teamPrefix(team)} ${team.name}` }))}
-              selectedChoiceId={defaultTeam ?? undefined}
-            />
-          ),
-        }).catch(logFailure("custom-view.pane", "The view team prompt failed"));
+        : await choiceDialog(dialog, {
+          title: "Publish this view to",
+          choices: teams.map((team) => ({ id: team.id, label: `${teamPrefix(team)} ${team.name}` })),
+          selectedChoiceId: defaultTeam ?? undefined,
+          logSource: "custom-view.pane",
+          logMessage: "The view team prompt failed",
+        });
       if (!teamId) return;
-      const name = await dialog.prompt<string>({
-        content: (context: PromptContext<string>) => (
-          <TextPromptDialog
-            {...context}
-            title="View name"
-            initialValue={instance.title ?? spec.presentation.title ?? ""}
-            placeholder="Top movers"
-            confirmLabel="Publish"
-            width={40}
-          />
-        ),
-      }).catch(logFailure("custom-view.pane", "The view name prompt failed"));
+      const name = await textPromptDialog(dialog, {
+        title: "View name",
+        initialValue: instance.title ?? spec.presentation.title ?? "",
+        placeholder: "Top movers",
+        confirmLabel: "Publish",
+        width: 40,
+        logSource: "custom-view.pane",
+        logMessage: "The view name prompt failed",
+      });
       if (!name) return;
       const created = await apiClient.createTeamView(teamId, {
         name,
@@ -385,7 +361,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
   }
 
   return (
-    <DataTableView<ViewRow, Column>
+    <DataTableView<ViewRow, ViewTableColumn>
       focused={focused}
       rootWidth={width}
       rootHeight={height}
@@ -394,7 +370,7 @@ export function CustomViewPane({ focused, width, height }: PaneProps) {
         selectedIndex,
         onChange: (index) => setSelectedIndex(index),
       }}
-      columns={columns}
+      columns={tableColumns}
       items={rows}
       sortColumnId={activeSort?.by ?? null}
       sortDirection={activeSort?.direction ?? "desc"}

@@ -135,7 +135,7 @@ export function groupInsiderFilings(filings: readonly NewsInsiderFiling[]): Insi
 }
 
 /** `18 Sep 2026`; a span `31 Aug–2 Sep 2026`, the year once when both days share it. */
-export function tradeDaySpan(first: string, last: string): string {
+function tradeDaySpan(first: string, last: string): string {
   const day = (date: string, year: boolean) => formatShortDate(`${date}T00:00:00Z`, { utc: true, year: year ? "numeric" : false });
   if (first === last) return day(first, true);
   // The month once too when both days are in it: 3–4 Sep 2026.

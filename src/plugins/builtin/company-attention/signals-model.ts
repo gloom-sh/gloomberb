@@ -1,10 +1,10 @@
-import { formatShortDate } from "../../../utils/datetime-format";
+import { formatDayTime } from "../../../utils/day-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringCompanySignals, HiringMovePosting, HiringSignalFlag, HiringSignalGroup, HiringSignalHold, HiringSignalKind, HiringSignalSkip, HiringSignalsBoard, HiringSignalsFilter, HiringWeekSignal } from "../../../api-client/hiring";
-import { MISSING_VALUE, formatNumber } from "../../../utils/format";
+import { MISSING_VALUE } from "../../../utils/format";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
-import type { AttentionRow } from "./model";
+import { attentionColumn as column, hiringAverage as average, hiringCount as count, hiringDayLabel as dayLabel, hiringPace as pace, hiringSigned as signed, type AttentionRow } from "./model";
 
 /**
  * HIRE's Expansion and Anomalies tabs (docs/hiring-app-attention.md):
@@ -46,19 +46,10 @@ const SKIP_LABELS: Record<HiringSignalSkip, string> = {
 };
 const kindText = (kind: HiringSignalKind) => KIND_LABELS[kind] ?? humanLabel(kind);
 const flagText = (signal: Pick<HiringWeekSignal, "flags">) => signal.flags.map((flag) => FLAG_LABELS[flag] ?? humanLabel(flag)).join(", ") || null;
-export const holdText = (hold: HiringSignalHold) => HOLD_LABELS[hold] ?? humanLabel(hold);
+const holdText = (hold: HiringSignalHold) => HOLD_LABELS[hold] ?? humanLabel(hold);
 const skipText = (skips: readonly HiringSignalSkip[]) => skips.map((skip) => SKIP_LABELS[skip] ?? humanLabel(skip)).join(", ");
 const isFirst = (signal: Pick<HiringWeekSignal, "kind">) => signal.kind === "new_country" || signal.kind === "new_city" || signal.kind === "new_role_type";
 
-/** "12 Oct": a week's Monday or a first read's day. */
-function dayLabel(value: string | null | undefined, year = false): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
-}
-const pace = (value: number | null | undefined) => value == null ? MISSING_VALUE : `${formatNumber(value, Math.abs(value) >= 10 ? 0 : 1)}x`;
-const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
-const average = (value: number) => formatNumber(value, value < 10 ? 1 : 0);
-const signed = (value: number, decimals = 0) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
 const percent = (value: number | null) => value == null ? MISSING_VALUE : `${Math.round(value * 100)}%`;
 
 const PACE_COLUMNS = new Set(["pace", "companyPace"]);
@@ -94,7 +85,7 @@ export function signalFacts(signal: HiringWeekSignal): Array<{ label: string; va
     ...(signal.places.length ? [{ label: signal.dimension === "country" ? "Cities" : "Where", value: signal.places.map((row) => `${row.label} (${count(row.count)})`).join(", ") }] : []),
     ...(signal.topTitles.length ? [{ label: "Top titles", value: signal.topTitles.map((row) => `${row.title.trim()} (${count(row.count)})`).join(", ") }] : []),
     { label: "Boards", value: signal.sourceTickers.join(", ") },
-    { label: "First computed", value: signal.firstComputedAt },
+    { label: "First computed", value: `${formatDayTime(signal.firstComputedAt)} UTC` },
   ];
 }
 
@@ -117,8 +108,6 @@ export interface SignalsModel {
   /** Why a company's week gives none, for its report. */
   held: string | null;
 }
-
-const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
 const CHECK_COLUMN = column("check", "Check", 14);
 const EXPANSION_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 20, false, true), column("kind", "Signal", 12), column("label", "Where", 24),
   column("newRoles", "New roles", 10, true), column("titles", "Titles", 7, true), column("prior", "Earlier", 9, true), column("since", "Since", 8), column("title", "Top title", 26)];
@@ -187,17 +176,19 @@ export function companySignalsModel(data: HiringCompanySignals, group: HiringSig
   const held = data.held ? holdText(data.held) : null;
   // A free read counts what it holds back by tab; a server before that, both tabs together.
   const lockedRows = !data.preview ? 0 : data.locked[group] ?? data.locked.signals + data.locked.history;
-  const figures: StatItem[] = data.week ? [
+  const observed = !!data.week && (data.watchedSince !== null || current.length > 0 || !!held);
+  const figures: StatItem[] = observed && data.week ? [
     { label: "Signals", value: count(current.length), detail: `week of ${dayLabel(data.week)}`, detailVariants: [`wk ${dayLabel(data.week)}`, ""] },
     ...(data.preview && lockedRows ? [{ label: "In Pro", value: count(lockedRows), detail: "this week and earlier", detailVariants: [""] }] : []),
     ...(data.watchedSince ? [{ label: "First seen since", value: dayLabel(data.watchedSince), detail: "its first read", detailVariants: [""] }] : []),
     ...(held ? [{ label: "No signal", value: held, wide: true }] : data.skipped.length ? [{ label: "Not looked for", value: skipText(data.skipped), wide: true }] : []),
   ] : [];
   const empty = held ? `No signal this week: ${held.toLowerCase()}.` : lockedRows ? `This company's ${group === "expansion" ? "expansion" : "anomaly"} signals are in Pro.`
+    : !observed ? "No measured postings for this week."
     : group === "expansion" ? "No first in a new country or city this week." : "Nothing stood out from this company's own weeks this week.";
   return {
     asOf: current[0]?.computedAt ?? data.history[0]?.computedAt ?? null,
-    week: data.week,
+    week: observed ? data.week : null,
     preview: data.preview,
     figures,
     held,

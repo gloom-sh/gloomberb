@@ -14,10 +14,8 @@ import {
   usePaneStatusFooter,
   type DataTableColumn,
 } from "../../../components";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import {
-  useAsyncResource,
-  useAutoRefresh,
   usePaneCollection,
   usePaneSettingValue,
   usePaneTitle,
@@ -218,7 +216,8 @@ function RotationView({
     (force: boolean) => loadRotation(benchmark, instruments, trail, force),
     [identity, session.requestKey],
   );
-  const resource = useAsyncResource(loader, {
+  const resource = usePaneResource(loader, {
+    focused,
     initialData: () => cachedRotation(benchmark, instruments, trail),
     clearOnError: isAccessDenied,
   });
@@ -275,8 +274,6 @@ function RotationView({
   // The first row stands selected until the user moves, so its trail and the cursor show.
   const selectedRowId = rows.find((row) => row.id === selectedId)?.id ?? rows[0]?.id ?? null;
   usePaneTitle(`RRG vs ${benchmark.symbol}`);
-  useAutoRefresh(resource.updatedAt, resource.load);
-  usePaneRefreshKey(() => resource.reload(), { focused });
   usePaneNoticeFooter({
     registrationId: "relative-rotation:notices",
     focused,

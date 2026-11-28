@@ -11,9 +11,9 @@ export function tapeTimeKey(value: string): string {
 export const tapeTime = (value: string | null) => value ? value.replace("T", " ").replace(/Z$/, "") : MISSING_VALUE;
 /** Footer and session stamps read to the second; row detail keeps the exact SIP nanoseconds. */
 const tapeTimeSeconds = (value: string | null) => tapeTime(value).replace(/\.\d+$/, "");
-export const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
+const tapeClock = (value: string) => value.slice(11).replace(/Z$/, "");
 /** Tape rows read at millisecond precision; the row detail keeps the exact SIP nanoseconds. */
-export const tapeClockMs = (value: string) => tapeClock(value).replace(/(\.\d{3})\d+$/, "$1");
+const tapeClockMs = (value: string) => tapeClock(value).replace(/(\.\d{3})\d+$/, "$1");
 /** Fixed decimals keep a column aligned: pass one digit count for the prices shown together. */
 export const tapePrice = (value: number | null, digits?: number) => value == null ? MISSING_VALUE
   : value.toLocaleString("en-US", { minimumFractionDigits: digits ?? 2, maximumFractionDigits: digits ?? 4 });
@@ -38,17 +38,24 @@ export const quoteKey = (row: TapeQuote) => JSON.stringify([tapeTimeKey(row.time
 export function newestFirst<T extends { timestamp: string }>(rows: readonly T[]): T[] {
   return [...rows].sort((a, b) => tapeTimeKey(b.timestamp).localeCompare(tapeTimeKey(a.timestamp)));
 }
+/** Two SIP stamps in time order, nanoseconds kept: negative when `a` is earlier. */
+export function tapeTimeOrder(a: string, b: string): number {
+  const left = tapeTimeKey(a);
+  const right = tapeTimeKey(b);
+  return left < right ? -1 : left > right ? 1 : 0;
+}
+/** A SIP stamp to the millisecond, the clock a pinned moment is on; `tapeAfterMoment` and `tapeTimeOrder` keep the nanoseconds. */
+export const tapeMoment = (timestamp: string) => Date.parse(`${tapeTimeKey(timestamp).slice(0, 23)}Z`);
+let momentKey: { at: number; key: string } | null = null;
 /**
- * A moment in milliseconds as a tape key, the one comparison both picking the
- * row at a pinned moment and muting the rows after it use, so a print at
- * 14:30:00.000000002 is after a moment of 14:30:00.000 for both.
+ * Whether a SIP stamp is after a moment in milliseconds, nanoseconds kept: the
+ * one comparison both picking the row at a pinned moment and muting the rows
+ * after it use, so a print at 14:30:00.000000002 is after a moment of
+ * 14:30:00.000 for both.
  */
-export const tapeMomentKey = (at: number) => tapeTimeKey(new Date(at).toISOString());
-/** Whether a SIP stamp is after a moment's key (`tapeMomentKey`). */
-export const tapeAfter = (timestamp: string, momentKey: string) => tapeTimeKey(timestamp) > momentKey;
-/** Of rows newest first, the first printed at or before a moment's key: null when every row is later. */
-export function tapeRowAtOrBefore<T>(rows: readonly T[], timestamp: (row: T) => string, momentKey: string): T | null {
-  return rows.find((row) => !tapeAfter(timestamp(row), momentKey)) ?? null;
+export function tapeAfterMoment(timestamp: string, at: number): boolean {
+  if (momentKey?.at !== at) momentKey = { at, key: tapeTimeKey(new Date(at).toISOString()) };
+  return tapeTimeKey(timestamp) > momentKey.key;
 }
 export function tapeStatistics(data: Pick<TapeSnapshot, "trades">) {
   const trades = newestFirst(data.trades);

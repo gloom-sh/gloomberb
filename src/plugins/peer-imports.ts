@@ -3,6 +3,7 @@ import { dirname, extname, isAbsolute, join, relative } from "path";
 import type { BunPlugin } from "bun";
 
 import { installedPeerPlugins } from "./host-link";
+import { escapeRegExp } from "../utils/format";
 
 /**
  * A plugin's imports of a sibling plugin it declares as a peer (IBKR Gateway
@@ -43,10 +44,6 @@ export function sourceLoader(file: string): SourceLoader {
 export function isInside(root: string, path: string): boolean {
   const inside = relative(root, path);
   return !!inside && !inside.startsWith("..") && !isAbsolute(inside);
-}
-
-function escapeRegExp(text: string): string {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Where a module is named: after `from`, `import` or `import(`, and in `require(`. */

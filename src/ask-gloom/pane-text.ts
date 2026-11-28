@@ -6,7 +6,7 @@ import { displayWidth } from "../utils/format";
  * it shows, not a dump. It leaves room in the terminal context Gloom reads,
  * which keeps 2,000 characters of it.
  */
-export const PANE_TEXT_MAX_CHARS = 1_500;
+const PANE_TEXT_MAX_CHARS = 1_500;
 const PANE_TEXT_MAX_LINES = 50;
 
 export interface CellRect {
@@ -26,7 +26,7 @@ const TRAILING_EDGE = /\s?[│┃║▏▕█▐▌░▒▓]+$/u;
  * blanks, runs of padding cut to two spaces so columns stay apart, blank
  * lines folded, and the whole bounded. Null when nothing is left.
  */
-export function normalizePaneText(raw: string): string | null {
+function normalizePaneText(raw: string): string | null {
   const lines: string[] = [];
   let blank = false;
   for (const rawLine of raw.split(/\r?\n/)) {

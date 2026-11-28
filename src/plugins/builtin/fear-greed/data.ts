@@ -1,4 +1,5 @@
 import type { ProjectedChartPoint } from "../../../components";
+import { finiteOrNull as finiteNumber, isRecord as isObject } from "../../../utils/guards";
 import { httpFetch, type HttpFetchTransport } from "../../../utils/http-transport";
 import { asDataServiceFailure } from "../../../utils/network-failure";
 
@@ -38,7 +39,7 @@ interface CnnSeries {
   data?: unknown;
 }
 
-export type CnnFearGreedGraphData = Partial<Record<CnnGraphKey, CnnSeries>>;
+type CnnFearGreedGraphData = Partial<Record<CnnGraphKey, CnnSeries>>;
 
 interface NormalizedRawPoint {
   x: number;
@@ -155,15 +156,6 @@ const FEAR_GREED_INDICATORS: FearGreedIndicatorDefinition[] = [
   },
 ];
 
-function isObject(value: unknown): value is Record<string, unknown> {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
-function finiteNumber(value: unknown): number | null {
-  if (typeof value !== "number" || !Number.isFinite(value)) return null;
-  return value;
-}
-
 function normalizeRating(value: unknown): FearGreedRating | null {
   if (typeof value !== "string") return null;
   const normalized = value.trim().toLowerCase();
@@ -251,7 +243,7 @@ function latestTimestamp(series: CnnSeries | undefined, points: NormalizedRawPoi
     ?? (points.length > 0 ? new Date(points[points.length - 1]!.x) : null);
 }
 
-export function normalizeFearGreedData(
+function normalizeFearGreedData(
   charts: CnnFearGreedGraphData,
   latest: CnnFearGreedGraphData = charts,
 ): FearGreedData {

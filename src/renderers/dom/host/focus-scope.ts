@@ -35,7 +35,7 @@ export function isEditableTarget(node: unknown): boolean {
   return tag === "INPUT" || tag === "TEXTAREA";
 }
 
-export function shouldReleaseFocus(active: unknown, target: unknown): boolean {
+function shouldReleaseFocus(active: unknown, target: unknown): boolean {
   if (!isEditableTarget(active) || !target || active === target) return false;
   if (asFocusable(target)?.closest?.(DIALOG_CLASS_SELECTOR)) return false;
   const element = asFocusable(active)!;

@@ -51,16 +51,18 @@ import {
   hasHolderChanges,
   buildRows,
   DEFAULT_SORT,
+  holderTabs,
   nextViewMode,
   sortRows,
-  VIEW_TABS,
-  DISCLOSURE_TABS,
 } from "./table-model";
 import { classSharesAsOf, classSharesToday, loadHolderData } from "./client";
 import { HoldersTreemap } from "./treemap";
 import { disclosureListing } from "../../../api-client/ownership-disclosures";
+import { hkCcassCode } from "../../../api-client/hk-ccass";
 import { OwnershipDisclosureView } from "./disclosures-view";
+import { CcassStockView } from "./ccass-view";
 import { BeneficialOwnersView } from "./beneficial-view";
+import { useCommandTab } from "../shared/command-tab";
 import { useIssuerListing } from "../shared/ticker-request";
 import type { HolderColumn, HolderColumnId, HolderRow, SortPreference, ViewMode } from "./types";
 import { loadHolder13FMatches, type Holder13FMatch } from "./thirteenf-match";
@@ -84,7 +86,7 @@ const BADGE_WIDTH = 5;
  * whose filing opens on Enter or o. The name gives way first, so the markers survive a narrow column;
  * the cell says how wide it draws whole (`contentWidth`), so the table fits the column to it.
  */
-export function holderNameCell(
+function holderNameCell(
   name: string,
   { receipts, fund }: { receipts: string; fund: boolean },
   color: string,
@@ -133,7 +135,12 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
   const dataProvider = useAssetData();
   const scope = useCloudDisplayScope();
   const { createPaneFromTemplate } = usePluginAppActions();
-  const [preferredView, setViewMode] = usePluginPaneState<ViewMode>("viewMode", "table");
+  const [preferredView, setViewMode] = useCommandTab<ViewMode>(
+    "holders",
+    "viewMode",
+    ["table", "chart", "13dg", "disclosures", "ccass"],
+    "table",
+  );
   const [sortPreference, setSortPreference] = usePluginPaneState<SortPreference>("sortPreference", DEFAULT_SORT);
   const [fundMatches, setFundMatches] = useState<Map<string, Holder13FMatch>>(() => new Map());
   const [fundMatching, setFundMatching] = useState(false);
@@ -143,8 +150,16 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
 
   const exchange = ticker?.metadata.exchange ?? "";
   const localListing = disclosureListing(symbol, exchange);
-  const tabs = localListing ? DISCLOSURE_TABS : VIEW_TABS;
-  const viewMode = !localListing && preferredView === "disclosures" ? "table" : preferredView;
+  const ccassTarget = hkCcassCode(symbol, exchange);
+  const tabs = useMemo(
+    () => holderTabs({ hasDisclosures: !!localListing, hasCcass: !!ccassTarget }),
+    [ccassTarget, localListing],
+  );
+  const viewMode =
+    (!localListing && preferredView === "disclosures") ||
+    (!ccassTarget && preferredView === "ccass")
+      ? "table"
+      : preferredView;
   const savedCurrency = ticker?.metadata.currency ?? "";
   const issuerListing = useIssuerListing(ticker);
   const loadHolders = useMemo(() => symbol ? async (forceRefresh: boolean) => {
@@ -216,6 +231,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     getMetadata: () => ({ note: INDEX_UNREAD, noteVariants: ["short list"] }),
   } : null);
   const periodsDiffer = useMemo(() => holderPeriodsDiffer(rows), [rows]);
+  // The SEC index lists 13F filers only: a 13F mark on every row tells none apart, and Enter still opens each.
+  const everyFund = rows.length > 1 && rows.every((row) => fundMatches.has(row.id));
   const sortedRows = useMemo(() => sortRows(rows, sortPreference, marketCap), [marketCap, rows, sortPreference]);
   // Change columns only when the source reports a change; otherwise every row would read as missing.
   const showChange = useMemo(() => hasHolderChanges(rows), [rows]);
@@ -364,7 +381,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
     switch (column.id) {
       case "holder": {
         const color = rowState.selected ? colors.selectedText : colors.textBright;
-        return holderNameCell(row.name, { receipts: holderShareBasisMarker(row), fund: fundMatches.has(row.id) }, color, column.width);
+        return holderNameCell(row.name, { receipts: holderShareBasisMarker(row), fund: !everyFund && fundMatches.has(row.id) }, color, column.width);
       }
       case "value":
         return { text: formatMoneyCompact(row.value, currency, { code: currencyCode }), color: colors.text };
@@ -388,7 +405,7 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
       case "reportDate":
         return { text: displayDate(row.reportDate), color: colors.textDim };
     }
-  }, [currency, currencyCode, fundMatches, marketCap]);
+  }, [currency, currencyCode, everyFund, fundMatches, marketCap]);
 
   // Holders read from the company's home line say whose; the SEC index's rows are the listing's own.
   useCompanyDataFooter(indexed ? null : listData?.companyFrom, viewMode !== "13dg" && viewMode !== "disclosures");
@@ -486,6 +503,8 @@ export function HoldersView({ focused, width, height }: { focused: boolean; widt
         />
       ) : viewMode === "disclosures" && localListing ? (
         <OwnershipDisclosureView listing={localListing} focused={focused} width={width} onCycle={toggleView} />
+      ) : viewMode === "ccass" && ccassTarget ? (
+        <CcassStockView code={ccassTarget.code} viaAdr={ccassTarget.viaAdr} focused={focused} width={width} onCycle={toggleView} />
       ) : viewMode === "13dg" ? (
         <BeneficialOwnersView
           focused={focused}

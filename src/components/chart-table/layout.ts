@@ -21,7 +21,7 @@ export function fitChartTableColumns<C extends TableWidthColumn & { id: string }
 }
 
 /** A readable kit chart: legend row, four plot rows, time axis. */
-export const CHART_MIN_ROWS = 6;
+const CHART_MIN_ROWS = 6;
 /** The least a kit chart draws in: legend, two plot rows, time axis. Only
  * used for rows a short table leaves, which would otherwise stay blank. */
 export const CHART_COMPACT_ROWS = 4;

@@ -1,5 +1,4 @@
 import type { ChannelRuntimeState } from "./state";
-import { createClientMessageId } from "./utils";
 import { discardDraftAttachments } from "./attachments";
 
 function clearDraftAttachments(channel: ChannelRuntimeState): void {
@@ -15,20 +14,17 @@ export function clearSignedOutChannelState(channel: ChannelRuntimeState): void {
   channel.notificationsEnabled = false;
 }
 
-function clearSessionChannelState(channel: ChannelRuntimeState): void {
-  clearSignedOutChannelState(channel);
-  channel.draftClientMessageId = channel.draft.trim()
-    ? createClientMessageId()
-    : null;
-}
-
-function resetChannelRuntimeState(channel: ChannelRuntimeState): void {
+export function clearComposerState(channel: ChannelRuntimeState): void {
   clearDraftAttachments(channel);
-  channel.messages = [];
-  channel.pendingMessages = [];
   channel.draft = "";
   channel.draftClientMessageId = null;
   channel.replyToId = null;
+}
+
+function resetChannelRuntimeState(channel: ChannelRuntimeState): void {
+  clearComposerState(channel);
+  channel.messages = [];
+  channel.pendingMessages = [];
   channel.lastCursor = null;
   channel.lastViewedMessageId = null;
   channel.unreadCount = 0;
@@ -68,7 +64,7 @@ export function clearChatControllerSessionState({
   closeAllConnections();
   clearSessionIdentity();
   for (const channel of channelStates) {
-    clearSessionChannelState(channel);
+    clearSignedOutChannelState(channel);
   }
   emit();
 }
@@ -112,8 +108,8 @@ export function resetChatControllerRuntime({
   }
   if (shouldClearSession) {
     clearSessionIdentity();
-    clearApiSessionToken();
     deleteSession();
+    clearApiSessionToken();
   } else {
     persistSession();
   }

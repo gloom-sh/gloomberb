@@ -1,8 +1,6 @@
-import { alignTimeSeries, matchedFreshBarStart } from "../alignment";
-import type { ManualChartResolution } from "../resolution";
-import type { ChartStudySpec, ResolvedSeries, SeriesPeriod, TimeSeriesPoint } from "../types";
+import type { ChartStudySpec, ResolvedSeries, TimeSeriesPoint } from "../types";
 import { isFiniteNumber } from "../../utils/guards";
-import { derivedPoint, outputSeries, studyPeriod } from "./shared";
+import { alignedDerivedSamples, derivedPoint, outputSeries, sharedFrequency, sharedHistoryResolution, studyPeriod } from "./shared";
 import { derivedValueDecimals, isPriceGroup, PLAIN_RATIO_UNIT, percentBasisPointRatioScale, ratioUnit } from "./units";
 
 interface PairedSample {
@@ -12,43 +10,11 @@ interface PairedSample {
 }
 
 function pairedSamples(left: ResolvedSeries, right: ResolvedSeries, carryForward: boolean): PairedSample[] {
-  return alignTimeSeries([left, right], {
-    mode: "intersection",
-    // Ratios/spreads compare latest known levels; correlations need actual
-    // shared observations before calculating returns. Carrying a closed market
-    // invents zero returns and mismatches both sides of a weekend/holiday move.
-    // Both modes still respect the publication time of each observation.
-    carryForward,
-  }).flatMap((row) => {
-    const leftValue = row.values[left.id];
-    const rightValue = row.values[right.id];
-    if (!isFiniteNumber(leftValue?.value) || !isFiniteNumber(rightValue?.value)) return [];
-    const availability = Math.max(
-      leftValue.point.availableAt?.getTime() ?? leftValue.point.date.getTime(),
-      rightValue.point.availableAt?.getTime() ?? rightValue.point.date.getTime(),
-    );
-    const barStart = matchedFreshBarStart([leftValue, rightValue]);
-    return [{
-      left: leftValue.value,
-      right: rightValue.value,
-      point: {
-        date: new Date(barStart ?? row.date.getTime()),
-        observedAt: new Date(row.date),
-        availableAt: Number.isFinite(availability) ? new Date(availability) : undefined,
-        ...(barStart !== undefined ? { barStart: new Date(barStart) } : {}),
-        value: null,
-        provenance: { quality: "derived" as const },
-      },
-    }];
-  });
-}
-
-function pairedFrequency(left: ResolvedSeries, right: ResolvedSeries): SeriesPeriod {
-  return left.nativeFrequency === right.nativeFrequency ? left.nativeFrequency : "auto";
-}
-
-function pairedHistoryResolution(left: ResolvedSeries, right: ResolvedSeries): ManualChartResolution | null | undefined {
-  return left.historyResolution === right.historyResolution ? left.historyResolution : null;
+  return alignedDerivedSamples([left, right], carryForward).map((sample) => ({
+    point: sample.point,
+    left: sample.values[0]!,
+    right: sample.values[1]!,
+  }));
 }
 
 /** A pair's leg as its formula names it: a published series as written, anything else by its label. */
@@ -101,8 +67,8 @@ export function resolvePairStudy(
       style: "step",
       interpolation: "step-after",
       axis: "left",
-      nativeFrequency: pairedFrequency(left, right),
-      historyResolution: pairedHistoryResolution(left, right),
+      nativeFrequency: sharedFrequency([left, right]),
+      historyResolution: sharedHistoryResolution([left, right]),
     })];
   }
 
@@ -145,7 +111,7 @@ export function resolvePairStudy(
     unit: "correlation",
     unitGroup: "correlation",
     axis: "left",
-    nativeFrequency: pairedFrequency(left, right),
-    historyResolution: pairedHistoryResolution(left, right),
+    nativeFrequency: sharedFrequency([left, right]),
+    historyResolution: sharedHistoryResolution([left, right]),
   })];
 }

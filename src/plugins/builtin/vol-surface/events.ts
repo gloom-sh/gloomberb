@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import type { apiClient as cloudApiClient } from "../../../api-client";
 import type { InstrumentRef } from "../../../market-data/request-types";
 import type { DataProvider } from "../../../types/data-provider";
@@ -45,7 +46,7 @@ export const expiryDay = (expiration: number) => new Date(expiration * 1000).toI
  * expiry after `after` stands in for an ordinary day's vol. Null on a side
  * the catalogue does not reach.
  */
-export function eventBrackets(catalogue: readonly number[], date: string): { before: number | null; after: number | null; next: number | null } {
+function eventBrackets(catalogue: readonly number[], date: string): { before: number | null; after: number | null; next: number | null } {
   const sorted = [...new Set(catalogue)].sort((a, b) => a - b);
   const afterIndex = sorted.findIndex((expiration) => expiryDay(expiration) >= date);
   return {
@@ -157,11 +158,13 @@ export function surfaceEventSummary(reading: SurfaceEventReading, { historyFaile
   return `fwd ${percent(reading.forwardVol, 1)} · move ${approximatePercent(reading.impliedMove)} · MDAY ${historyFailed ? "did not load" : surfaceEventHistory(reading.events)}`;
 }
 
-/** "FOMC 12-09". */
-const surfaceEventLabel = (event: Pick<SurfaceEvent, "kind" | "date">) => `${MACRO_EVENT_LABELS[event.kind]} ${event.date.slice(5)}`;
-/** "FOMC 12-09 + CPI 12-10". */
-export const surfaceReadingLabel = (reading: Pick<SurfaceEventReading, "events">) => reading.events.map(surfaceEventLabel).join(" + ");
-/** For a narrow row: "FOMC 12-09", or "FOMC+CPI" for releases read together, which the chart dates. */
+/** "FOMC 09 Dec", its day first as tables write it; `exported`, as a report's JSON and CSV have always named it ("FOMC 12-09"). */
+const surfaceEventLabel = (event: Pick<SurfaceEvent, "kind" | "date">, exported = false) =>
+  `${MACRO_EVENT_LABELS[event.kind]} ${exported ? event.date.slice(5) : formatDay(event.date, "no-year")}`;
+/** "FOMC 09 Dec + CPI 10 Dec". */
+export const surfaceReadingLabel = (reading: Pick<SurfaceEventReading, "events">, exported = false) =>
+  reading.events.map((event) => surfaceEventLabel(event, exported)).join(" + ");
+/** For a narrow row: "FOMC 09 Dec", or "FOMC+CPI" for releases read together, which the chart dates. */
 export const surfaceReadingShortLabel = (reading: Pick<SurfaceEventReading, "events">) => reading.events.length === 1
   ? surfaceEventLabel(reading.events[0]!) : reading.events.map((event) => MACRO_EVENT_LABELS[event.kind]).join("+");
 

@@ -34,38 +34,28 @@ const CHANNEL_ROW_INDENT = 2;
 /** Width of a header's trailing action, so its label truncates clear of it. */
 const SECTION_ACTION_WIDTH = 3;
 
-function ChannelNotificationIcon({
-  enabled,
+function SidebarIcon({
+  icon,
+  fallback,
+  color,
   onMouseDown,
 }: {
-  enabled: boolean;
+  icon: "sound-on" | "sound-off" | "user";
+  fallback: string;
+  color: string;
   onMouseDown?: (event: any) => void;
 }) {
   const { nativePaneChrome } = useUiCapabilities();
-  const iconColor = enabled ? colors.positive : colors.textMuted;
-
   if (!nativePaneChrome) {
-    return (
-      <Text fg={iconColor} selectable={false} onMouseDown={onMouseDown}>
-        {enabled ? "◖)" : "◖·"}
-      </Text>
-    );
+    return <Text fg={color} selectable={false} onMouseDown={onMouseDown}>{fallback}</Text>;
   }
-
   return (
     <Span
-      fg={iconColor}
+      fg={color}
       onMouseDown={onMouseDown}
-      style={{
-        color: iconColor,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 16,
-        height: 16,
-      }}
+      style={{ color, display: "inline-flex", alignItems: "center", justifyContent: "center", width: 16, height: 16 }}
     >
-      <Icon name={enabled ? "sound-on" : "sound-off"} size={15} />
+      <Icon name={icon} size={15} />
     </Span>
   );
 }
@@ -83,39 +73,6 @@ function SectionHeaderRow({ width, cursor, backgroundColor, children }: {
     <Box ref={ref} height={1} width={width} flexDirection="row" backgroundColor={backgroundColor}>
       {children}
     </Box>
-  );
-}
-
-function ProfileIcon({
-  color,
-  onMouseDown,
-}: {
-  color: string;
-  onMouseDown?: (event: any) => void;
-}) {
-  const { nativePaneChrome } = useUiCapabilities();
-
-  if (!nativePaneChrome) {
-    return (
-      <Text fg={color} selectable={false} onMouseDown={onMouseDown}>@</Text>
-    );
-  }
-
-  return (
-    <Span
-      fg={color}
-      onMouseDown={onMouseDown}
-      style={{
-        color,
-        display: "inline-flex",
-        alignItems: "center",
-        justifyContent: "center",
-        width: 16,
-        height: 16,
-      }}
-    >
-      <Icon name="user" size={15} />
-    </Span>
   );
 }
 
@@ -324,7 +281,12 @@ export function ChannelSidebar({
                           onPress={toggleNotifications}
                         >
                           {({ onMouseDown: onActionMouseDown }) => (
-                            <ChannelNotificationIcon enabled={notificationsEnabled} onMouseDown={onActionMouseDown} />
+                            <SidebarIcon
+                              icon={notificationsEnabled ? "sound-on" : "sound-off"}
+                              fallback={notificationsEnabled ? "◖)" : "◖·"}
+                              color={notificationsEnabled ? colors.positive : colors.textMuted}
+                              onMouseDown={onActionMouseDown}
+                            />
                           )}
                         </PaneSidebarAction>
                       )}
@@ -343,7 +305,7 @@ export function ChannelSidebar({
                 {({ foregroundColor, onMouseDown }) => (
                   <>
                     <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown}> </Text>
-                    <ProfileIcon color={foregroundColor} onMouseDown={onMouseDown} />
+                    <SidebarIcon icon="user" fallback="@" color={foregroundColor} onMouseDown={onMouseDown} />
                     <Text fg={foregroundColor} selectable={false} onMouseDown={onMouseDown} style={nativePaneChrome ? LABEL_CLIP_STYLE : undefined}>
                       {` ${nativePaneChrome ? t("Profile") : truncateWithEllipsis(t("Profile"), Math.max(sidebarWidth - 3, 1))}`}
                     </Text>

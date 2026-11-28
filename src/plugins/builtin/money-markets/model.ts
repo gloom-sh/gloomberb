@@ -66,7 +66,7 @@ export function moneyMarketRows(data: MoneyMarketsPayload, tab: string): MoneyMa
 }
 
 /** The backend buffer serves prior-year curve lookups, not the displayed rank window. */
-export function moneyMarketHistory(row: MoneyMarketRow) {
+function moneyMarketHistory(row: MoneyMarketRow) {
   const { windowStart, windowEnd } = row.percentile;
   return row.history.filter((point) => (!windowStart || point.date >= windowStart) && (!windowEnd || point.date <= windowEnd));
 }

@@ -48,23 +48,24 @@ import {
   translatedFrom,
   type TranscriptSection,
 } from "./model";
-import { REPORT_FILTER, REPORT_PAGE, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption, offsetOption, REPORT_FILTER } from "../shared/headless-options";
 import { companyDataNotes } from "../../../types/company-from";
 import { savedCopyMark, unansweredRefreshError } from "../../../data/saved-copies";
 
 const optionalErrors = (error: string | null) => error ? [error] : undefined;
 
+/** As the pane: one company's calls print no ticker or company on each row, and a length or event none has leaves the text. */
 const CALL_COLUMNS = [
-  { key: "ticker", header: "Ticker" },
-  { key: "company", header: "Company" },
+  { key: "ticker", header: "Ticker", omitWhenSame: true },
+  { key: "company", header: "Company", omitWhenSame: true },
   // A call known by its day alone prints the day, never a midnight it was not held at.
   { key: "callAt", header: "Call date", textFormat: (value: unknown, row: HeadlessPaneRow) => callDateText(value, row.timeKnown !== false) },
   { key: "fiscalYear", header: "FY", align: "right" as const },
   // A half year's results read H1, never a blank quarter beside the year's.
   { key: "fiscalQuarter", header: "FQ", align: "right" as const, textFormat: (value: unknown, row: HeadlessPaneRow) => String(fiscalQuarterText({ fiscalQuarter: value as number | null, fiscalHalf: row.fiscalHalf as number | undefined }) ?? "—") },
-  { key: "event", header: "Event" },
+  { key: "event", header: "Event", omitWhenEmpty: true },
   { key: "status", header: "Status" },
-  { key: "durationSeconds", header: "Seconds", align: "right" as const },
+  { key: "durationSeconds", header: "Seconds", align: "right" as const, omitWhenEmpty: true },
   { key: "wordCount", header: "Words", align: "right" as const },
   { key: "sentiment", header: "Tone", align: "right" as const },
 ];
@@ -95,7 +96,7 @@ const TRANSCRIPT_COLUMNS = [
   { key: "text", header: "Text" },
 ];
 
-export interface EarningsCallsHeadlessDependencies {
+interface EarningsCallsHeadlessDependencies {
   loadCalls(
     ticker: string | null,
     limit: number,
@@ -163,7 +164,7 @@ function availabilityMatches(call: CloudEarningsCallPayload, availability: strin
 }
 
 /** The next call as its own line above a company's calls: "Next call Thu Oct 22 22:30 (16:30 ET), in 3h." */
-export function nextCallNotice(call: CloudEarningsCallPayload, now: number): string {
+function nextCallNotice(call: CloudEarningsCallPayload, now: number): string {
   const { start, newYork } = callStartText(call, now);
   const away = callAway(call, now);
   return `Next call ${start}${newYork ? ` (${newYork})` : ""}${away ? `, ${away}` : ""}.`;
@@ -359,7 +360,7 @@ function readsTranscript(args: HeadlessPaneLoadArgs): boolean {
     && (String(args.options.quarter ?? "").trim().length > 0 || String(args.options.section ?? "").trim().length > 0);
 }
 
-export function createEarningsCallsHeadless(
+function createEarningsCallsHeadless(
   dependencies: EarningsCallsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {
@@ -372,86 +373,25 @@ export function createEarningsCallsHeadless(
       optional: true,
     },
     options: [
-      {
-        key: "view",
+      enumOption("view", [{ value: "upcoming", aliases: ["calendar"] }, { value: "transcripts", aliases: ["transcribed", "shelf"] }], {
         description: "Without a ticker: the calendar of every company's calls today and this week, or the latest transcripts.",
-        type: "enum",
-        values: [
-          { value: "upcoming", aliases: ["calendar"] },
-          { value: "transcripts", aliases: ["transcribed", "shelf"] },
-        ],
-        defaultValue: "upcoming",
-        example: "--view transcripts",
-        exampleWithoutArgument: true,
-      },
-      {
-        key: "availability",
-        shot: REPORT_FILTER,
-        description: "Transcript availability to include when listing calls.",
-        type: "enum",
-        values: [
-          { value: "all" },
-          { value: "transcribed" },
-          { value: "pending" },
-        ],
-        defaultValue: "all",
-      },
-      {
-        key: "quarter",
-        description: "Read one transcript: latest, FQ2-2026, or FY2026. Needs a ticker.",
-        type: "string",
-        defaultValue: "",
-      },
-      {
-        key: "section",
+        defaultValue: "upcoming", example: "--view transcripts", exampleWithoutArgument: true,
+      }),
+      enumOption("availability", ["all", "transcribed", "pending"], {
+        shot: REPORT_FILTER, description: "Transcript availability to include when listing calls.", defaultValue: "all",
+      }),
+      { key: "quarter", description: "Read one transcript: latest, FQ2-2026, or FY2026. Needs a ticker.", type: "string", defaultValue: "" },
+      enumOption("section", [
+        "overview", "summary", "transcript", { value: "qa", aliases: ["q&a"] }, "guidance", "risks", "notable",
+        { value: "analyst-focus", aliases: ["analyst"] }, { value: "participants", aliases: ["speakers"] }, "original",
+      ], {
         shot: { reportOnly: "picks a transcript section for the text report" },
-        description: "Transcript section to return; implies --quarter latest.",
-        type: "enum",
-        values: [
-          { value: "overview" },
-          { value: "summary" },
-          { value: "transcript" },
-          { value: "qa", aliases: ["q&a"] },
-          { value: "guidance" },
-          { value: "risks" },
-          { value: "notable" },
-          { value: "analyst-focus", aliases: ["analyst"] },
-          { value: "participants", aliases: ["speakers"] },
-          { value: "original" },
-        ],
-        defaultValue: "",
-      },
-      {
-        key: "speaker",
-        shot: { reportOnly: "picks a speaker's turns for the text report" },
-        description: "Speaker name, role, or role acronym such as CFO, when reading a transcript.",
-        type: "string",
-        defaultValue: "",
-      },
-      {
-        key: "search",
-        shot: { reportOnly: "finds text in the transcript for the text report" },
-        description: "Text to find in transcript turns, when reading a transcript.",
-        type: "string",
-        defaultValue: "",
-      },
-      {
-        key: "offset",
-        shot: REPORT_PAGE,
-        description: "Transcript segment offset for paging.",
-        type: "integer",
-        defaultValue: 0,
-        minimum: 0,
-        maximum: 100_000,
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        description: "Maximum calls, or transcript segments, to return (every call on the calendar, 50 of a company's calls, 20 segments by default).",
-        type: "integer",
-        minimum: 1,
-        maximum: 200,
-      },
+        description: "Transcript section to return; implies --quarter latest.", defaultValue: "",
+      }),
+      { key: "speaker", shot: { reportOnly: "picks a speaker's turns for the text report" }, description: "Speaker name, role, or role acronym such as CFO, when reading a transcript.", type: "string", defaultValue: "" },
+      { key: "search", shot: { reportOnly: "finds text in the transcript for the text report" }, description: "Text to find in transcript turns, when reading a transcript.", type: "string", defaultValue: "" },
+      offsetOption({ description: "Transcript segment offset for paging.", defaultValue: 0, maximum: 100_000 }),
+      limitOption({ description: "Maximum calls, or transcript segments, to return (every call on the calendar, 50 of a company's calls, 20 segments by default).", maximum: 200 }),
     ],
     columns: CALL_COLUMNS,
     // No aliases: the template's keywords stay the catalog's search terms.

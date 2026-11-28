@@ -5,7 +5,8 @@ import type {
   HeadlessPaneLoadArgs,
 } from "../../../types/plugin";
 import { MISSING_VALUE, formatNumber, formatPercentRaw } from "../../../utils/format";
-import { EXTENDED_SESSION_LABELS, getQuoteSessionFields, marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
+import { getQuoteSessionFields, marketStateLabel, type ExtendedSession } from "../../../market-data/market/status";
+import { extendedPriceColumn } from "../shared/extended-print";
 import type { MarketState } from "../../../types/financials";
 import { loadWorldIndexQuotes, NOT_IN_FEED, type WorldIndexQuoteResult } from "./client";
 import {
@@ -16,61 +17,38 @@ import {
   type IndexEntry,
 } from "./indices";
 import { quoteFreshnessFields } from "../shared/report-freshness";
+import { DOLLAR_INDEX_SYMBOL, dollarIndexQuoteStatus } from "./dollar-index";
+import { numCol, textCol } from "../shared/headless-columns";
 
 /** A row for an index the feed does not carry has no figures to print; its last column says why. */
 const isGap = (row: Record<string, unknown>) => row.unavailable === true;
+const gapNum = (format: (value: number) => string) => (value: unknown, row: Record<string, unknown>) =>
+  isGap(row) ? "" : value == null ? MISSING_VALUE : format(Number(value));
 
 const COLUMNS = [
-  { key: "shortName", header: "Index", shrink: false },
-  { key: "name", header: "Name" },
-  {
-    key: "price",
-    header: "Last",
-    align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : value == null
-      ? MISSING_VALUE
-      : formatNumber(Number(value), 2),
-  },
-  {
-    key: "change",
-    header: "Change",
-    align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : value == null ? MISSING_VALUE : `${Number(value) >= 0 ? "+" : ""}${formatNumber(Number(value), 2)}`,
-  },
-  {
-    key: "changePercent",
-    header: "Change %",
-    align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : value == null ? MISSING_VALUE : formatPercentRaw(Number(value)),
-  },
-  {
-    key: "marketState",
-    header: "Session",
-    shrink: false,
-    format: (value: unknown, row: Record<string, unknown>) => isGap(row) ? "" : typeof value === "string" && value ? marketStateLabel(value as MarketState) ?? value : MISSING_VALUE,
-  },
-  {
-    key: "lastUpdated",
-    header: "Updated",
-    shrink: false,
-    format: (value: unknown, row: Record<string, unknown>) => {
-      const time = value == null ? Number.NaN : Number(value);
-      return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 16).replace("T", " ")} UTC` : isGap(row) ? NOT_IN_FEED : MISSING_VALUE;
-    },
-  },
+  textCol("shortName", "Index", undefined, { shrink: false }),
+  textCol("name", "Name"),
+  numCol("price", "Last", gapNum((n) => formatNumber(n, 2))),
+  numCol("change", "Change", gapNum((n) => `${n >= 0 ? "+" : ""}${formatNumber(n, 2)}`)),
+  numCol("changePercent", "Change %", gapNum(formatPercentRaw)),
+  textCol("marketState", "Session", (value, row) => {
+    if (isGap(row)) return "";
+    const dollarIndex = row.symbol === DOLLAR_INDEX_SYMBOL && row.price != null;
+    const session = typeof value === "string" && value ? marketStateLabel(value as MarketState) : dollarIndex ? "UNKNOWN" : MISSING_VALUE;
+    return row.stale !== true ? session : dollarIndex ? `${session} · STALE` : "STALE";
+  }, { shrink: false }),
+  textCol("lastUpdated", "Updated", (value, row) => {
+    const time = value == null ? Number.NaN : Number(value);
+    return Number.isFinite(time) ? `${new Date(time).toISOString().slice(0, 16).replace("T", " ")} UTC` : isGap(row) ? NOT_IN_FEED : MISSING_VALUE;
+  }, { shrink: false }),
 ];
 
 /** A pre-market or after-hours print and its move from the regular close, for a row that has one. */
-function extendedColumn(session: ExtendedSession) {
-  return {
-    key: "extendedPrice",
-    header: EXTENDED_SESSION_LABELS[session],
-    align: "right" as const,
-    format: (value: unknown, row: Record<string, unknown>) => row.extendedSession === session && typeof value === "number"
-      ? `${formatNumber(value, 2)} ${formatPercentRaw(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : undefined)}`
-      : isGap(row) ? "" : MISSING_VALUE,
-  };
-}
+const extendedColumn = (session: ExtendedSession) => extendedPriceColumn(
+  session,
+  (value, row) => `${formatNumber(value, 2)} ${formatPercentRaw(typeof row.extendedChangePercent === "number" ? row.extendedChangePercent : undefined)}`,
+  { empty: (row) => isGap(row) ? "" : MISSING_VALUE },
+);
 
 /** The table's columns, with an extended column after Change % only where a row has such a print. */
 function sectionColumns(rows: readonly Record<string, unknown>[]) {
@@ -90,10 +68,14 @@ function projectWorldIndicesHeadless(
       if (regionEntries.length === 0) return [];
       const rows = regionEntries.map((entry) => {
         const quote = loaded.quotes.get(entry.symbol);
+        const freshness = quoteFreshnessFields(quote);
+        const dollarIndex = dollarIndexQuoteStatus(entry.symbol, quote);
         // Last and Change are the regular session, as `ticker` reads them.
-        const { price, change, changePercent, ...extended } = getQuoteSessionFields(quote);
+        const { price, change, changePercent, ...extended } = getQuoteSessionFields(
+          dollarIndex && quote ? { ...quote, marketState: undefined } : quote,
+        );
         return {
-          ...quoteFreshnessFields(quote),
+          ...freshness,
           ...entry,
           price,
           unit: "index points",
@@ -101,7 +83,8 @@ function projectWorldIndicesHeadless(
           change,
           changePercent,
           ...extended,
-          marketState: quote?.marketState ?? null,
+          marketState: freshness.stale ? null : freshness.marketState ?? quote?.marketState ?? null,
+          ...dollarIndex,
           lastUpdated: quote?.lastUpdated ?? null,
           ...(isGapEntry(entry) ? { unavailable: true } : {}),
         };

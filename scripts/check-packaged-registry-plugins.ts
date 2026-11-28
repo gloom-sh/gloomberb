@@ -1,4 +1,3 @@
-import { spawnSync } from "child_process";
 import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "fs";
 import { tmpdir } from "os";
 import { basename, join, resolve } from "path";
@@ -7,7 +6,7 @@ import { testAppEnv } from "./test-app-env";
 
 import { buildDesktopTuiBundle } from "./desktop-tui-bundle";
 import { type DoctorRun, type LoadProblem, isHostLinkError, loadProblems } from "./packaged-plugin-load";
-import { annotate, cloneRegistryPlugins } from "./registry-plugins";
+import { annotate, cloneRegistryPlugins, runWithConcurrency } from "./registry-plugins";
 
 /**
  * Loads every plugin the registry lists in the terminal as it ships, and
@@ -50,21 +49,25 @@ interface Terminal {
 const args = process.argv.slice(2);
 const terminalPaths: string[] = [];
 let desktopTui = false;
+let existingPluginsDir: string | null = null;
 for (let index = 0; index < args.length; index += 1) {
   const arg = args[index]!;
   if (arg === "--terminal") terminalPaths.push(args[++index] ?? "");
   else if (arg.startsWith("--terminal=")) terminalPaths.push(arg.slice("--terminal=".length));
+  else if (arg === "--plugins-dir") existingPluginsDir = args[++index] ?? "";
+  else if (arg.startsWith("--plugins-dir=")) existingPluginsDir = arg.slice("--plugins-dir=".length);
   else if (arg === "--desktop-tui") desktopTui = true;
   else usage(`Unknown argument: ${arg}`);
 }
 if (terminalPaths.length === 0 && !desktopTui) usage("Name a terminal to load the plugins in.");
 if (terminalPaths.includes("")) usage("--terminal needs a path.");
+if (existingPluginsDir === "") usage("--plugins-dir needs a path.");
 for (const path of terminalPaths) {
   if (!existsSync(resolve(path))) usage(`No terminal at ${path}.`);
 }
 
 function usage(reason: string): never {
-  console.error(`${reason}\nUsage: bun scripts/check-packaged-registry-plugins.ts [--terminal <binary or .gz>]... [--desktop-tui]`);
+  console.error(`${reason}\nUsage: bun scripts/check-packaged-registry-plugins.ts [--terminal <binary or .gz>]... [--plugins-dir <dir>] [--desktop-tui]`);
   process.exit(2);
 }
 
@@ -99,22 +102,30 @@ function prepareTerminals(workDir: string): Terminal[] {
   return terminals;
 }
 
-function doctor(command: string[], pluginDir: string, home: string, cwd: string): DoctorRun {
+async function doctor(command: string[], pluginDir: string, home: string, cwd: string): Promise<DoctorRun> {
   // `plugin doctor` takes a path by its slash, and Windows spells it with backslashes.
-  const result = spawnSync(command[0]!, [...command.slice(1), "--json", "plugin", "doctor", pluginDir.replaceAll("\\", "/")], {
+  const proc = Bun.spawn([command[0]!, ...command.slice(1), "--json", "plugin", "doctor", pluginDir.replaceAll("\\", "/")], {
     cwd,
     env: testAppEnv({ GLOOMBERB_HOME: home }),
-    encoding: "utf8",
-    timeout: DOCTOR_TIMEOUT_MS,
-    killSignal: "SIGKILL",
-    maxBuffer: 32 * 1024 * 1024,
+    stdin: "ignore",
+    stdout: "pipe",
+    stderr: "pipe",
   });
-  return {
-    exitCode: result.status,
-    stdout: result.stdout ?? "",
-    stderr: result.stderr ?? (result.error ? String(result.error) : ""),
-    timedOut: (result.error as NodeJS.ErrnoException | undefined)?.code === "ETIMEDOUT",
-  };
+  let timedOut = false;
+  const timer = setTimeout(() => {
+    timedOut = true;
+    try { proc.kill("SIGKILL"); } catch { /* process already exited */ }
+  }, DOCTOR_TIMEOUT_MS);
+  try {
+    const [exitCode, stdout, stderr] = await Promise.all([
+      proc.exited,
+      new Response(proc.stdout).text(),
+      new Response(proc.stderr).text(),
+    ]);
+    return { exitCode, stdout, stderr, timedOut };
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function describe(problem: LoadProblem): string {
@@ -128,37 +139,40 @@ let listed = 0;
 
 try {
   const terminals = prepareTerminals(workDir);
-  const pluginsDir = join(workDir, "plugins");
-  mkdirSync(pluginsDir);
-  const result = await cloneRegistryPlugins(pluginsDir);
+  const pluginsDir = existingPluginsDir ? resolve(existingPluginsDir) : join(workDir, "plugins");
+  if (!existingPluginsDir) mkdirSync(pluginsDir);
+  const result = await cloneRegistryPlugins(pluginsDir, { reuseExisting: Boolean(existingPluginsDir) });
   listed = result.listed;
 
   // Neither the folder the terminals run in nor their Gloom folder is this checkout.
   const cwd = join(workDir, "cwd");
   mkdirSync(cwd);
-  const home = join(workDir, "home");
 
   const unexplained: Array<{ id: string; dir: string; terminal: Terminal; problems: LoadProblem[] }> = [];
-  for (const terminal of terminals) {
-    for (const { id, dir } of result.cloned) {
-      const problems = loadProblems(doctor(terminal.command, dir, home, cwd));
-      if (problems.length === 0) {
-        loaded += 1;
-        console.log(`loaded ${id} in ${terminal.label}`);
-      } else if (problems.some((problem) => isHostLinkError(problem.message))) {
-        const hostProblem = problems.find((problem) => isHostLinkError(problem.message))!;
-        failures.push(`${id} does not load in ${terminal.label}. ${describe(hostProblem)}`);
-      } else {
-        unexplained.push({ id, dir, terminal, problems });
-      }
+  const jobs = terminals.flatMap((terminal, terminalIndex) =>
+    result.cloned.map((plugin, pluginIndex) => ({ terminal, terminalIndex, plugin, pluginIndex })),
+  );
+
+  await runWithConcurrency(jobs, 8, async ({ terminal, terminalIndex, plugin: { id, dir }, pluginIndex }) => {
+    const home = join(workDir, `home-${terminalIndex}-${pluginIndex}`);
+    const problems = loadProblems(await doctor(terminal.command, dir, home, cwd));
+    if (problems.length === 0) {
+      loaded += 1;
+      console.log(`loaded ${id} in ${terminal.label}`);
+    } else if (problems.some((problem) => isHostLinkError(problem.message))) {
+      const hostProblem = problems.find((problem) => isHostLinkError(problem.message))!;
+      failures.push(`${id} does not load in ${terminal.label}. ${describe(hostProblem)}`);
+    } else {
+      unexplained.push({ id, dir, terminal, problems });
     }
-  }
+  });
 
   // Anything else that failed is the plugin's or the host's: ask this
   // checkout's own terminal, which loads from sources. After every packaged
   // run, since it links the host into the plugin's folder.
+  const refHome = join(workDir, "home-reference");
   for (const { id, dir, terminal, problems } of unexplained) {
-    const reference = loadProblems(doctor([process.execPath, join(rootDir, "src", "cli", "entry.ts")], dir, home, cwd));
+    const reference = loadProblems(await doctor([process.execPath, join(rootDir, "src", "cli", "entry.ts")], dir, refHome, cwd));
     if (reference.length === 0) {
       failures.push(`${id} loads from this checkout's sources and not in ${terminal.label}. ${problems.map(describe).join("; ")}`);
     } else {

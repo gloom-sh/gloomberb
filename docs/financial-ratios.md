@@ -4,7 +4,13 @@
 
 `FA` has ratio tabs beside the Income, Cash Flow and Balance Sheet statements, behind the **Ratios** segment of the Statement bar: Profitability, Leverage, Liquidity, Efficiency and Valuation. Keys `1` to `8` open the statements and then each ratio tab in that order. `gloom fn FA <ticker> --statement valuation` prints the same table with every input.
 
+Search for a displayed metric, such as `interest coverage` or `EV/EBITDA`, in the command bar to open its FA tab. `gloom catalog "interest coverage"` shows the equivalent CLI command: `gloom fn FA <ticker> --statement leverage`.
+
 Each ratio opens (Enter, a click, or `e` for all) onto the inputs behind it. The second input starts with the operator that joins it, so the rows read as the formula: `Net Income`, then `÷ Avg Equity`. Inputs show the values as reported for the period, or the trailing year where marked `TTM`; the ratio applies any annualization.
+
+When a statement series has a verified reporting basis, such as consolidated accounts of an accounting predecessor, `gloom fn FA` names it for the figures that use it. It flags a newer filing still under review even if no basis is verified. In CSV these caveats appear in `export_notes` on the affected rows only. In JSON, look in `data.metadata` for `statementBasis` and `statementReview`, or `statementBasisByTicker` and `statementReviewByTicker` (review without basis) in long reports. Historical valuation denominators may be reported even when the listing's price cannot be paired with them to calculate a multiple.
+
+In `gloom ticker` CSV and JSON, `statementContext.appliesTo` identifies which filed statement fields use the stated basis. It does not label the current quote or served fundamentals.
 
 ## Periods
 
@@ -98,7 +104,7 @@ Visa's FY2026 reads 3.6% and 4.1%: 1.671bn of capex on 45.90bn of revenue, and 1
 
 ## Leases
 
-Net debt, and the enterprise value built on it, adds the balance sheet's lease liabilities to total debt when the company reports under IFRS or a similar standard. IFRS 16 puts every lessee lease on the balance sheet and reports EBITDA before lease costs, so net debt / EBITDA with the leases in is like for like. The row under Net Debt says so: `incl. leases` with the amount added. IAG's June 2026 balance sheet holds 6.96bn of borrowings, 6.91bn of leases and 9.18bn of cash: 4.69bn of net debt, where total debt alone gave -2.21bn.
+Net debt, and the enterprise value built on it, adds the balance sheet's lease liabilities to total debt when the company reports under IFRS or a similar standard. IFRS 16 puts every lessee lease on the balance sheet and reports EBITDA before lease costs, so net debt / EBITDA with the leases in is like for like. The row under Net Debt reads `of which leases`: that amount is already part of Net Debt, not a separate charge. IAG's June 2026 balance sheet holds 6.96bn of borrowings, 6.91bn of leases and 9.18bn of cash: 4.69bn of net debt, where total debt alone gave -2.21bn.
 
 - **US GAAP.** A company reporting under US GAAP keeps its operating leases out, whatever form it files: a 10-K, or a 20-F as Alibaba, PDD and JD do. Its finance leases are already in total debt, and its operating lease cost is in EBITDA. The row reads `excl. op. leases`, with the amount left out (Delta's 5.98bn in September 2026). The standard is the one Gloom Cloud reads from the company's latest annual report to the SEC; a company that files none with the SEC is read as IFRS.
 - **A missing lease line.** When a listing's balance sheets report lease liabilities, a period without that line reads `not reported` for net debt and EV. It is not computed without leases beside periods that have them.

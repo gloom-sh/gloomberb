@@ -1,3 +1,4 @@
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ChartTableHeader, CurveSurface, curveGhostColors, DataTableView, formatPercentAxis, PaneStatusBody, useChartTableSelection,
   usePaneFooter, usePaneNoticeFooter, usePaneTabs, type DataTableColumn, type StatItem } from "../../../components";
@@ -5,8 +6,7 @@ import { curveStrip, curveSurfaceMinRows } from "../../../components/chart/curve
 import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { STALE_SEGMENT } from "../../../components/layout/pane/status-footer";
 import { dropColumnsToFit, hiddenTableColumnRows } from "../../../components/ui/table-layout";
-import { useAsyncResource } from "../../../react/async-resource";
-import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
+import { usePaneResource } from "../shared/pane-resource";
 import { usePaneSettingValue, usePluginPaneState } from "../../../public/react";
 import { shownPriceColor } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
@@ -18,7 +18,6 @@ import { getSharedMarketDataCoordinator } from "../../../market-data/coordinator
 import { buildQuoteKey, resolveEntryData } from "../../../market-data/selectors";
 import { useLiveQuoteEntries } from "../../../state/hooks/quote-streaming";
 import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
-import { useAutoRefresh } from "../../../react/auto-refresh";
 import { useLiveStreamingSetting } from "../../../state/hooks/live-streaming";
 import { useIndexCloseSettled, useLiveSessionRefresh, useThrottledValue } from "../shared/volatility/live-session";
 import { DAY_SO_FAR_TEXT } from "../../../time-series/session-bar";
@@ -40,7 +39,8 @@ const BOARD_COLUMNS: DataTableColumn[] = [
   { id: "change1d", label: "1D pts", width: 9, align: "right" },
   { id: "change1dPercent", label: "1D %", width: 9, align: "right" },
   { id: "percentile1y", label: "1Y pctl", width: 9, align: "right" },
-  { id: "date", label: "As of", width: 12, align: "left" },
+  // The footer dates the selected index; indexes from different sessions bring the column back.
+  { id: "date", label: "As of", width: 12, align: "left", omitWhenSame: true },
 ];
 /**
  * What a narrow board gives up before its dates: the name (the selected row's
@@ -82,9 +82,8 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
       if (!abort.signal.aborted) setPartial(snapshot);
     } });
   }, []);
-  const resource = useAsyncResource(request, { initialData: getCachedVolatilityData });
+  const resource = usePaneResource(request, { focused, initialData: getCachedVolatilityData, refreshKey: { skipWhileLoading: true } });
   useEffect(() => () => controller.current?.abort(), []);
-  useAutoRefresh(resource.updatedAt, resource.load);
   const loaded = partial ?? resource.data;
   // Index levels stream through the shared quote layer for the tab on screen;
   // the history tab ends on the same VIX and VIX 3M levels as the curve.
@@ -148,11 +147,6 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
   // From the tab the press finds, so the footer's hint never holds an old one.
   const cycleTab = useCallback(() => setTab((current) =>
     TABS[(TABS.findIndex((entry) => entry.value === current) + 1) % TABS.length]!.value), [setTab]);
-  // One binding for every tab and for the loading and failed bodies, where no
-  // table is mounted; the footer binds the `v` hint.
-  usePaneRefreshKey(() => {
-    if (!resource.loading) resource.reload();
-  }, { focused });
   const asOf = tab === "history" ? data?.term.termDate : tab === "board" ? selected?.date : data?.curve.date;
   // A day's level is its close once Cboe settles it (16:15 New York); before
   // that a streamed level is intraday with its time, and a daily bar of the
@@ -255,13 +249,14 @@ export function VolatilityPane({ focused, width, height }: PaneProps) {
             : column.id === "percentile1y" ? percentile(row.percentile1y)
             : ["value", "change1d", "change1dPercent"].includes(column.id)
               ? number(row[column.id as "value" | "change1d" | "change1dPercent"], column.id.startsWith("change"))
-              : String(row.date ?? MISSING_VALUE),
+              : formatDay(row.date),
+            ...(column.id === "date" && row.date ? { value: row.date } : {}),
             // Changes take the sign; vol high for its year is the warning a rise used to carry.
             color: column.id.startsWith("change") && row.change1d != null ? signColor(row.change1d)
               : column.id === "percentile1y" && row.percentile1y != null && Math.round(row.percentile1y) >= 80 ? colors.warning
               : row.value == null ? colors.textMuted : colors.text })} />
         {selected && <>
-          <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${selected.date ?? MISSING_VALUE}`}</Text></Box>
+          <Box height={1} paddingX={1}><Text fg={colors.textDim}>{`${selected.id.toUpperCase() === selected.label ? selected.label : `${selected.id.toUpperCase()} · ${selected.label}`} · ${selected.unit} · ${formatDay(selected.date)}`}</Text></Box>
           <VolatilityIndexHistoryChart row={selected} width={width} height={Math.max(3, contentHeight - boardHeight - 1)} focused={focused} />
         </>}
       </>}

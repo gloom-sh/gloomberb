@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../utils/day-format";
 import { colors, priceColor } from "../../../theme/colors";
 import { collectUniqueTickerSymbols } from "../../../tickers/tokenizer";
 import { isKnownExchangeCode } from "../../../utils/exchanges";
@@ -67,7 +68,7 @@ const MONEY_UNITS = [
  * "$356.4B", "-$4.9B". The unit is picked after rounding, so $999.96B is
  * "$1.0T" and not "$1000.0B".
  */
-export function formatCompactMoney(amount: number): string {
+function formatCompactMoney(amount: number): string {
   const abs = Math.abs(amount);
   let index = MONEY_UNITS.findIndex((unit) => abs >= unit.divisor);
   let digits = index < 0 ? abs.toFixed(0) : (abs / MONEY_UNITS[index]!.divisor).toFixed(1);
@@ -85,10 +86,11 @@ export function moneyText(value: string | null | undefined): string {
   return amount == null ? text(value) : formatCompactMoney(amount);
 }
 
+/** A day without its year, day first as tables write it: `03 Nov`. */
 export function dateShort(value: string | null | undefined) {
   const date = parseDisplayDate(value);
   if (!date) return MISSING_VALUE;
-  return date.toISOString().slice(5, 10);
+  return formatDay(date.toISOString().slice(0, 10), "no-year");
 }
 
 export function dateDetail(value: string | null | undefined) {

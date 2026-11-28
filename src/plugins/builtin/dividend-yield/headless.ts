@@ -8,7 +8,7 @@ import { fetchDividendData, requestDividendHistory, statedForwardRate, TOKEN_YIE
 import { dividendReferencePrice } from "../../../utils/trailing-dividend";
 import type { DividendPayment, GrowthPayments } from "./types";
 import {
-  carriedDateText, COMBINED_PAYMENT, convertedFromText, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText,
+  carriedDateText, COMBINED_PAYMENT, convertedFromText, dividendAmountDigits, distinctEstimateTexts, formatConvertedAmount, formatDividendYield, growthPaymentsText, PAYOUT_BASIS, PAYOUT_NOT_MEANINGFUL, staleHistoryText, toDividendRows, trailingPaymentsText, trailingSpecialText, type DividendAmountDigits,
 } from "./view";
 import { MISSING_VALUE, formatDistributionAmount, formatPercent } from "../../../utils/format";
 import { NOT_MEANINGFUL_TEXT } from "../../../utils/growth";
@@ -18,9 +18,10 @@ import type { Quote } from "../../../types/financials";
 import { regularSessionValuationPrice } from "../../../market-data/quotes/regular-session-valuation";
 import { dividendPriceStatus, dividendQuotePriceMetadata } from "./reference-price";
 import { logFailure } from "../../../utils/log-failure";
+import { dayFirstTextEntries } from "../shared/day-entries";
 import { projectDividendRanking, roundedRatio } from "./ranking";
 import { MAX_RANKED_SYMBOLS, readDividendRanking, type DividendRankingReads } from "./ranking-reads";
-import { REPORT_FILTER, REPORT_ROWS } from "../shared/headless-options";
+import { enumOption, limitOption, REPORT_FILTER } from "../shared/headless-options";
 import type { FundBondFacts } from "../../../api-client/fund-facts";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { bondClassText, bondFigures, fetchFundBondFacts, NOT_SEC_YIELD, type BondFigure } from "../../../market-data/bond-funds";
@@ -33,17 +34,23 @@ import {
 const DEFAULT_TYPE = "all";
 const DEFAULT_LIMIT = 40;
 
-/** The history's columns; amounts converted from the currency the company declares in go to two decimals of their source's unit. */
-function paymentColumns(converted: boolean, subUnit?: string) {
-  const amount = converted ? (value: number, currency: string) => formatConvertedAmount(value, currency, subUnit) : formatDistributionAmount;
+/**
+ * The history's columns; amounts converted from the currency the company
+ * declares in are in their source's unit. Each unit's amounts share one
+ * precision down the column (`digits`, dividendAmountDigits).
+ */
+function paymentColumns(converted: boolean, digits: DividendAmountDigits, subUnit?: string) {
+  const amount = (value: number, currency: string) => converted
+    ? formatConvertedAmount(value, currency, subUnit, digits) : formatDistributionAmount(value, currency, digits.get(currency));
   return [
     { key: "exDate", header: "Ex-date" },
     { key: "amount", header: "Amount", align: "right" as const,
       format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.currency === "string" && row.currency
         ? `${row.cashEstimate ? "estimated " : ""}${amount(value, row.currency)}` : value == null ? MISSING_VALUE : String(value) },
-    { key: "currency", header: "CCY" },
+    // As the pane: a currency or type every row shares is no column (the amounts carry the currency).
+    { key: "currency", header: "CCY", omitWhenSame: true },
     // A regular payment and an extra one on one ex-date are one row of the history, which says so.
-    { key: "type", header: "Type", format: (value: unknown, row: Record<string, unknown>) => typeof value !== "string" ? MISSING_VALUE
+    { key: "type", header: "Type", omitWhenSame: true, format: (value: unknown, row: Record<string, unknown>) => typeof value !== "string" ? MISSING_VALUE
       : row.combined === true ? `${value}, ${COMBINED_PAYMENT}: regular + extra` : value },
   ];
 }
@@ -52,10 +59,10 @@ function paymentColumns(converted: boolean, subUnit?: string) {
 const SOURCE_COLUMN = { key: "source", header: "Source",
   format: (value: unknown) => typeof value === "string" ? value : "" };
 
-/** After the amount, for a company declaring in another currency than the listing pays: what it declared. */
-const DECLARED_COLUMN = { key: "declared", header: "Declared", align: "right" as const,
+/** After the amount, for a company declaring in another currency than the listing pays: what it declared, one precision down the column. */
+const declaredColumn = (digits: DividendAmountDigits) => ({ key: "declared", header: "Declared", align: "right" as const,
   format: (value: unknown, row: Record<string, unknown>) => typeof value === "number" && typeof row.declaredCurrency === "string"
-    ? formatDistributionAmount(value, row.declaredCurrency) : MISSING_VALUE };
+    ? formatDistributionAmount(value, row.declaredCurrency, digits.get(row.declaredCurrency)) : MISSING_VALUE });
 
 /** What a ticker's read needs: the market data, Gloom Cloud, and the listing a typed key stands for. */
 export type DividendReadContext = Pick<HeadlessPaneContext, "marketData" | "apiClient" | "resolveInstrument">;
@@ -180,7 +187,7 @@ function matchesType(payment: DividendPayment, type: string): boolean {
  * with `--tax-rate`, a section gives the tax-equivalent yield and the
  * muni/Treasury ratio, each saying what it was computed from.
  */
-export function projectDividendYieldHeadless(
+function projectDividendYieldHeadless(
   data: DividendData,
   args: HeadlessPaneLoadArgs,
   { bond = null, tax = null }: { bond?: FundBondFacts | null; tax?: TaxEquivalentAnalysis | null } = {},
@@ -201,16 +208,16 @@ export function projectDividendYieldHeadless(
       // The issuer's own form's dividend type, where a form types the row ("Final", "Other Special Dividend").
       ...(payment?.formType ? { formType: payment.formType } : {}),
       ...(row.declared ? { declared: row.declared.amount, declaredCurrency: row.declared.currency } : {}),
-      ...(payment?.source ? { source: payment.source.publisher, sourceUrl: payment.source.url } : {}),
     };
   });
   // A listing paid in another currency than its company declares (South32's rand) has its amounts converted from that one.
   const convertedFrom = data.convertedFrom;
   const subUnit = data.convertedSubUnit;
-  const paymentColumnList = paymentColumns(!!convertedFrom, subUnit);
+  const paymentColumnList = paymentColumns(!!convertedFrom, dividendAmountDigits(rows, !!convertedFrom, subUnit), subUnit);
+  const declared = rows.flatMap((row) => typeof row.declared === "number" && row.declaredCurrency ? [{ amount: row.declared, currency: row.declaredCurrency }] : []);
   const historyColumns = [
-    ...(rows.some((row) => row.declared)
-      ? [...paymentColumnList.slice(0, 2), DECLARED_COLUMN, ...paymentColumnList.slice(2)] : paymentColumnList),
+    ...(declared.length
+      ? [...paymentColumnList.slice(0, 2), declaredColumn(dividendAmountDigits(declared)), ...paymentColumnList.slice(2)] : paymentColumnList),
     ...(rows.some((row) => row.source) ? [SOURCE_COLUMN] : []),
   ];
   const metrics = data.metrics;
@@ -264,8 +271,9 @@ export function projectDividendYieldHeadless(
     sections: [
       {
         title: "Dividend metrics",
-        // What the text report says of each figure: its basis, its date and why one is missing, in one line.
-        textEntries: [
+        // What the text report says of each figure: its basis, its date and why one is missing, in one line, each day
+        // drawn first as the pane draws it; JSON and CSV keep the entries below with their ISO days.
+        textEntries: dayFirstTextEntries([
           { label: "Price", value: data.price, ...(data.price != null && currency ? { formatted: formatMarketPriceWithCurrency(data.price, currency, {
             minimumFractionDigits: currencyPriceMinDigits(currency), ...data.priceQuotedUnitDivisor ? { quotedUnitDivisor: data.priceQuotedUnitDivisor } : {} }) } : {}) },
           ...(data.stale ? [{ label: "History status", value: staleHistoryText(data.fetchedAt) }] : []),
@@ -291,7 +299,7 @@ export function projectDividendYieldHeadless(
           growthEntry("3Y Cash CAGR", metrics.growth3Y, metrics.growth3YPayments, metrics.growth3YNotMeaningful),
           { label: "Frequency", value: metrics.paymentFrequency },
           ...datesAndCash,
-        ],
+        ]),
         // What exports and JSON keep: each figure as a number in its unit, dated by its own observation (the price a
         // yield is over, the day a sponsor gives a figure as of, the ex-date a rate is from), as the multi-fund ranking writes.
         entries: [
@@ -377,7 +385,7 @@ export function projectDividendYieldHeadless(
   };
 }
 
-export function createDividendYieldHeadless(
+function createDividendYieldHeadless(
   dependencies: DividendYieldHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"bundle"> {
   return {
@@ -391,29 +399,8 @@ export function createDividendYieldHeadless(
       examples: TAX_RATE_EXAMPLES,
     },
     options: [
-      {
-        key: "type",
-        shot: REPORT_FILTER,
-        description: "Dividend payment type to include.",
-        type: "enum",
-        values: [
-          { value: "all" },
-          { value: "cash" },
-          { value: "special" },
-          { value: "stock" },
-          { value: "unknown" },
-        ],
-        defaultValue: DEFAULT_TYPE,
-      },
-      {
-        key: "limit",
-        shot: REPORT_ROWS,
-        description: "Maximum historical payments to return.",
-        type: "integer",
-        defaultValue: DEFAULT_LIMIT,
-        minimum: 1,
-        maximum: 200,
-      },
+      enumOption("type", ["all", "cash", "special", "stock", "unknown"], { shot: REPORT_FILTER, description: "Dividend payment type to include.", defaultValue: DEFAULT_TYPE }),
+      limitOption({ description: "Maximum historical payments to return.", defaultValue: DEFAULT_LIMIT, maximum: 200 }),
       ...TAX_RATE_OPTIONS,
     ],
     describe: (args) => `Dividend Yield | ${args.symbols.join(", ")}`,

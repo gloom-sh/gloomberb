@@ -115,7 +115,7 @@ export function displayForFrame(frame: Rect, displays: readonly DesktopDisplay[]
  * bar lies in some display's work area, not under the menu bar or off the
  * edge of every screen.
  */
-export function isFrameReachable(frame: Rect, displays: readonly DesktopDisplay[]): boolean {
+function isFrameReachable(frame: Rect, displays: readonly DesktopDisplay[]): boolean {
   const titleBar: Rect = { x: frame.x, y: frame.y, width: frame.width, height: REACHABLE_STRIP_HEIGHT };
   return usableDisplays(displays).some(({ workArea }) => {
     const width = Math.min(titleBar.x + titleBar.width, workArea.x + workArea.width) - Math.max(titleBar.x, workArea.x);
@@ -129,7 +129,7 @@ export function isFrameReachable(frame: Rect, displays: readonly DesktopDisplay[
  * (across two of them counts), give or take its shadow, and its title bar
  * sits in a work area where it can be grabbed.
  */
-export function isFrameVisible(frame: Rect, displays: readonly DesktopDisplay[]): boolean {
+function isFrameVisible(frame: Rect, displays: readonly DesktopDisplay[]): boolean {
   const usable = usableDisplays(displays);
   const insetX = Math.min(EDGE_SLACK, Math.floor(frame.width / 4));
   const insetY = Math.min(EDGE_SLACK, Math.floor(frame.height / 4));

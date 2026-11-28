@@ -277,7 +277,7 @@ export function buildMapSettingsDef(
   };
 }
 
-export function applyMapSetting(
+function applyMapSetting(
   settings: Record<string, unknown>,
   key: string,
   value: unknown,

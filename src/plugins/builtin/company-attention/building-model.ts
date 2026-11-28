@@ -1,10 +1,10 @@
-import { formatShortDate } from "../../../utils/datetime-format";
+import { formatDayTime } from "../../../utils/day-format";
 import type { DataTableColumn, StatItem } from "../../../components";
 import type { HiringBuildingBoard, HiringBuildingFilter, HiringBuildingHold, HiringBuildingShift, HiringBuildingSkip, HiringCompanyBuilding, HiringMixRow, HiringMovePosting } from "../../../api-client/hiring";
 import { MISSING_VALUE, formatNumber } from "../../../utils/format";
 import { countOf, freePreviewNote, previewCantFilter } from "../shared/free-preview";
 import { humanLabel } from "../shared/research-cells";
-import type { AttentionRow } from "./model";
+import { attentionColumn as column, hiringCount as count, hiringDayLabel as dayLabel, hiringPace, hiringSigned, type AttentionRow } from "./model";
 
 /**
  * HIRE's Building tab (docs/hiring-app-attention.md): what each company is
@@ -38,12 +38,6 @@ const buildingHoldText = (hold: HiringBuildingHold) => HOLD_LABELS[hold] ?? huma
 const skipText = (skips: readonly HiringBuildingSkip[]) => skips.map((skip) => SKIP_LABELS[skip] ?? humanLabel(skip)).join(", ");
 const kindText = (shift: Pick<HiringBuildingShift, "dimension">) => shift.dimension === "theme" ? "Theme" : "Role family";
 
-/** "12 Oct": a week's Monday. */
-function dayLabel(value: string | null | undefined, year = false): string {
-  const match = /^(\d{4})-(\d{2})-(\d{2})/.exec(value ?? "");
-  return match ? formatShortDate(match[0], { year: year ? "numeric" : false, utc: true, fallback: MISSING_VALUE }) : MISSING_VALUE;
-}
-const count = (value: number | null | undefined) => value == null ? MISSING_VALUE : formatNumber(value, 0);
 /** A share: whole percents from 10%, a tenth under it. */
 const share = (value: number | null | undefined) => value == null ? MISSING_VALUE : value <= 0 ? "0%" : `${formatNumber(value * 100, value < 0.1 ? 1 : 0)}%`;
 /** A change of share in points, as it rounds: "+23 pts", "+5.2 pts", "0 pts". */
@@ -54,8 +48,8 @@ const points = (value: number) => {
 };
 /** The sign a change shows, so one that rounds to nothing is not coloured. */
 export const buildingSign = (columnId: string, value: number) => columnId === "change" ? pointsRounded(value) : value;
-const signed = (value: number, decimals = 1) => `${value > 0 ? "+" : ""}${formatNumber(value, decimals)}`;
-const pace = (value: number | null) => value == null ? "from none" : `${formatNumber(value, value >= 10 ? 0 : 1)}x`;
+const signed = (value: number, decimals = 1) => hiringSigned(value, decimals);
+const pace = (value: number | null) => value == null ? "from none" : hiringPace(value);
 
 const SHARE_COLUMNS = new Set(["share", "now", "before"]);
 export const BUILDING_SIGNED_COLUMNS = new Set(["change", "z"]);
@@ -85,7 +79,7 @@ export function shiftFacts(shift: HiringBuildingShift): Array<{ label: string; v
     ...(shift.topTitles.length ? [{ label: "Top titles", value: shift.topTitles.map((row) => `${row.title.trim()} (${count(row.count)})`).join(", ") }] : []),
     { label: "Boards", value: shift.sourceTickers.join(", ") },
     { label: "Week of", value: dayLabel(shift.week, true) },
-    { label: "First computed", value: shift.firstComputedAt },
+    { label: "First computed", value: `${formatDayTime(shift.firstComputedAt)} UTC` },
   ];
 }
 
@@ -110,7 +104,6 @@ export interface BuildingModel {
   held: string | null;
 }
 
-const column = (id: string, label: string, width: number, numeric = false, flex = false): DataTableColumn => ({ id, label, width, align: numeric ? "right" : "left", ...(flex ? { flexGrow: 1 } : {}) });
 // What moved and by how much first, so a narrow pane keeps them; the kind and the evidence after.
 const BOARD_COLUMNS = [column("symbol", "Ticker", 12), column("name", "Company", 20, false, true), column("label", "What", 22),
   column("now", "Now", 7, true), column("before", "Before", 8, true), column("change", "Change", 10, true), column("roles", "Roles", 7, true), column("kind", "Kind", 12), column("weeks", "Weeks", 8), column("z", "Z-score", 9, true), column("title", "Top title", 26)];
@@ -185,7 +178,7 @@ export function companyBuildingModel(data: HiringCompanyBuilding): BuildingModel
     ...(held ? [{ label: "No mix", value: held, wide: true }] : data.skipped.length ? [{ label: "In part", value: skipText(data.skipped), wide: true }] : []),
   ] : [];
   const empty = held ? `No mix to compare this week: ${held.toLowerCase()}.` : "No mix computed for this company yet.";
-  const shiftsEmpty = held ? empty : lockedShifts ? "This company's shifts are in Pro." : "No role family or theme shifted against this company's own weeks.";
+  const shiftsEmpty = held || !data.week ? empty : lockedShifts ? "This company's shifts are in Pro." : "No role family or theme shifted against this company's own weeks.";
   return {
     asOf: data.shifts[0]?.computedAt ?? data.history[0]?.computedAt ?? null,
     week: data.week,
@@ -196,7 +189,7 @@ export function companyBuildingModel(data: HiringCompanyBuilding): BuildingModel
       families: { columns: mixColumns("Role family"), rows: data.functions.map(mixRow(shifted)), locked: data.preview ? data.locked.functions : 0,
         empty: held ? empty : data.skipped.includes("unclassified") ? "Too few roles carry a role family to compare." : empty },
       themes: { columns: mixColumns("Theme"), rows: data.themes.map(mixRow(shifted)), locked: data.preview ? data.locked.themes : 0,
-        empty: held ? empty : "No role names a theme in the weeks compared." },
+        empty: held || !data.week ? empty : "No role names a theme in the weeks compared." },
       shifts: { columns: SHIFT_COLUMNS, rows: [...data.shifts.map((shift) => shiftRow(shift, true)), ...data.history.map((shift) => shiftRow(shift, true))], locked: lockedShifts, empty: shiftsEmpty },
       // Behind one shift, every row would name it.
       postings: { columns: data.shifts.length > 1 ? POSTING_COLUMNS : POSTING_COLUMNS.filter((entry) => entry.id !== "shift"), rows: data.shifts.flatMap((shift) => shift.postings.map(postingRow(shift))), locked: 0,

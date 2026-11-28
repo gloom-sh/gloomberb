@@ -2,10 +2,8 @@ import type { ChartVectorShape } from "../../../ui/host";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { SupplyRole, SupplyRow } from "../../../api-client/supply-chain";
 import { Box, ChartSurface, Span, Text, TextAttributes, useUiCapabilities } from "../../../ui";
-import { useShortcut } from "../../../react/input";
-import { isPlainKey } from "../../../utils/keyboard";
 import { displayWidth } from "../../../utils/format";
-import { BADGE_TINT, ClippedText, NATIVE_BADGE_STYLE } from "../../../components/ui/display";
+import { ClippedText } from "../../../components/ui/display";
 import { cardSurfaceStyle } from "../../../components/ui/card";
 import { TOOLTIP_SURFACE_STYLE } from "../../../components/ui/frame";
 import { blendHex } from "../../../theme/colors";
@@ -13,8 +11,9 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { useSelectionFill } from "../../../components/ui/selection-fill";
 import { useStaticChartBitmapSize } from "../../../components/chart/composite/bitmap";
 import { fillOpaque, fillRect, parseHex } from "../../../components/chart/native/raster/primitives";
+import { FlowFocusCard, FlowPillChip, hitTestFlowRibbons, rasterizeBrailleRibbons, useFlowListShortcut } from "../shared/flow-diagram";
 import { counterpartyKind, counterpartyKindLabel, counterpartyLabel, counterpartyLabelEnd, disclosedValue, dollars, isRelatedParty, nativeValue, periodText, relationshipLabel, roleLabel, ROLE_COLORS, scopeWords, shareParts, fitShareBasis, type FlowBand, type ShareParts } from "./model";
-import { entityTicker } from "./graph-model";
+import { entityTicker, supplyDisplayName } from "./graph-model";
 import { flowChipLabel, flowGeometry, RELATED_LABEL_CELLS, ribbonY, type FlowRibbon, type PositionedNode } from "./flow-layout";
 import { evidenceDate, evidenceLabel, trustTier } from "./trust";
 
@@ -58,7 +57,7 @@ function nodeFigure(node: PositionedNode, focusId: string | undefined, cells: nu
   if (share) return shareText(share, cells);
   if (nativeValue(row) !== null || row.usd !== null) return disclosedValue(row);
   // With no figure, the card says where the relationship is disclosed.
-  const reporter = focusId && row.reportingEntity.id !== focusId ? `${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ` : "";
+  const reporter = focusId && row.reportingEntity.id !== focusId ? `${entityTicker(row.reportingEntity) ?? supplyDisplayName(row.reportingEntity.name)} ` : "";
   return `${evidenceLabel(row)} · ${reporter}${row.form ?? "filing"}${row.fiscalYear ? ` · FY${row.fiscalYear}` : ""}`;
 }
 
@@ -119,17 +118,15 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
     else if (node.more) setPages((old) => ({ ...old, [node.band]: (old[node.band] ?? 0) + 1 }));
     else if (node.row) { onSelect(node.id); onOpen(node.row); }
   };
-  useShortcut((event) => {
-    if (!focused || event.defaultPrevented || nodes.length === 0) return;
-    if (isPlainKey(event, "j", "down") || isPlainKey(event, "k", "up")) {
-      const direction = isPlainKey(event, "j", "down") ? 1 : -1;
-      onSelect(nodes[(selectedIndex + direction + nodes.length) % nodes.length]!.id);
-    } else if (isPlainKey(event, "return", "enter")) selectNode(nodes[selectedIndex]!);
-    else return;
-    event.preventDefault(); event.stopPropagation();
+  useFlowListShortcut({
+    focused,
+    items: nodes,
+    selectedIndex,
+    onSelect: (node) => onSelect(node.id),
+    onActivate: selectNode,
   });
 
-  const ribbonColors = (ribbon: FlowRibbon) => ribbon.band === "suppliers" ? [ROLE_COLORS[ribbon.role], focusTint] : [focusTint, ROLE_COLORS[ribbon.role]];
+  const ribbonColors = (ribbon: FlowRibbon): [string, string] => ribbon.band === "suppliers" ? [ROLE_COLORS[ribbon.role], focusTint] : [focusTint, ROLE_COLORS[ribbon.role]];
   const vectors = useMemo<ChartVectorShape[]>(() => ribbons.flatMap((ribbon): ChartVectorShape[] => {
     const lit = active === ribbon.id;
     const dim = hovered !== null && !lit;
@@ -171,49 +168,22 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
   // Braille fallback: a filled band per ribbon, coloured along its length from the role to the focus company.
   const fallback = useMemo(() => {
     if (desktop || bitmap) return null;
-    const grid = Array.from({ length: height }, () => Array.from({ length: width }, () => ({ mask: 0, color: colors.textDim })));
-    const bits = [[1, 8], [2, 16], [4, 32], [64, 128]];
-    for (const ribbon of ribbons) {
-      const [from, to] = ribbonColors(ribbon);
-      const lit = active === ribbon.id;
-      for (let dx = Math.ceil(ribbon.x0 * 2); dx < Math.floor(ribbon.x1 * 2); dx++) {
-        const x = (dx + 0.5) / 2, t = (x - ribbon.x0) / Math.max(1e-6, ribbon.x1 - ribbon.x0);
-        if (reportedIds.has(ribbon.id) && !dashVisible(t)) continue;
-        const y = ribbonY(ribbon, x);
-        const half = ribbon.thickness === null ? 0 : ribbon.thickness / 2;
-        const color = blendHex(from!, to!, t);
-        for (let dy = Math.round((y - half) * 4 - 0.5); dy <= Math.round((y + half) * 4 - 0.5); dy++) {
-          const cell = grid[Math.floor(dy / 4)]?.[Math.floor(dx / 2)];
-          if (!cell || dy < 0) continue;
-          cell.mask |= bits[dy % 4]![dx % 2]!;
-          cell.color = ribbon.thickness === null && !lit ? blendHex(colors.bg, color, 0.75) : color;
-        }
-      }
-    }
-    return grid.map((line) => {
-      const spans: { text: string; color: string }[] = [];
-      for (const cell of line) {
-        const char = cell.mask ? String.fromCharCode(0x2800 + cell.mask) : " ";
-        if (spans.at(-1)?.color === cell.color) spans.at(-1)!.text += char;
-        else spans.push({ text: char, color: cell.color });
-      }
-      return spans;
-    });
+    return rasterizeBrailleRibbons(
+      ribbons.map((ribbon) => {
+        const [from, to] = ribbonColors(ribbon);
+        return { ...ribbon, from, to, lit: active === ribbon.id, dashed: reportedIds.has(ribbon.id) };
+      }),
+      width,
+      height,
+      colors,
+      dashVisible,
+    );
   }, [desktop, bitmap, width, height, ribbons, reportedIds, colors.textDim, colors.bg, active, focusTint]);
 
   /** Hovering a ribbon brings it forward; the nearest one under the pointer wins. */
   const hoverAt = (event: { preciseX?: number; preciseY?: number; x: number; y: number }) => {
-    const origin = surfaceRef.current;
-    if (!origin) return;
-    const x = (event.preciseX ?? event.x) - (origin.absoluteX ?? origin.x), y = (event.preciseY ?? event.y) - (origin.absoluteY ?? origin.y);
-    let best: { id: string; distance: number } | null = null;
-    for (const ribbon of ribbons) {
-      if (x < ribbon.x0 || x > ribbon.x1) continue;
-      const distance = Math.abs(ribbonY(ribbon, x) - y) - (ribbon.thickness ?? 0) / 2;
-      if (distance < 0.6 && (!best || distance < best.distance)) best = { id: ribbon.id, distance };
-    }
-    const next = best?.id ?? null;
-    if (next !== hovered) setHovered(next);
+    const next = hitTestFlowRibbons(event, surfaceRef, ribbons, 0.6);
+    if (next !== undefined && next !== hovered) setHovered(next);
   };
 
   const hoveredNode = hovered ? nodes.find((node) => node.id === hovered && node.row) : null;
@@ -237,14 +207,29 @@ export function SupplyFlow({ rows, symbol, focusName, focusId, width, height, fo
     {header("customers", width - geometry.cardWidth - 1)}
     {!hasBand("suppliers") ? <Box position="absolute" top={center.y + 1} left={1}><Text fg={colors.textMuted}>None disclosed</Text></Box> : null}
     {!hasBand("customers") ? <Box position="absolute" top={center.y + 1} left={width - geometry.cardWidth - 1}><Text fg={colors.textMuted}>None disclosed</Text></Box> : null}
-    <FocusCard symbol={symbol} name={focusName ?? null} {...center} desktop={desktop} />
+    <FlowFocusCard label={symbol} name={focusName ?? null} {...center} desktop={desktop} />
     {nodes.filter((node) => node.band !== "related").map((node) => <FlowCard key={node.id} node={node} focusId={focusId} desktop={desktop}
       active={active === node.id} onPress={() => selectNode(node)} onHover={(on) => setHovered(on ? node.id : null)} />)}
     {geometry.related.map((row) => <Box key={row.role} position="absolute" top={row.y} left={1} width={RELATED_LABEL_CELLS}>
       <Text fg={ROLE_COLORS[row.role]}>{ROLE_PLURAL[row.role]}</Text>
     </Box>)}
-    {geometry.related.flatMap((row) => row.chips).map((node) => <FlowChip key={node.id} node={node} desktop={desktop} active={active === node.id}
-      onPress={() => selectNode(node)} onHover={(on) => setHovered(on ? node.id : null)} />)}
+    {geometry.related.flatMap((row) => row.chips).map((node) => (
+      <FlowPillChip
+        key={node.id}
+        x={node.x}
+        y={node.y}
+        width={node.width}
+        label={flowChipLabel(node)}
+        accent={node.role ? ROLE_COLORS[node.role] : colors.textMuted}
+        more={!!node.more}
+        desktop={desktop}
+        active={active === node.id}
+        role="supply-flow-chip"
+        ariaLabel={flowNodeName(node)}
+        onPress={() => selectNode(node)}
+        onHover={(on) => setHovered(on ? node.id : null)}
+      />
+    ))}
     {geometry.groupRow !== null ? <Box position="absolute" top={geometry.groupRow} left={1} width={width - 2} flexDirection="row" overflow="hidden">
       <Box width={RELATED_LABEL_CELLS} flexShrink={0}><Text fg={colors.textDim}>Groups</Text></Box>
       <ClippedText fg={colors.textDim} text={groupsText(geometry.groups, focusId, width - RELATED_LABEL_CELLS - 3)} width={width - RELATED_LABEL_CELLS - 3} />
@@ -295,18 +280,6 @@ function LegendSwatch({ kind, desktop }: { kind: "weighted" | "hairline" | "repo
   </Box>;
 }
 
-function FocusCard({ symbol, name, x, y, width, height, desktop }: { symbol: string; name: string | null; x: number; y: number; width: number; height: number; desktop: boolean }) {
-  const colors = useThemeColors();
-  // The terminal's border takes two rows; the name shows only when the symbol keeps its own.
-  const showName = !!name && name.toUpperCase() !== symbol.toUpperCase() && height >= (desktop ? 3 : 4);
-  return <Box position="absolute" left={x} top={y} width={width} height={height} flexDirection="column" alignItems="center" justifyContent="center"
-    border={!desktop} borderStyle="rounded" borderColor={colors.textMuted}
-    style={desktop ? cardSurfaceStyle({ padding: "0" }) : undefined}>
-    <Text fg={colors.textBright} attributes={TextAttributes.BOLD}>{symbol}</Text>
-    {showName ? <ClippedText fg={colors.textDim} text={name!} width={width - 4} /> : null}
-  </Box>;
-}
-
 function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
   node: PositionedNode; focusId?: string; desktop: boolean; active: boolean; onPress: () => void; onHover: (on: boolean) => void;
 }) {
@@ -344,23 +317,6 @@ function FlowCard({ node, focusId, desktop, active, onPress, onHover }: {
   </Box>;
 }
 
-function FlowChip({ node, desktop, active, onPress, onHover }: { node: PositionedNode; desktop: boolean; active: boolean; onPress: () => void; onHover: (on: boolean) => void }) {
-  const colors = useThemeColors();
-  const accent = node.role ? ROLE_COLORS[node.role] : colors.textMuted;
-  // Desktop: the one chip (Badge), tinted toward the role, solid when chosen.
-  const background = desktop
-    ? active ? accent : node.more ? undefined : blendHex(colors.bg, accent, BADGE_TINT)
-    : active ? blendHex(colors.bg, accent, 0.45) : node.more ? undefined : blendHex(colors.bg, accent, 0.14);
-  const text = <ClippedText fg={node.more ? colors.textDim : active ? desktop ? colors.bg : colors.textBright : accent} text={flowChipLabel(node)} width={node.width - 2} />;
-  return <Box position="absolute" left={node.x} top={node.y} width={node.width} height={1} justifyContent={desktop ? "center" : undefined}
-    onMouseDown={onPress} onMouseOver={() => onHover(true)} onMouseOut={() => onHover(false)} data-gloom-role="supply-flow-chip"
-    role="button" aria-label={flowNodeName(node)}>
-    {/* The desktop chip leaves a hairline of row above and below, like ticker chips. */}
-    {desktop ? <Box paddingX={1} minWidth={0} backgroundColor={background} justifyContent="center" style={{ ...NATIVE_BADGE_STYLE, cursor: "pointer" }}>{text}</Box>
-      : <Box paddingX={1} height={1} backgroundColor={background}>{text}</Box>}
-  </Box>;
-}
-
 /** What the hovered relationship is: the figure and its denominator, the period and the filing. */
 function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: PositionedNode; focusId?: string; width: number; desktop: boolean; anchor: { x: number; y: number } }) {
   const colors = useThemeColors();
@@ -370,7 +326,7 @@ function FlowTooltip({ node, focusId, width, desktop, anchor }: { node: Position
     share ? `${share.value} ${share.basis}` : nativeValue(row) !== null || row.usd !== null ? disclosedValue(row) : "No figure disclosed",
     `${relationshipLabel(row)} · ${periodText(row)}`,
     trustTier(row) === 1
-      ? `${evidenceLabel(row)} · ${entityTicker(row.reportingEntity) ?? row.reportingEntity.name} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
+      ? `${evidenceLabel(row)} · ${entityTicker(row.reportingEntity) ?? supplyDisplayName(row.reportingEntity.name)} ${row.form ?? "filing"}${row.filedDate ? ` filed ${row.filedDate}` : ""}`
       : `${evidenceLabel(row)} · ${evidenceDate(row)}`,
   ];
   const tooltipWidth = Math.min(width - 2, Math.max(28, ...lines.map((line) => displayWidth(line) + 4), displayWidth(counterpartyLabel(row)) + 4));

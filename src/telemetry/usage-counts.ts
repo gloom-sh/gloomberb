@@ -434,19 +434,3 @@ function publicCounts(entries: PendingCount[], official: ReadonlySet<string>): F
 function send(current: UsageCounterHost, payload: UsageCountsPayload): Promise<void> {
   return current.send ? current.send(payload) : apiClient.reportUsageCounts(payload);
 }
-
-/** Test seam: forgets the host, the counts, the official plugins and the session's restore. */
-export function resetUsageCountsForTests(): void {
-  host = null;
-  pending.clear();
-  restoredRecorded = false;
-  flushedOnce = false;
-  inFlight = null;
-  officialIds = null;
-  officialLookup = null;
-  automationDepth = 0;
-  if (flushTimer) {
-    clearTimeout(flushTimer);
-    flushTimer = null;
-  }
-}

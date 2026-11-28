@@ -135,3 +135,28 @@ test("a TTM over complete quarters runs to the latest four that pass, past a new
   // Fewer than four complete quarters make no TTM.
   expect(computeTTM(quarters.slice(2), [], complete)).toBeNull();
 });
+
+test.each(["mops", "nse"] as const)("TTM skips a mix of %s and vendor quarters with different definitions", (source) => {
+  const quarters: FinancialStatement[] = dates.map((date) => ({ date, currency: "TWD", netIncome: 100 }));
+  expect(computeTTM(quarters)?.netIncome).toBe(400);
+  quarters[3]!.filledFrom = {
+    source: "results",
+    fields: ["netIncome"],
+    documents: [{
+      source,
+      kind: "annual_report",
+      title: "Consolidated financial report",
+      url: "https://mopsov.twse.com.tw",
+      publishedAt: "2026-03-31T00:00:00Z",
+      fetchedAt: "2026-03-31T00:00:00Z",
+      firstObserved: true,
+    }],
+    lines: { netIncome: { document: 0, page: null } },
+    comparable: [],
+    definitions: [{
+      field: "netIncome", periodEnd: dates[0]!, months: 3, currency: "TWD",
+      announcements: 95, source: 100,
+    }],
+  };
+  expect(computeTTM(quarters)).toBeNull();
+});

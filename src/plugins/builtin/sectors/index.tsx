@@ -478,6 +478,5 @@ export const sectorsModule: PluginModule = {
       createInstance: (_context, options) => ({ placement: "floating", params: { theme: options?.arg?.trim() ?? "" } }),
     },
   ],
-  setup(ctx) { themesCache.attach(ctx.persistence); membersCache.attach(ctx.persistence); },
-  dispose() { themesCache.reset(); membersCache.reset(); },
+  caches: [themesCache, membersCache],
 };

@@ -1,14 +1,12 @@
-let pendingPriceAlertId: string | null = null;
-const listeners = new Set<() => void>();
+import { createListenerSet } from "../../../utils/listeners";
 
-function publish(): void {
-  for (const listener of listeners) listener();
-}
+let pendingPriceAlertId: string | null = null;
+const listeners = createListenerSet();
 
 /** Open on the Prices tab should select this rule once the table is up. */
 export function requestPriceAlertFocus(alertId: string): void {
   pendingPriceAlertId = alertId;
-  publish();
+  listeners.notify();
 }
 
 export function getPriceAlertFocus(): string | null {
@@ -18,10 +16,7 @@ export function getPriceAlertFocus(): string | null {
 export function clearPriceAlertFocus(): void {
   if (!pendingPriceAlertId) return;
   pendingPriceAlertId = null;
-  publish();
+  listeners.notify();
 }
 
-export function subscribePriceAlertFocus(listener: () => void): () => void {
-  listeners.add(listener);
-  return () => listeners.delete(listener);
-}
+export const subscribePriceAlertFocus = listeners.subscribe;

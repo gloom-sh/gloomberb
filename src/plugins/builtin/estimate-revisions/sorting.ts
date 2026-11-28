@@ -1,8 +1,8 @@
 import type {
   EstimateObservation,
-  EstimatePeriod,
   EstimateSurprise,
 } from "../../../api-client/estimate-revisions";
+import { estimateDifference, estimateSurprise } from "./model";
 
 export interface EstimateSort {
   column: string;
@@ -81,11 +81,17 @@ export function sortEstimateSurprises(
     sort,
     (row) => {
       switch (sort.column) {
+        case "percent": {
+          // As the column shows it: the actual over the estimate; N/M sorts with the missing.
+          const surprise = estimateSurprise(row);
+          return typeof surprise === "number" ? surprise : null;
+        }
+        case "difference":
+          return estimateDifference(row);
         case "dateType":
         case "currency":
         case "estimate":
         case "actual":
-        case "percent":
         case "percentile":
           return row[sort.column];
         default:
@@ -94,18 +100,4 @@ export function sortEstimateSurprises(
     },
     (row) => `${row.date}:${row.dateType}:${row.currency ?? ""}`,
   );
-}
-
-export function sortGuidanceSources(
-  rows: readonly EstimatePeriod[],
-  sort: EstimateSort,
-): EstimatePeriod[] {
-  return sort.column === "source"
-    ? ordered(
-        rows,
-        sort,
-        (row) => (row.current ? "Current" : "Collected"),
-        (row) => row.id,
-      )
-    : [...rows];
 }

@@ -3,7 +3,7 @@ import { ApiRequestError } from "../../../api-client/errors";
 import type { BitcoinNetworkDailyValue, BitcoinNetworkPayload } from "../../../api-client/crypto-markets";
 import { createPluginCache } from "../../../data/plugin-cache";
 import type { SeriesAttribution, SeriesDefinition, SeriesPoint } from "../../../series/types";
-import { isFiniteNumber } from "../../../utils/guards";
+import { isFiniteNumber, isIsoInstant, isNonEmptyText, isPositiveNumber } from "../../../utils/guards";
 import { loadCloudResource, unavailableOnServer } from "../shared/cloud-resource";
 import { cachedSeriesNote } from "../shared/series-warning";
 
@@ -19,7 +19,6 @@ export const BITCOIN_NETWORK_CACHES = [bitcoinNetworkCache] as const;
 
 const MAX_DAYS = 20_000;
 const date = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
-const instant = (value: unknown): value is string => typeof value === "string" && Number.isFinite(Date.parse(value));
 const daily = (rows: unknown): rows is BitcoinNetworkDailyValue[] => Array.isArray(rows) && rows.length <= MAX_DAYS
   && rows.every((row) => !!row && date((row as BitcoinNetworkDailyValue).date) && isFiniteNumber((row as BitcoinNetworkDailyValue).value));
 
@@ -28,15 +27,15 @@ function validateBitcoinNetwork(data: BitcoinNetworkPayload): BitcoinNetworkPayl
   if (
     !data
     || data.version !== 1
-    || !instant(data.generatedAt)
-    || typeof data.source?.name !== "string" || !data.source.name.trim()
+    || !isIsoInstant(data.generatedAt)
+    || !isNonEmptyText(data.source?.name)
     || !["available", "stale", "unavailable"].includes(data.status)
     || !daily(data.hashrate)
     || !daily(data.hashprice)
     || !daily(data.retargetHistory)
     || !Array.isArray(data.difficulty)
-    || !data.difficulty.every((row) => !!row && date(row.date) && isFiniteNumber(row.difficulty) && row.difficulty > 0)
-    || (retarget !== null && (!retarget || !isFiniteNumber(retarget.changePercent) || !instant(retarget.estimatedAt) || !instant(retarget.readAt)))
+    || !data.difficulty.every((row) => !!row && date(row.date) && isPositiveNumber(row.difficulty))
+    || (retarget !== null && (!retarget || !isFiniteNumber(retarget.changePercent) || !isIsoInstant(retarget.estimatedAt) || !isIsoInstant(retarget.readAt)))
     || !Array.isArray(data.warnings)
   ) {
     throw new Error("The server returned invalid bitcoin network data");

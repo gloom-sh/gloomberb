@@ -1,4 +1,5 @@
 import { MISSING_VALUE } from "../../../utils/format";
+import { formatDay } from "../../../components/ui/day-cell";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { DataTableStackView, DataTableView, KeyValueRow, QueryBar, usePagedRows, usePaneNoticeFooter, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PageRequest } from "../../../components";
 import { useShortcut } from "../../../react/input";
@@ -16,7 +17,8 @@ import { savedCopyFooterInfo } from "../../../components/layout/pane/footer";
 import { useAsyncResource } from "../../../react/async-resource";
 import { cachedFunds, cachedMembers, loadFunds, loadMembers } from "../members/client";
 import { coveredFund } from "../members/model";
-import { normalizeCik, searchThirteenFFunds } from "./api";
+import { isSignInChange, normalizeCik, searchThirteenFFunds } from "./api";
+import { beginScopedRead, useHoldingsScopeKey, useScopedShown } from "./session-scope";
 import { loadFundDetail } from "./data";
 import { formatWeightMaybe } from "./format";
 import { isCikQuery } from "./model";
@@ -42,7 +44,7 @@ const etfWeightText = (row: ManagerEtfRow) => row.etfWeight == null ? "no ticker
 /** The quarter compared, and the fund's newer latest quarter when it has one. */
 function periodDetail(data: FundDetailData | null, period: string | null): string | undefined {
   const latest = data?.latestForm?.periodOfReport;
-  return period && latest && latest !== period ? `${period} · latest ${latest}` : latest;
+  return period && latest && latest !== period ? `${formatDay(period)} · latest ${formatDay(latest)}` : latest ? formatDay(latest) : latest;
 }
 
 export function FundOverlapView({ data, focused, width }: { data: FundDetailData; focused: boolean; width: number }) {
@@ -51,7 +53,10 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const [etf, setEtf] = usePluginPaneState<OverlapEtf | null>("overlap:etf", null);
   const [selectedId, setSelectedId] = usePluginPaneState<string | null>("overlap:selected", null);
   const [selectedPositionId, setSelectedPositionId] = usePluginPaneState<string | null>("overlap:position", null);
-  const [peer, setPeer] = useState<FundDetailData | null>(null);
+  // The second fund is the sign-in's it was read in, as the first is: after a sign-in change it is not shown while it
+  // is read again, nor when that read fails.
+  const scopeKey = useHoldingsScopeKey();
+  const [peer, showPeer] = useScopedShown<FundDetailData>(scopeKey);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const { active: searchFocused, focus: focusSearch, blur: blurSearch, searchProps } = useQueryBarSearch();
@@ -85,19 +90,22 @@ export function FundOverlapView({ data, focused, width }: { data: FundDetailData
   const etfFile = useAsyncResource(etfTicker ? loadEtfFile : null, { initialData: useCallback(() => etfTicker ? cachedMembers(etfTicker) : null, [etfTicker]) });
   const etfPayload = etf ? etfFile.data?.payload ?? null : null;
   const etfOverlap = useMemo(() => etfPayload ? buildManagerEtfOverlap(data, etfPayload.members) : null, [data, etfPayload]);
+  // Signing in or out reads the other fund again, as the open one is.
   useEffect(() => {
     const controller = new AbortController();
-    setError(null); setPeer(null);
+    const read = beginScopedRead();
+    setError(null); showPeer(read.key, () => null);
     if (!target) { setLoading(false); return; }
     setLoading(true);
     const forceRefresh = refresh !== lastRefresh.current;
     lastRefresh.current = refresh;
-    void loadFundDetail(target.cik, target.name, controller.signal, { forceRefresh, filingGap: false })
-      .then(result => { if (!controller.signal.aborted) setPeer(result); })
-      .catch(cause => { if (!controller.signal.aborted) setError(cause instanceof Error ? cause.message : String(cause)); })
+    void loadFundDetail(target.cik, target.name, controller.signal, { forceRefresh, filingGap: false, session: read.session })
+      .then(result => { if (!controller.signal.aborted) showPeer(read.key, () => result); })
+      // A sign-in change is no failure: the fund is read again under the new one's key.
+      .catch(cause => { if (!controller.signal.aborted && !isSignInChange(cause)) setError(cause instanceof Error ? cause.message : String(cause)); })
       .finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { controller.abort(); };
-  }, [target, refresh]);
+  }, [target, refresh, scopeKey, showPeer]);
   const loadingMore = paged.loadingMore;
   const onScroll = useTableLoadMore(scrollRef, paged.hasMore && !loadingMore && !loading && !open, paged.loadMore);
   const refreshData = useCallback(() => {

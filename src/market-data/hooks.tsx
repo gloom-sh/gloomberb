@@ -393,17 +393,7 @@ function fateQuote(entry: QueryEntry<Quote> | null): Quote | null | undefined {
   return entry && (entry.phase === "error" || entry.phase === "ready") ? null : undefined;
 }
 
-/**
- * Whether a pane shows a symbol's own data (`listingFateGate`): a symbol
- * whose company moved, with nothing new listed under it, has none. It reads
- * the symbol's quote and change lookup as `quote` does. A symbol is served
- * at once, whatever is still loading, unless what is known says nothing
- * trades under it (a line that ended, a company that left); only then does
- * the pane wait for the rest, never longer than LATE_CHANGE_WAIT_MS. The
- * quote is watched only while the answer can turn on it, so a symbol with no
- * change on record costs no re-render per tick.
- */
-export function useListingFateGate(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): ListingFateGate {
+function useTickerChangesLookup(symbol: string | null | undefined, ticker: TickerRecord | null | undefined) {
   const coordinator = getSharedMarketDataCoordinator();
   const instrument = useTickerInstrument(symbol, ticker);
   const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
@@ -417,11 +407,26 @@ export function useListingFateGate(symbol: string | null | undefined, ticker: Ti
   useEffect(() => {
     if (!lookup || lookup.peek() !== undefined) return;
     let current = true;
-    void lookup.settle(LATE_CHANGE_WAIT_MS).then((value) => {
+    lookup.settle(LATE_CHANGE_WAIT_MS).then((value) => {
       if (current) setAnswer({ lookup, changes: value });
-    });
+    }, logFailure("market-data.hooks", "Read a symbol's ticker changes failed"));
     return () => { current = false; };
   }, [lookup]);
+  return { instrumentKey, listing, changes };
+}
+
+/**
+ * Whether a pane shows a symbol's own data (`listingFateGate`): a symbol
+ * whose company moved, with nothing new listed under it, has none. It reads
+ * the symbol's quote and change lookup as `quote` does. A symbol is served
+ * at once, whatever is still loading, unless what is known says nothing
+ * trades under it (a line that ended, a company that left); only then does
+ * the pane wait for the rest, never longer than LATE_CHANGE_WAIT_MS. The
+ * quote is watched only while the answer can turn on it, so a symbol with no
+ * change on record costs no re-render per tick.
+ */
+export function useListingFateGate(symbol: string | null | undefined, ticker: TickerRecord | null | undefined): ListingFateGate {
+  const { instrumentKey, listing, changes } = useTickerChangesLookup(symbol, ticker);
   const watchQuote = !!listing && (changes === undefined || !!changes?.moved);
   const quoteEntry = useQuoteEntry(watchQuote ? symbol : null, watchQuote ? ticker : null);
   const gate = listing && watchQuote ? listingFateGate(listing, { quote: fateQuote(quoteEntry), changes }) : SERVE_GATE;
@@ -444,24 +449,7 @@ export function useListingFateGate(symbol: string | null | undefined, ticker: Ti
  * Null for a symbol nothing became of, and until its changes are read.
  */
 export function useTickerChangeNote(symbol: string | null | undefined, ticker: TickerRecord | null | undefined, quote: Quote | null | undefined): string | null {
-  const coordinator = getSharedMarketDataCoordinator();
-  const instrument = useTickerInstrument(symbol, ticker);
-  const instrumentKey = instrument ? instrumentIdentityKey(instrument) : null;
-  const listing = useMemo(() => (instrument ? fateListing(instrument) : null), [instrumentKey]);
-  const lookup = useMemo(
-    () => (coordinator && instrument && listing ? coordinator.lookupTickerChanges(instrument) : null),
-    [coordinator, instrumentKey],
-  );
-  const [answer, setAnswer] = useState<{ lookup: TickerChangeLookup; changes: TickerChanges | null } | null>(null);
-  const changes = !lookup ? null : answer?.lookup === lookup ? answer.changes : lookup.peek();
-  useEffect(() => {
-    if (!lookup || lookup.peek() !== undefined) return;
-    let current = true;
-    lookup.settle(LATE_CHANGE_WAIT_MS).then((value) => {
-      if (current) setAnswer({ lookup, changes: value });
-    }, logFailure("market-data.hooks", "Read a symbol's ticker changes failed"));
-    return () => { current = false; };
-  }, [lookup]);
+  const { listing, changes } = useTickerChangesLookup(symbol, ticker);
   if (!listing || !changes) return null;
   const now = tradingListing(quote);
   return listingChangeLine({ change: describeTickerChange(listing.symbol, changes, now), formerIssuer: describeFormerIssuer(listing.symbol, changes, now) });
@@ -599,81 +587,68 @@ export function useOptionsQuery(
   return entry;
 }
 
-export function useSecFilingsQuery(request: SecFilingsRequest | null | undefined): QueryEntry<SecFilingItem[]> | null {
-  const requestKey = request ? buildSecFilingsKey(request) : null;
-  const version = useCoordinatorKeysVersion(requestKey ? [requestKey] : []);
+function useCoordinatorSingleEntry<T>(
+  key: string | null,
+  read: (coordinator: SharedCoordinator) => QueryEntry<T>,
+  load: (coordinator: SharedCoordinator) => Promise<unknown>,
+  failureLabel: string,
+  options: { memoizeByVersion?: boolean; reportSavedCopy?: boolean } = {},
+): QueryEntry<T> | null {
+  const version = useCoordinatorKeysVersion(key ? [key] : []);
   const coordinator = getSharedMarketDataCoordinator();
-  // Read at the version React holds, as useSecFilingContent does. A pane
-  // opened from another (INS from its ranking) can render between the store
-  // write and its announcement; read early, the list is thrown away with that
-  // render, and the filing queue after it stays on "loading".
-  // The key stands for the request: a new object for the same filings reads the same entry.
-  const entry = useMemo(
-    () => coordinator && request ? coordinator.getSecFilingsEntry(request) : null,
-    [coordinator, requestKey, version],
+  const memoized = useMemo(
+    () => (options.memoizeByVersion && coordinator && key ? read(coordinator) : null),
+    [coordinator, key, options.memoizeByVersion, version],
   );
-  useSavedCopyFooter(entry?.savedCopyAt, entry?.error == null);
+  const entry = options.memoizeByVersion ? memoized : coordinator && key ? read(coordinator) : null;
+  useSavedCopyFooter(options.reportSavedCopy ? entry?.savedCopyAt : undefined, options.reportSavedCopy ? entry?.error == null : false);
 
   useEffect(() => {
-    const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator || !request) return;
-    void coordinator.loadSecFilings(request).catch(logFailure("market-data.hooks", "Loading filings failed"));
-  }, [requestKey]);
+    const active = getSharedMarketDataCoordinator();
+    if (!active || !key) return;
+    void load(active).catch(logFailure("market-data.hooks", failureLabel));
+  }, [key]);
 
   return entry;
+}
+
+export function useSecFilingsQuery(request: SecFilingsRequest | null | undefined): QueryEntry<SecFilingItem[]> | null {
+  // Read at the version React holds, as useSecFilingContent does: a pane opened from another can render between a store write and its announcement.
+  return useCoordinatorSingleEntry(
+    request ? buildSecFilingsKey(request) : null,
+    (coordinator) => coordinator.getSecFilingsEntry(request!),
+    (coordinator) => coordinator.loadSecFilings(request!),
+    "Loading filings failed",
+    { memoizeByVersion: true, reportSavedCopy: true },
+  );
 }
 
 export function useSecFilingContent(filing: SecFilingItem | null | undefined): QueryEntry<string | null> | null {
-  const key = filing ? buildSecContentKey(filing.accessionNumber) : null;
-  const version = useCoordinatorKeysVersion(key ? [key] : []);
-  const coordinator = getSharedMarketDataCoordinator();
-  // Read at the version React holds. A store write is announced a frame
-  // later; a render in between that changes no state is thrown away, and with
-  // it the effects of a reader that saw the new entry early, which then never
-  // see it change (a filing queue stalled on "loading").
-  const accession = filing?.accessionNumber ?? null;
-  const entry = useMemo(
-    () => coordinator && accession ? coordinator.getSecContentEntry(accession) : null,
-    [accession, coordinator, version],
+  return useCoordinatorSingleEntry(
+    filing ? buildSecContentKey(filing.accessionNumber) : null,
+    (coordinator) => coordinator.getSecContentEntry(filing!.accessionNumber),
+    (coordinator) => coordinator.loadSecFilingContent(filing!),
+    "Loading filing content failed",
+    { memoizeByVersion: true },
   );
-
-  useEffect(() => {
-    const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator || !filing) return;
-    void coordinator.loadSecFilingContent(filing).catch(logFailure("market-data.hooks", "Loading filing content failed"));
-  }, [key]);
-
-  return entry;
 }
 
 export function useSecFilingDocuments(filing: SecFilingItem | null | undefined): QueryEntry<SecFilingDocument[]> | null {
-  const key = filing ? buildSecDocumentsKey(filing.accessionNumber) : null;
-  useCoordinatorKeysVersion(key ? [key] : []);
-  const coordinator = getSharedMarketDataCoordinator();
-  const entry = coordinator && filing ? coordinator.getSecDocumentsEntry(filing.accessionNumber) : null;
-
-  useEffect(() => {
-    const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator || !filing) return;
-    void coordinator.loadSecFilingDocuments(filing).catch(logFailure("market-data.hooks", "Loading filing documents failed"));
-  }, [key]);
-
-  return entry;
+  return useCoordinatorSingleEntry(
+    filing ? buildSecDocumentsKey(filing.accessionNumber) : null,
+    (coordinator) => coordinator.getSecDocumentsEntry(filing!.accessionNumber),
+    (coordinator) => coordinator.loadSecFilingDocuments(filing!),
+    "Loading filing documents failed",
+  );
 }
 
 export function useArticleSummary(url: string | null | undefined): QueryEntry<string | null> | null {
-  const key = url ? buildArticleSummaryKey(url) : null;
-  useCoordinatorKeysVersion(key ? [key] : []);
-  const coordinator = getSharedMarketDataCoordinator();
-  const entry = coordinator && url ? coordinator.getArticleSummaryEntry(url) : null;
-
-  useEffect(() => {
-    const coordinator = getSharedMarketDataCoordinator();
-    if (!coordinator || !url) return;
-    void coordinator.loadArticleSummary(url).catch(logFailure("market-data.hooks", "Loading an article summary failed"));
-  }, [url]);
-
-  return entry;
+  return useCoordinatorSingleEntry(
+    url ? buildArticleSummaryKey(url) : null,
+    (coordinator) => coordinator.getArticleSummaryEntry(url!),
+    (coordinator) => coordinator.loadArticleSummary(url!),
+    "Loading an article summary failed",
+  );
 }
 
 /** A currency's US dollar rate as the app holds it, and when its source observed it (epoch ms; null when undated, and for USD). */

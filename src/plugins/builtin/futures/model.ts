@@ -7,7 +7,7 @@ import {
   FUTURES_BOARD_ROWS, FUTURES_SECTOR_ORDER, futuresBoardCode, futuresBoardContract, futuresGroupFilter, futuresNameKey,
   type FuturesContract, type FuturesSector,
 } from "../../../market-data/futures-board";
-import { CONTRACT_MONTH_NAME, futuresPriceUnit } from "../../../market-data/futures-contract";
+import { CONTRACT_MONTH_NAME, futuresPriceUnitLabel } from "../../../market-data/futures-contract";
 import { contractMonthLabel } from "../../../utils/contract-month";
 import { quoteDotMarketState } from "../../../market-data/market/status";
 import { futuresQuoteFromSettle } from "../../../market-data/market/change-basis";
@@ -65,7 +65,7 @@ export function futuresRowId(row: FuturesTableRow): string {
  * "Corn Futures,Dec-2026" or cut off mid-month ("Futures,Dec-"); a month
  * without a year is dropped rather than guessed.
  */
-export function futuresContractName(contract: FuturesContract, quote?: Quote | null): string {
+function futuresContractName(contract: FuturesContract, quote?: Quote | null): string {
   const month = quotedContractMonth(contract, quote);
   if (!month) return unplacedName(contract);
   return `${contract.name} ${contractMonthLabel(month.year, month.month)}`;
@@ -145,7 +145,7 @@ export function futuresContractHeadline(
  * where the server has none ("EUR / MWh"), else null.
  */
 export function futuresUnitLabel(contract: FuturesContract, terms?: Pick<FuturesContractTermsPayload, "spec"> | null): string | null {
-  return futuresPriceUnit(contract, terms);
+  return futuresPriceUnitLabel(contract, terms);
 }
 
 /**

@@ -1,15 +1,15 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, type Dispatch, type RefObject, type SetStateAction } from "react";
-import type { ScrollBoxRenderable } from "../../../../ui";
+import { useEffect, useLayoutEffect, useMemo, useRef } from "react";
 import type { AppState } from "../../../../state/app/context";
 import type { DataProvider } from "../../../../types/data-provider";
-import type { CommandDef, PaneTemplateCreateOptions, PaneTemplateDef } from "../../../../types/plugin";
-import type { TickerRecord } from "../../../../types/ticker";
-import { listingChoiceQuery, symbolSearchQuery, type TickerSearchCandidate } from "../../../../tickers/search";
+import type { PaneTemplateDef } from "../../../../types/plugin";
+import { listingChoiceQuery, symbolSearchQuery } from "../../../../tickers/search";
 import { isAssistPlaceholderRow, type AssistRowHandlers } from "../../assist/model";
 import { matchPrefix, type Command } from "../../commands/registry";
 import { isDefaultSelectable, type ResultItem } from "../../list/model";
 import type { CommandBarCategoryPriorities } from "../../view-model";
-import type { CommandBarRoute } from "../../workflow/types";
+import type { CommandBarActionRuntime } from "../../action-runtime";
+import type { CommandBarNavigationState } from "../../routing/navigation-state";
+import type { CommandBarEnvironment } from "../../surface/environment";
 import { normalizeCommandTickerSearchText, readRootTickerQuery } from "../ticker-search/results";
 import { endsInLegalForm, readNearMissListing, readTerminalListingCode } from "../../../../tickers/terminal-codes";
 import { useTickerSearchRouteResults } from "../ticker-search/route";
@@ -48,125 +48,45 @@ function readsAsSymbol(text: string, rows: readonly ResultItem[]): boolean {
 }
 
 interface UseCommandBarRootRuntimeOptions {
-  activeCollectionId: string | null;
-  activePortfolio?: AppState["config"]["portfolios"][number];
-  activeTickerData: TickerRecord | null | undefined;
-  activeTickerSymbol: string | null;
+  env: CommandBarEnvironment;
+  nav: CommandBarNavigationState;
+  actions: CommandBarActionRuntime;
   assist: AssistRowHandlers;
   availableCommands: Command[];
   bindKey?: (query: string) => void;
-  buildLayoutItems(query: string, options?: { confirmDangerousActions?: boolean }): ResultItem[];
-  buildPaneSettingItems(paneId: string | null, query: string): ResultItem[];
   buildRecentTickerItem?: (symbol: string) => ResultItem | null;
-  buildTickerSearchResultItems(candidates: TickerSearchCandidate[], query: string): ResultItem[];
-  buildWindowModeItems(arg: string): ResultItem[];
-  createPaneTemplateItem(template: PaneTemplateDef, options?: {
-    category?: string;
-    createOptions?: PaneTemplateCreateOptions;
-    showShortcut?: boolean;
-    shortcutExecution?: boolean;
-  }): ResultItem;
-  createPluginCommandItem(command: CommandDef, options?: { shortcutArg?: string }): ResultItem;
-  currentRoute: CommandBarRoute | null;
   dataProvider: DataProvider;
-  executeCollectionCommand(
-    commandId: "add-watchlist" | "add-portfolio" | "remove-watchlist" | "remove-portfolio",
-    rawInput?: string,
-  ): void | Promise<void>;
-  getAvailablePaneShortcutTemplates(query: string): PaneTemplateDef[];
   getRecentPaneTemplate?: (id: string, arg?: string) => PaneTemplateDef | undefined;
-  leadingShortcutCode?: string | null;
   getTickers(): AppState["tickers"];
   hasPaneSettings(paneId: string): boolean;
-  localTickerSearchResultItems(query?: string, options?: { category?: string; limit?: number }): ResultItem[];
-  nativeListScrollRef: RefObject<ScrollBoxRenderable | null>;
-  nonShortcutPaneTemplateItems(filterQuery?: string): ResultItem[];
-  openModeRoute(screen: "ticker-search" | "layout", initialQuery?: string): void;
-  paneShortcutItems(options?: {
-    filterQuery?: string;
-    searchedQuery?: string;
-    createOptions?: PaneTemplateCreateOptions;
-    includePromptableTickerTemplates?: boolean;
-  }): ResultItem[];
-  pluginCommandItems(): ResultItem[];
-  pluginCommandResultItems(command: CommandDef, shortcutArg: string): ResultItem[];
+  leadingShortcutCode?: string | null;
   pluginInstallItem?: ResultItem | null;
   providerResultItems?: ResultItem[];
   providerMatchItems?: ResultItem[];
   providerCategoryPriorities?: CommandBarCategoryPriorities;
   providerSearching?: boolean;
-  readTickerSearchCache(
-    query: string,
-    brokerId?: string | null,
-    brokerInstanceId?: string | null,
-  ): TickerSearchCandidate[] | null;
-  rootModeKind: string;
-  rootQuery: string;
-  rootSelectionNavigatedRef: RefObject<boolean>;
   rootShortcutIntent: ShortcutIntent;
-  runDirectCommand(command: Command, arg: string): void;
-  runSecurityDescriptionShortcut(query?: string): void | Promise<void>;
-  setRootHoveredIdx: Dispatch<SetStateAction<number | null>>;
-  setRootSelectedIdx: Dispatch<SetStateAction<number>>;
-  skipTickerSearchDebounceRef: RefObject<boolean>;
-  state: AppState;
-  tickerActionItems(): ResultItem[];
-  writeTickerSearchCache(
-    query: string,
-    candidates: TickerSearchCandidate[],
-    brokerId?: string | null,
-    brokerInstanceId?: string | null,
-  ): void;
 }
 
 export function useCommandBarRootRuntime({
-  activeCollectionId,
-  activePortfolio,
-  activeTickerData,
-  activeTickerSymbol,
+  env,
+  nav,
+  actions,
   assist,
   availableCommands,
   bindKey,
-  buildLayoutItems,
-  buildPaneSettingItems,
   buildRecentTickerItem,
-  buildTickerSearchResultItems,
-  buildWindowModeItems,
-  createPaneTemplateItem,
-  createPluginCommandItem,
-  currentRoute,
   dataProvider,
-  executeCollectionCommand,
-  getAvailablePaneShortcutTemplates,
   getRecentPaneTemplate,
-  leadingShortcutCode,
   getTickers,
   hasPaneSettings,
-  localTickerSearchResultItems,
-  nativeListScrollRef,
-  nonShortcutPaneTemplateItems,
-  openModeRoute,
-  paneShortcutItems,
-  pluginCommandItems,
-  pluginCommandResultItems,
+  leadingShortcutCode,
   pluginInstallItem = null,
   providerResultItems = [],
   providerMatchItems = [],
   providerCategoryPriorities,
   providerSearching = false,
-  readTickerSearchCache,
-  rootModeKind,
-  rootQuery,
-  rootSelectionNavigatedRef,
   rootShortcutIntent,
-  runDirectCommand,
-  runSecurityDescriptionShortcut,
-  setRootHoveredIdx,
-  setRootSelectedIdx,
-  skipTickerSearchDebounceRef,
-  state,
-  tickerActionItems,
-  writeTickerSearchCache,
 }: UseCommandBarRootRuntimeOptions): {
   activeMatch: ReturnType<typeof matchPrefix>;
   orderedRootResults: ResultItem[];
@@ -181,6 +101,44 @@ export function useCommandBarRootRuntime({
   tickerSearchPending: boolean;
   tickerSearchResults: ResultItem[];
 } {
+  const {
+    activeCollectionId,
+    activePortfolio,
+    activeTickerData,
+    activeTickerSymbol,
+    nativeListScrollRef,
+    skipTickerSearchDebounceRef,
+    state,
+  } = env;
+  const {
+    currentRoute,
+    rootModeInfo: { kind: rootModeKind },
+    rootQuery,
+    rootSelectionNavigatedRef,
+    setRootHoveredIdx,
+    setRootSelectedIdx,
+  } = nav;
+  const {
+    buildLayoutItems,
+    buildPaneSettingItems,
+    buildTickerSearchResultItems,
+    buildWindowModeItems,
+    createPaneTemplateItem,
+    createPluginCommandItem,
+    executeCollectionCommand,
+    getAvailablePaneShortcutTemplates,
+    localTickerSearchResultItems,
+    nonShortcutPaneTemplateItems,
+    openModeRoute,
+    paneShortcutItems,
+    pluginCommandItems,
+    pluginCommandResultItems,
+    readTickerSearchCache,
+    runDirectCommand,
+    runSecurityDescriptionShortcut,
+    tickerActionItems,
+    writeTickerSearchCache,
+  } = actions;
   const previousRootSelectionContextRef = useRef<{ query: string; mode: string } | null>(null);
   const previousRootResultIdsRef = useRef<string[]>([]);
   /**

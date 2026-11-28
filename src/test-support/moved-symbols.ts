@@ -9,10 +9,10 @@ import { createTestDataProvider, createTestFinancials, createTestQuote } from ".
  * company holds META (the fund that was META moved to METV, Meta Platforms
  * renamed into it), and AAPL has no change at all.
  */
-export const HFC_HOP = { from: "HFC", to: "DINO", date: "2022-03-15" };
+const HFC_HOP = { from: "HFC", to: "DINO", date: "2022-03-15" };
 const RDS_HOP = { from: "RDS.A", to: "SHEL", date: "2022-01-31" };
 const FB_HOP = { from: "FB", to: "META", date: "2022-06-09" };
-export const MOVED_SYMBOL_CHANGES: Record<string, TickerChanges> = {
+const MOVED_SYMBOL_CHANGES: Record<string, TickerChanges> = {
   HFC: { symbol: "HFC", moved: { symbol: "DINO", name: "HF Sinclair Corp", hops: [HFC_HOP] }, formerly: null, listedName: null, changes: [HFC_HOP] },
   "RDS-A": { symbol: "RDS.A", moved: { symbol: "SHEL", name: "Shell plc", hops: [RDS_HOP] }, formerly: null, listedName: null, changes: [RDS_HOP] },
   META: {
@@ -24,7 +24,7 @@ export const MOVED_SYMBOL_CHANGES: Record<string, TickerChanges> = {
 const HFC_LAST = Date.parse("2022-03-14T23:00:00.002Z");
 const RDS_LAST = Date.parse("2022-01-29T00:00:00.001Z");
 // The old lines' quotes stopped in 2022, while their source still states today's session.
-export const MOVED_SYMBOL_QUOTES: Record<string, Quote> = {
+const MOVED_SYMBOL_QUOTES: Record<string, Quote> = {
   HFC: createTestQuote({ symbol: "HFC", price: 36.39, lastUpdated: HFC_LAST, lastTradeTime: HFC_LAST, marketState: "REGULAR", stale: true }),
   "RDS-A": createTestQuote({
     symbol: "RDS-A", name: "Shell Plc Sponsored American Depositary Receipt", price: 51.04, listingExchangeName: "NYSE", exchangeName: "NYSE",

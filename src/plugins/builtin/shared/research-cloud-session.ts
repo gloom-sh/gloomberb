@@ -12,8 +12,11 @@ export function isCloudSessionRequired(error: string | null | undefined): boolea
 export function useResearchCloudSession() {
   const access = usePlanAccess();
   const displayScope = cloudDisplayScope();
+  const requestKey = JSON.stringify([apiClient.getCurrentUser()?.id ?? (displayScope === null ? "" : null), access.emailVerified]);
   return {
-    requestKey: JSON.stringify([apiClient.getCurrentUser()?.id ?? (displayScope === null ? "" : null), access.emailVerified]),
+    requestKey,
+    accessKey: `${requestKey}:${access.hasProAccess ? "full" : "preview"}`,
+    hasProAccess: access.hasProAccess,
     displayScope,
     needsVerification: access.signedIn && !access.emailVerified,
   };

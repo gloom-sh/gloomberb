@@ -1,22 +1,10 @@
 import { useCallback, useMemo } from "react";
-import {
-  DELAYED_SEGMENT,
-  ChartTableHeader,
-  CompositeChart,
-  formatBpAxis,
-  MarketBoardStack,
-  PaneStatusBody,
-  type ChartTableChart,
-  type PaneFooterSegment,
-  type StatItem,
-} from "../../../components";
-import { staticSeries } from "../../../components/chart/static/series";
+import { formatBpAxis, type StatItem } from "../../../components";
 import { usePaneRefreshKey } from "../../../components/data-table/table-pane";
 import { usePaneStatusFooter } from "../../../components/layout/pane/status-footer";
 import { signedMoveColor, StatChartDetail } from "../../../components/market-board";
 import { useAsyncResource } from "../../../react/async-resource";
 import { useAutoRefresh } from "../../../react/auto-refresh";
-import { colors } from "../../../theme/colors";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
 import { formatPercentileRank } from "../../../utils/format";
@@ -24,6 +12,7 @@ import { useAssetData, usePluginPaneState } from "../../runtime";
 import { FIXED_INCOME_PANE_ID } from "../fixed-income/model";
 import { useCommandValue } from "../shared/command-tab";
 import { reportFooterSegment } from "../shared/source-footer";
+import { CreditBoardView, CreditHistoryChart, creditFooterInfo, type CreditHistoryTarget } from "./board-shared";
 import { getCachedSovrBoard, loadCurrencyMoves, loadSovrBoard } from "./client";
 import { sovrHeadless } from "./headless";
 import { readsInBatches } from "../../../market-data/batched-reads";
@@ -38,31 +27,12 @@ import {
   type SovrRow,
 } from "./model";
 
-const PANELS = [{ id: "main" }];
 const EMPTY_ROWS: SovrRow[] = [];
 const NO_MOVES = new Map<string, number | null>();
-
-function historySeries(row: SovrRow) {
-  return [staticSeries(row.sovereign.points.map((point) => ({
-    date: new Date(`${point.date}T00:00:00Z`), observedAt: new Date(`${point.date}T00:00:00Z`), value: point.level,
-  })), { id: row.id, label: `${row.label} 5Y`, color: colors.positive, calendarSpaced: true })];
-}
-
-function historyChart(row: SovrRow): ChartTableChart {
-  return {
-    series: row.sovereign.points.length >= 3 ? historySeries(row) : [],
-    formatValue: (value: number) => formatLevel("spread", value),
-    formatAxisValue: formatBpAxis,
-    remoteKind: "sovr-history",
-    empty: `No history for ${row.label}`,
-  };
-}
-
-function HistoryChart({ row, width, height, focused }: { row: SovrRow; width: number; height: number; focused: boolean }) {
-  const series = useMemo(() => historySeries(row), [row]);
-  return <CompositeChart series={series} panels={PANELS} width={width} height={height} focused={focused} showLegend={false}
-    navigable={false} showTimeAxis formatAxisValue={formatBpAxis} remoteKind="sovr-history" />;
-}
+const historyTarget = (row: SovrRow): CreditHistoryTarget => ({
+  id: row.id, label: row.label, points: row.sovereign.points, quote: "spread",
+  formatAxisValue: formatBpAxis, remoteKind: "sovr-history",
+});
 
 function SovereignDetail({ row, width, height, focused }: { row: SovrRow; width: number; height: number; focused: boolean }) {
   const { sovereign, year } = row;
@@ -76,10 +46,11 @@ function SovereignDetail({ row, width, height, focused }: { row: SovrRow; width:
     { id: "contract", label: "Contract", value: formatContract(sovereign.maturity),
       detail: `${sovereign.prints} prints, ${sovereign.reported} with spread` },
   ];
+  const target = useMemo(() => historyTarget(row), [row]);
   return (
     <StatChartDetail items={items} width={width} height={height} empty={sovereign.points.length < 3}
       emptySubject="spread history" emptyTitle="No history available."
-      renderChart={(chartHeight) => <HistoryChart row={row} width={width} height={chartHeight} focused={focused} />} />
+      renderChart={(chartHeight) => <CreditHistoryChart target={target} width={width} height={chartHeight} focused={focused} />} />
   );
 }
 
@@ -121,11 +92,7 @@ export function SovrPane({ focused, width, height }: PaneProps) {
   const sourceLine = useMemo(() => payload
     ? reportFooterSegment(sovrHeadless, { rows: payload.sovereigns.map((sovereign) => ({ date: sovereign.date })) }, { feed: false })
     : null, [payload]);
-  const info = useMemo<PaneFooterSegment[]>(() => [
-    ...(sourceLine ? [sourceLine] : []),
-    ...(payload ? [DELAYED_SEGMENT] : []),
-    ...(resource.data?.stale ? [{ id: "stale", parts: [{ text: "STALE", tone: "warning" as const }] }] : []),
-  ], [payload, sourceLine, resource.data?.stale]);
+  const info = useMemo(() => creditFooterInfo(sourceLine, !!payload, resource.data?.stale), [payload, sourceLine, resource.data?.stale]);
   usePaneStatusFooter({
     registrationId: "sovr",
     loading: loading || moves.loading,
@@ -144,23 +111,13 @@ export function SovrPane({ focused, width, height }: PaneProps) {
     }),
   }], [movesPending, theme]);
 
-  if (rows.length === 0) {
-    return (
-      <PaneStatusBody loading={loading} error={resource.error} empty={!loading && !resource.error}
-        loadingLabel="Loading sovereign CDS..." subject="Sovereign CDS" align="center" width={width} height={height} />
-    );
-  }
-
   // A country the command named that the board does not have leaves the board on its first.
   const named = selectedId ? findSovereign(payload?.sovereigns ?? [], selectedId) : null;
-  const selected = rows.find((row) => row.id === selectedId) ?? rows.find((row) => row.id === named?.id) ?? rows[0];
   return (
-    <MarketBoardStack rows={rows} width={width} height={height} focused={focused}
-      rootBefore={({ columns }) => <ChartTableHeader width={width} height={height} tableRows={rows.length}
-        tableColumns={columns} chart={selected ? historyChart(selected) : null} />}
-      selectedId={selected?.id ?? null} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
-      labelHeader="SOVEREIGN" labelWidth={18} valueLabel="5Y" valueWidth={9} changeLabel="1M" signedChange
-      extraColumns={extraColumns}
-      renderDetail={(row) => <SovereignDetail row={row} width={width} height={Math.max(5, height - 2)} focused={focused} />} />
+    <CreditBoardView rows={rows} width={width} height={height} focused={focused} loading={loading} error={resource.error}
+      loadingLabel="Loading sovereign CDS..." subject="Sovereign CDS"
+      selectedId={selectedId} namedId={named?.id} onSelectedIdChange={setSelectedId} openId={openId} onOpenIdChange={setOpenId}
+      labelHeader="SOVEREIGN" labelWidth={18} valueLabel="5Y" valueWidth={9} changeLabel="1M" extraColumns={extraColumns} historyTarget={historyTarget}
+      renderDetail={(row, detailHeight) => <SovereignDetail row={row} width={width} height={detailHeight} focused={focused} />} />
   );
 }

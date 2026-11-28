@@ -1,9 +1,10 @@
-import { afterEach, expect, test } from "bun:test";
+import { afterAll, expect, test } from "bun:test";
 import { Database } from "bun:sqlite";
+import { createSqliteAccess } from "./access";
 import { SqliteDatabase } from "./database";
 import { createTempDbPath, removeTempDbFiles } from "../../test-support/temp-db";
 
-afterEach(removeTempDbFiles);
+afterAll(removeTempDbFiles);
 
 function synchronousLevel(connection: Database): number | undefined {
   return connection.query<{ synchronous: number }, []>("PRAGMA synchronous").get()?.synchronous;
@@ -38,6 +39,57 @@ test("commits stop flushing only where WAL took, and user data flushes on the ap
     noWal.close();
   }
 });
+
+test.concurrent("a Windows command waits out a long writer lock, but a durable write still expires at its deadline", async () => {
+  const dbPath = createTempDbPath("command-lock-wait");
+  const realWindows = process.platform === "win32";
+  const command = new SqliteDatabase(dbPath, realWindows ? {} : { commandWriteWaitMs: 600 });
+  const shortCommand = new SqliteDatabase(dbPath, { commandWriteWaitMs: 50 });
+  const source = URL.createObjectURL(new Blob([`
+    import { Database } from "bun:sqlite";
+    self.onmessage = ({ data }) => {
+      const db = new Database(data.path);
+      db.exec("BEGIN IMMEDIATE");
+      postMessage("locked");
+      const lock = new Int32Array(data.signal);
+      Atomics.wait(lock, 0, 0, data.holdMs);
+      db.exec("ROLLBACK");
+      db.close();
+      postMessage("released");
+    };
+  `], { type: "application/javascript" }));
+  const worker = new Worker(source);
+  const signal = new Int32Array(new SharedArrayBuffer(4));
+  const locked = Promise.withResolvers<void>();
+  const released = Promise.withResolvers<void>();
+  worker.onmessage = ({ data }) => (data === "locked" ? locked : released).resolve();
+  worker.onerror = (error) => locked.reject(error);
+  try {
+    command.connection.exec("CREATE TABLE command_writes (id INTEGER PRIMARY KEY)");
+    const write = (db: SqliteDatabase, id: number) => db.access.write("command write", () => {
+      db.connection.query("INSERT INTO command_writes VALUES (?)").run(id);
+    });
+    worker.postMessage({ path: dbPath, signal: signal.buffer, holdMs: realWindows ? 9_000 : 200 });
+    await locked.promise;
+    const startedAt = performance.now();
+    expect(() => write(shortCommand, 1)).toThrow(/database is locked|database is busy/i);
+    expect(performance.now() - startedAt).toBeLessThan(1_000);
+    expect(write(command, 2)).toBe(true);
+    expect(command.connection.query("SELECT id FROM command_writes").all()).toEqual([{ id: 2 }]);
+    for (const db of [shortCommand, command]) {
+      expect(db.connection.query("PRAGMA busy_timeout").get()).toEqual({ timeout: 2_000 });
+      expect(synchronousLevel(db.connection)).toBe(1);
+    }
+  } finally {
+    Atomics.store(signal, 0, 1);
+    Atomics.notify(signal, 0);
+    await Promise.race([released.promise, Bun.sleep(1_000)]);
+    worker.terminate();
+    URL.revokeObjectURL(source);
+    shortCommand.close();
+    command.close();
+  }
+}, 45_000);
 
 // A batch of quotes or a list's rows used to commit one row at a time. A
 // user write does not wait in that batch: it commits on its own.
@@ -153,5 +205,134 @@ test("in the app, a queue tick writes only its budget's worth, in order, and a l
     if (held) locker.exec("ROLLBACK");
     locker.close();
     database.close();
+  }
+});
+
+// On Windows a commit made while the checkpointer's thread flushes the WAL
+// waits for the flush to end: 1.4 to 49 s of stall reports naming a commit.
+// The app's thread commits nothing meanwhile, and what it held back lands the
+// moment the flush ends (or, should that go unannounced, a poll later).
+function holdFixture(name: string, options: { holdLimitMs?: number } = {}) {
+  const dbPath = createTempDbPath(name);
+  const connection = new Database(dbPath);
+  connection.exec("PRAGMA journal_mode=WAL");
+  connection.exec("PRAGMA synchronous=NORMAL");
+  connection.exec("CREATE TABLE rows (k TEXT PRIMARY KEY)");
+  const state = { flushing: true };
+  const commits: string[] = [];
+  const access = createSqliteAccess(connection, {
+    interactive: true,
+    relaxedCommits: true,
+    holdCommits: () => state.flushing,
+    onCommit: (kind) => { commits.push(kind); },
+    ...options,
+  });
+  const observer = new Database(dbPath, { readonly: true });
+  const committed = () => observer.query<{ k: string }, []>("SELECT k FROM rows ORDER BY k").all().map((row) => row.k);
+  const put = (k: string) => () => { connection.query("INSERT OR REPLACE INTO rows (k) VALUES (?)").run(k); };
+  return {
+    state, commits, access, committed, put, connection,
+    close: () => {
+      access.close();
+      observer.close();
+      connection.close();
+    },
+  };
+}
+
+test.concurrent("in the app, no commit is made while the WAL is being flushed, and what waited lands when the flush ends", async () => {
+  const fixture = holdFixture("hold-commits");
+  const { access, put, committed, state, commits, connection } = fixture;
+  const seen: boolean[] = [];
+  try {
+    expect(access.writeCache("cache", put("cache"))).toBe(true);
+    expect(access.write("user", () => { seen.push(connection.inTransaction); put("user")(); })).toBe(false);
+    // Past several polls: the cache's batch is still open and the user write is queued.
+    await Bun.sleep(350);
+    expect(committed()).toEqual([]);
+    expect(commits).toEqual([]);
+    expect(access.flush()).toBe(false);
+
+    state.flushing = false;
+    access.resume();
+    await Bun.sleep(30);
+    expect(committed()).toEqual(["cache", "user"]);
+    // The cache's batch was committed first, so the user write ran on its own.
+    expect(seen).toEqual([false]);
+    expect(commits).toEqual(["cache", "user"]);
+    expect(access.flush()).toBe(true);
+  } finally {
+    fixture.close();
+  }
+});
+
+test.concurrent("in the app, held commits go ahead on their own when the end of a flush goes unannounced", async () => {
+  const fixture = holdFixture("hold-poll");
+  const { access, put, committed, state } = fixture;
+  try {
+    access.writeCache("cache", put("cache"));
+    access.write("user", put("user"));
+    state.flushing = false;
+    await Bun.sleep(400);
+    expect(committed()).toEqual(["cache", "user"]);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("in the app, a replacement queued during a WAL flush runs after earlier writes when the queue resumes", async () => {
+  const fixture = holdFixture("hold-order");
+  const { access, put, committed, commits, state, connection } = fixture;
+  const ran: string[] = [];
+  const write = (key: string, value: string) => () => {
+    ran.push(`${key}=${value}`);
+    put(`${key}=${value}`)();
+  };
+  try {
+    expect(access.write("first", write("a", "1"), { key: "a" })).toBe(false);
+    expect(access.write("second", write("b", "1"), { key: "b" })).toBe(false);
+    expect(access.write("again", write("a", "2"), { key: "a" })).toBe(false);
+    expect(ran).toEqual([]);
+    state.flushing = false;
+    access.resume();
+    const deadline = performance.now() + 3_000;
+    while (commits.length < 2 && performance.now() < deadline) await Bun.sleep(10);
+    expect(ran, "writes after resuming the WAL queue").toEqual(["b=1", "a=2"]);
+    expect(committed()).toEqual(["a=2", "b=1"]);
+    expect(connection.inTransaction).toBe(false);
+  } finally {
+    fixture.close();
+  }
+});
+
+// A flush that lasts seconds is waited out; one that never ends (a thread
+// the checkpointer gave up on) must not keep the user's writes back for good.
+test.concurrent("in the app, commits are held for a flush only up to the limit", async () => {
+  const fixture = holdFixture("hold-limit", { holdLimitMs: 150 });
+  const { access, put, committed } = fixture;
+  try {
+    access.write("user", put("user"));
+    await Bun.sleep(50);
+    expect(committed()).toEqual([]);
+    await Bun.sleep(400);
+    expect(committed()).toEqual(["user"]);
+    // Past the limit this flush no longer holds anything back.
+    access.write("later", put("later"));
+    expect(committed()).toEqual(["later", "user"]);
+  } finally {
+    fixture.close();
+  }
+});
+
+test("in the app, closing writes what a flush held back", () => {
+  const fixture = holdFixture("hold-close");
+  const { access, put, committed } = fixture;
+  try {
+    access.writeCache("cache", put("cache"));
+    access.write("user", put("user"));
+    access.close();
+    expect(committed()).toEqual(["cache", "user"]);
+  } finally {
+    fixture.close();
   }
 });

@@ -91,26 +91,16 @@ function markMissing<T>(
   return changed ? next : null;
 }
 
-function setAnalystValues(
-  current: SupplementalState,
-  entries: Array<readonly [string, AnalystResearchData | null]>,
-): SupplementalState {
-  const analystResearch = new Map(current.analystResearch);
-  for (const [symbol, data] of entries) {
-    analystResearch.set(symbol, data);
-  }
-  return { ...current, analystResearch, version: current.version + 1 };
-}
+type SymbolMapKey = "analystResearch" | "corporateActions";
 
-function setCorporateValues(
+function mergeSupplementalEntries<K extends SymbolMapKey>(
   current: SupplementalState,
-  entries: Array<readonly [string, CorporateActionsData | null]>,
+  field: K,
+  entries: Array<readonly [string, SupplementalState[K] extends Map<string, infer V> ? V : never]>,
 ): SupplementalState {
-  const corporateActions = new Map(current.corporateActions);
-  for (const [symbol, data] of entries) {
-    corporateActions.set(symbol, data);
-  }
-  return { ...current, corporateActions, version: current.version + 1 };
+  const next = new Map(current[field] as Map<string, unknown>);
+  for (const [symbol, data] of entries) next.set(symbol, data);
+  return { ...current, [field]: next, version: current.version + 1 };
 }
 
 function setEarningsValues(
@@ -136,8 +126,10 @@ function setEarningsValues(
   return { ...current, earningsEvents, version: current.version + 1 };
 }
 
-function useAnalystSupplemental(
-  provider: DataProvider | null | undefined,
+function useBatchedSupplemental<K extends SymbolMapKey, T>(
+  field: K,
+  fetchItem: ((symbol: string, exchange: string) => Promise<T>) | undefined,
+  errorLabel: string,
   targets: SupplementalTarget[],
   enabled: boolean,
   state: SupplementalState,
@@ -146,24 +138,25 @@ function useAnalystSupplemental(
   const inFlightRef = useRef(new Set<string>());
   const mountedRef = useMountedRef();
   const targetsKey = targetKey(targets);
+  const currentMap = state[field] as Map<string, T | null>;
 
   useEffect(() => {
     if (!enabled || targets.length === 0) return;
-    if (!provider?.getAnalystResearch) {
+    if (!fetchItem) {
       setState((current) => {
-        const missing = markMissing(targets, current.analystResearch);
-        return missing ? { ...current, analystResearch: missing, version: current.version + 1 } : current;
+        const missing = markMissing(targets, current[field] as Map<string, T | null>);
+        return missing ? { ...current, [field]: missing, version: current.version + 1 } : current;
       });
       return;
     }
 
-    const batch = pickMissingBatch(targets, state.analystResearch, inFlightRef.current);
+    const batch = pickMissingBatch(targets, currentMap, inFlightRef.current);
     if (batch.length === 0) return;
     for (const target of batch) inFlightRef.current.add(target.symbol);
 
     Promise.all(batch.map(async (target) => {
       try {
-        const data = await provider.getAnalystResearch!(target.symbol, target.exchange);
+        const data = await fetchItem(target.symbol, target.exchange);
         return [target.symbol, data] as const;
       } catch {
         return [target.symbol, null] as const;
@@ -171,49 +164,9 @@ function useAnalystSupplemental(
         inFlightRef.current.delete(target.symbol);
       }
     })).then((entries) => {
-      if (mountedRef.current) setState((current) => setAnalystValues(current, entries));
-    }).catch(logFailure("portfolio-list.pane.supplemental", "Apply analyst research failed"));
-  }, [enabled, mountedRef, provider, setState, state.analystResearch, targetsKey]);
-}
-
-function useCorporateSupplemental(
-  provider: DataProvider | null | undefined,
-  targets: SupplementalTarget[],
-  enabled: boolean,
-  state: SupplementalState,
-  setState: Dispatch<SetStateAction<SupplementalState>>,
-) {
-  const inFlightRef = useRef(new Set<string>());
-  const mountedRef = useMountedRef();
-  const targetsKey = targetKey(targets);
-
-  useEffect(() => {
-    if (!enabled || targets.length === 0) return;
-    if (!provider?.getCorporateActions) {
-      setState((current) => {
-        const missing = markMissing(targets, current.corporateActions);
-        return missing ? { ...current, corporateActions: missing, version: current.version + 1 } : current;
-      });
-      return;
-    }
-
-    const batch = pickMissingBatch(targets, state.corporateActions, inFlightRef.current);
-    if (batch.length === 0) return;
-    for (const target of batch) inFlightRef.current.add(target.symbol);
-
-    Promise.all(batch.map(async (target) => {
-      try {
-        const data = await provider.getCorporateActions!(target.symbol, target.exchange);
-        return [target.symbol, data] as const;
-      } catch {
-        return [target.symbol, null] as const;
-      } finally {
-        inFlightRef.current.delete(target.symbol);
-      }
-    })).then((entries) => {
-      if (mountedRef.current) setState((current) => setCorporateValues(current, entries));
-    }).catch(logFailure("portfolio-list.pane.supplemental", "Apply corporate actions failed"));
-  }, [enabled, mountedRef, provider, setState, state.corporateActions, targetsKey]);
+      if (mountedRef.current) setState((current) => mergeSupplementalEntries(current, field, entries as never));
+    }).catch(logFailure("portfolio-list.pane.supplemental", errorLabel));
+  }, [currentMap, enabled, errorLabel, fetchItem, field, mountedRef, setState, targetsKey]);
 }
 
 function useEarningsSupplemental(
@@ -293,8 +246,17 @@ export function usePortfolioSupplementalData(
   const needsCorporate = appActive && (allCorporate || dividendYield);
   const needsEarnings = appActive && needsAnyColumn(columns, EARNINGS_COLUMN_IDS);
 
-  useAnalystSupplemental(provider, targets, needsAnalyst, state, setState);
-  useCorporateSupplemental(provider, corporateTargets, needsCorporate, state, setState);
+  const getAnalyst = useMemo(
+    () => provider?.getAnalystResearch ? (symbol: string, exchange: string) => provider.getAnalystResearch!(symbol, exchange) : undefined,
+    [provider],
+  );
+  const getCorporate = useMemo(
+    () => provider?.getCorporateActions ? (symbol: string, exchange: string) => provider.getCorporateActions!(symbol, exchange) : undefined,
+    [provider],
+  );
+
+  useBatchedSupplemental("analystResearch", getAnalyst, "Apply analyst research failed", targets, needsAnalyst, state, setState);
+  useBatchedSupplemental("corporateActions", getCorporate, "Apply corporate actions failed", corporateTargets, needsCorporate, state, setState);
   useEarningsSupplemental(provider, targets, needsEarnings, state, setState);
 
   return state;

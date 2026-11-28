@@ -1,6 +1,5 @@
 import { useCallback, useMemo, useRef } from "react";
 import { isAccessDenied } from "../../../api-client/errors";
-import { usePlanAccess } from "../../../api-client/plan-access";
 import type { AwardAggregate, AwardCompanyLeader, AwardFilter, AwardRow, AwardType, AwardsPayload } from "../../../api-client/awards";
 import { Badge, ChartTableHeader, DataTableView, Notice, PageStackView, PaneStatusBody, QueryBar, useChartTableSelection, usePagedRows,
   usePaneNoticeFooter, usePaneStatusFooter, usePaneTabs, useQueryBarSearch, useTableLoadMore, type DataTableColumn, type PaneHint, type QueryBarFilter } from "../../../components";
@@ -11,22 +10,23 @@ import { useAsyncResource, useAutoRefresh, usePaneSettingValue, usePluginAppActi
 import { usePaneTickerIdentity } from "../../../state/hooks/pane-ticker";
 import { useThemeColors } from "../../../theme/theme-context";
 import type { PaneProps } from "../../../types/plugin";
-import { Box, Text, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
+import { Box, TextAttributes, useRendererHost, useUiCapabilities, type ScrollBoxRenderable } from "../../../ui";
 import { withCountryFlag } from "../../../components/ui/country-flag";
+import { dayCell } from "../../../components/ui/day-cell";
 import { publicTickerKey } from "../../../utils/exchanges";
-import { MISSING_VALUE, truncateToDisplayWidth } from "../../../utils/format";
+import { truncateToDisplayWidth } from "../../../utils/format";
 import { wrapTextLines } from "../../../utils/text-wrap";
 import { SignInWall } from "../cloud/auth-actions";
 import { CLOUD_PLAN_KEY, useCloudUpgradeAction } from "../shared/cloud-upgrade";
-import { useOpenDescription } from "../shared/open-description";
-import { Blurred, LockedOverlay, UpgradeLabel } from "../shared/locked-rows";
+import { useTickerJumpHints } from "../shared/open-description";
+import { lockedTableCell, lockedTableOverlay } from "../shared/locked-rows";
 import { isCloudSessionRequired, useResearchCloudSession } from "../shared/research-cloud-session";
 import { AwardDetail } from "./detail";
 import { useAwardAlerts } from "./alerts";
 import { AWARDS_UNAVAILABLE, fetchAwards, loadAward, loadAwards, validateAwards } from "./client";
 import { useAwardsEvidence } from "./evidence";
-import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
-  awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT } from "./model";
+import { AWARD_TABS, aggregateId, amountWithheld, awardHistorySeries, awardPercent, awardPeriod, awardPeriodValue, awardsAmountNotices, awardsAttributions, awardScope, awardsCoverageNotes, awardsPreviewNote,
+  awardAmountLabel, awardsQueryShared, awardTab, awardTypeLabel, futureAwardDatesNote, money, rankedAggregates, WITHHELD_AMOUNT, type AwardsQueryShared } from "./model";
 import { logFailure } from "../../../utils/log-failure";
 
 type Item = { kind: "award"; row: AwardRow } | { kind: "aggregate"; row: AwardAggregate } | { kind: "leader"; row: AwardCompanyLeader } | { kind: "locked"; id: string }
@@ -51,7 +51,7 @@ const COLUMN = {
   ticker: { id: "ticker", label: "Ticker", width: 10, align: "left" }, currency: { id: "currency", label: "CCY", width: 5, align: "left" },
   value: { id: "value", label: "Value", width: 11, align: "right", omitWhenEmpty: true }, obligated: { id: "obligated", label: "Obligated", width: 11, align: "right", omitWhenEmpty: true },
   ceiling: { id: "ceiling", label: "Ceiling", width: 11, align: "right", omitWhenEmpty: true }, agency: { id: "agency", label: "Agency", width: 24, align: "left" },
-  country: { id: "country", label: "Country", width: 8, align: "left" }, period: { id: "period", label: "Performance period", width: 24, align: "left" },
+  country: { id: "country", label: "Country", width: 8, align: "left" }, period: { id: "period", label: "Performance period", width: 25, align: "left" },
   title: { id: "title", label: "Contract", width: 36, flexGrow: 1, align: "left" },
   dateBasis: { id: "dateBasis", label: "Date basis", width: 14, align: "left" },
 } satisfies Record<string, DataTableColumn>;
@@ -63,6 +63,25 @@ const COLUMN = {
 const FEED_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker, COLUMN.title, COLUMN.agency, COLUMN.currency,
   ...[COLUMN.value, COLUMN.obligated, COLUMN.ceiling].map((column) => ({ ...column, omitWhenEmpty: "visible" as const })),
   COLUMN.country, COLUMN.period, COLUMN.dateBasis];
+/**
+ * The feed's columns, leaving out of the table what every award of the query
+ * shares: the ticker it is filtered to, its one currency, named in the
+ * amounts' headers instead, and its one country. A date basis the whole list
+ * shares, all of it loaded, goes too. The export keeps every column.
+ */
+function feedColumns(shared: AwardsQueryShared, complete: boolean): DataTableColumn[] {
+  return FEED_COLUMNS.map((column) => {
+    if (column.id === "ticker" && shared.ticker || column.id === "currency" && shared.currency || column.id === "country" && shared.country) return { ...column, omitWhenSame: true };
+    if (column.id === "value" || column.id === "obligated" || column.id === "ceiling") return { ...column, label: awardAmountLabel(column.label, shared.currency) };
+    return column.id === "dateBasis" && complete ? { ...column, omitWhenSame: true } : column;
+  });
+}
+/**
+ * What a narrow desktop pane gives up first: how the date was read and the
+ * period, then the agency and the contract's wording, which the award's detail
+ * holds. Who won, when and how much stay.
+ */
+const COLUMN_DROP_ORDER = ["dateBasis", "period", "agency", "title", "country"] as const;
 const EVENT_COLUMNS: DataTableColumn[] = [COLUMN.date, COLUMN.recipient, COLUMN.ticker,
   { id: "ratio", label: "% revenue", width: 11, align: "right" }, COLUMN.currency, { ...COLUMN.value, label: "Compared value" },
   { id: "revenue", label: "Annual revenue", width: 14, align: "right" }, { id: "basis", label: "Value basis", width: 13, align: "left" },
@@ -86,11 +105,11 @@ export function AwardsPane(props: PaneProps) {
 function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: string | null }) {
   const colors = useThemeColors(), host = useRendererHost();
   const desktop = !!useUiCapabilities().nativePaneChrome;
-  const session = useResearchCloudSession(), access = usePlanAccess();
-  const accessKey = `${session.requestKey}:${access.hasProAccess ? "full" : "preview"}`;
+  const session = useResearchCloudSession();
+  const { accessKey } = session;
   const openUpgrade = useCloudUpgradeAction("awards");
   const { createPaneFromTemplate } = usePluginAppActions();
-  const openDescription = useOpenDescription();
+  const tickerJumpHints = useTickerJumpHints();
   const [initialTab] = usePaneSettingValue("tab", symbol ? "company" : "feed");
   const [savedTab, setTab] = usePluginPaneState<string>("awards:tab", initialTab);
   const tab = awardTab(savedTab);
@@ -179,10 +198,8 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
   const hints: PaneHint[] = [
     ...(current ? [{ id: "source", key: "o", label: "pen source", onPress: () => void host.openExternal(current.sourceUrl) }] : []),
     ...(current && !openId ? [{ id: "evidence", key: "e", label: "vidence", onPress: () => setOpen(current.id) }] : []),
+    ...tickerJumpHints(selectedEntity?.ticker, { exchange: selectedEntity?.exchange ?? undefined, ids: { graph: "graph" } }),
     ...(selectedEntity ? [
-      { id: "description", key: "d", label: "es", onPress: () => openDescription(selectedEntity.ticker, selectedEntity.exchange ?? undefined) },
-      { id: "financials", key: "f", label: "a", onPress: () => navigate("financial-analysis-pane") },
-      { id: "graph", key: "g", label: "raph", onPress: () => navigate("chart-composer-pane") },
       { id: "supply", key: "s", label: "plc", onPress: () => navigate("supply-chain-pane") },
       { id: "calendar", key: "c", label: "alendar", onPress: () => navigate("earnings-calendar-pane") },
     ] : []),
@@ -223,7 +240,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
     view={tab === "sectors" ? { value: leaderView, options: [{ value: "companies", label: "Companies" }, { value: "sectors", label: "Sectors" }], onChange: setLeaderView } : undefined} />;
   const columns = showLeaders ? LEADER_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency")
     : aggregated ? AGG_COLUMNS.filter((column) => column.id !== "scope" && column.id !== "currency").map((column) => column.id === "label" ? { ...column, label: tab === "agencies" ? "Agency" : "Sector" } : column)
-    : tab === "events" ? EVENT_COLUMNS : FEED_COLUMNS;
+    : tab === "events" ? EVENT_COLUMNS : feedColumns(awardsQueryShared(data, filter), !paged.hasMore);
   const maxShare = Math.max(0, ...items.map((item) => item.kind === "aggregate" || item.kind === "leader" ? item.row.sharePercent ?? 0 : 0));
   // A preview's cohorts are the latest of any company, so they never chart as the ticker's.
   const charted = data?.locked ? [] : series;
@@ -238,7 +255,7 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
         detailContent={openRow ? <AwardDetail key={openRow.id} row={openRow} accessKey={accessKey} width={width} height={bodyHeight - 1} focused={focused} openAward={setOpen} openUpgrade={openUpgrade} attribution={openAttribution} amountNotice={openAmountNotice}
           openChildren={(type) => { setParentId(openRow.id); setTicker(""); setSource(""); setQuery(""); setAgency(""); setSector(""); setCurrency(""); setJurisdiction(""); setRange("all"); setType(type); setOpen(null); setTab("feed"); }} />
           : <PaneStatusBody loading={detail.loading} error={detail.error} empty={!detail.loading && !detail.error} emptyTitle="Award no longer available." subject="award evidence" />}
-        rootContent={<DataTableView<Item> columns={columns} items={tab === "company" && !ticker ? [] : items} rootWidth={width} rootHeight={bodyHeight}
+        rootContent={<DataTableView<Item> columns={columns} columnDropOrder={COLUMN_DROP_ORDER} items={tab === "company" && !ticker ? [] : items} rootWidth={width} rootHeight={bodyHeight}
           // A filter change loads under the query bar, which stays.
           status={data ? undefined : { loading: paged.loading, error: failed?.message !== AWARDS_UNAVAILABLE ? failed?.message : null,
             empty: failed?.message === AWARDS_UNAVAILABLE, emptyTitle: AWARDS_UNAVAILABLE, subject: "government awards" }}
@@ -257,9 +274,17 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
           renderCell={(item, column, _index, state) => {
             if (item.kind === "section" || item.kind === "note") return { text: "" };
             if (item.kind === "locked") {
-              if (!desktop && ["recipient", "label"].includes(column.id) && item.id === "locked:0") return { text: "Upgrade for full awards", content: <UpgradeLabel text="Upgrade for full awards" onPress={openUpgrade} />, onMouseDown: openUpgrade };
-              return desktop ? { text: "", content: <Blurred><Text fg={colors.textDim}>{["recipient", "label"].includes(column.id) ? "Additional award" : "Hidden"}</Text></Blurred> }
-                : { text: "░".repeat(Math.min(7, column.width - 1)), color: colors.textDim };
+              const isLabel = ["recipient", "label"].includes(column.id);
+              return lockedTableCell({
+                desktop,
+                isLabelCell: isLabel && item.id === "locked:0",
+                upgradeText: "Upgrade for full awards",
+                blurText: isLabel ? "Additional award" : "Hidden",
+                shadeText: "░".repeat(Math.min(7, column.width - 1)),
+                onUpgrade: openUpgrade,
+                onMouseDown: openUpgrade,
+                dimColor: colors.textDim,
+              });
             }
             const row = item.row;
             if (column.id === "currency") return { text: row.currency, color: colors.textDim };
@@ -279,22 +304,22 @@ function AwardsView({ width, height, focused, symbol }: PaneProps & { symbol: st
                 : { ...shareCell(`${item.row.sharePercent.toFixed(1)}%`, maxShare ? item.row.sharePercent / maxShare : null, column.width, colors, state.selected), value: item.row.sharePercent };
             }
             const award = item.row;
-            if (column.id === "date") return { text: award.awardDate, value: award.awardDate };
+            if (column.id === "date") return dayCell(award.awardDate);
             if (column.id === "dateBasis") return { text: award.dateBasis === "period-start" ? "Period start" : award.dateBasis === "publication" ? "Publication" : "Award date", color: colors.textDim };
             if (column.id === "recipient") return { text: award.recipient.name, color: colors.textBright };
             if (column.id === "ticker") return award.entity ? { text: award.entity.ticker, content: <Badge label={award.entity.ticker} /> } : missingCell(colors);
             if (column.id === "agency") return { text: award.agency.name, color: colors.text };
             // The column has room for the flag beside a code.
             if (column.id === "country") return withCountryFlag({ text: award.jurisdiction, color: colors.textDim }, award.jurisdiction, desktop);
-            if (column.id === "period") return { text: awardPeriod(award), color: colors.textDim };
+            if (column.id === "period") return { text: awardPeriod(award), value: awardPeriodValue(award), color: colors.textDim };
             if (column.id === "title") return { text: award.title, color: colors.text };
             if (column.id === "ratio") return { text: awardPercent(award), value: award.revenueComparison?.percent ?? null, color: colors.warning, attributes: TextAttributes.BOLD, keepColorWhenSelected: true };
             if (column.id === "revenue") return { text: money(award.revenueComparison?.annualRevenue), value: award.revenueComparison?.annualRevenue ?? null };
             if (column.id === "basis") return { text: award.revenueComparison?.basis === "obligated" ? "Obligated" : "Award value", color: colors.textDim };
-            return { text: award.revenueComparison?.periodEnd ?? MISSING_VALUE, color: colors.textDim };
+            return { ...dayCell(award.revenueComparison?.periodEnd), color: colors.textDim };
           }}
           emptyStateTitle={tab === "company" && !ticker ? "Enter a company ticker." : tab === "events" ? "No revenue-comparable awards in this scope." : "No awards match these filters."}
           rootAfter={attribution ? <Box paddingX={1} height={attributionRows} flexShrink={0}><Notice tone="muted">{attribution}</Notice></Box> : undefined}
-          bodyAfter={data?.locked && desktop ? <LockedOverlay rows={3} text="Upgrade for complete awards and history" onPress={openUpgrade} /> : undefined} />} />
+          bodyAfter={lockedTableOverlay(data?.locked ? 3 : 0, desktop, "Upgrade for complete awards and history", openUpgrade)} />} />
   </Box>;
 }
