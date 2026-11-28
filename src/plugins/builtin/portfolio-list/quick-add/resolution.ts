@@ -1,4 +1,5 @@
 import { logFailure } from "../../../../utils/log-failure";
+import { foldTypedText, hasNonLatinLetters } from "../../../../utils/typed-text";
 import { getSharedRegistry } from "../../../registry";
 import {
   AmbiguousContractError,
@@ -6,6 +7,9 @@ import {
   resolveTickerSearch,
   type ResolvedTickerSearch,
 } from "../../../../tickers/search";
+import { findListingOfCompanyName, isCompanyNameInput } from "../../../../tickers/company-name-listing";
+import { readExactJapaneseName, readJapaneseName, type JapaneseNameReading } from "../../../../tickers/search/japanese-names";
+import type { DataProvider } from "../../../../types/data-provider";
 import type { Quote } from "../../../../types/financials";
 import type { TickerRecord } from "../../../../types/ticker";
 import { canonicalExchange, parsePublicTickerKey, publicTickerKey } from "../../../../utils/exchanges";
@@ -32,7 +36,8 @@ const QUICK_ADD_MAX_QUERY_LENGTH = 32;
  * pair's and a future's listing (EURUSD=X, CL=F), `^` an index (^GSPC), a
  * colon the venue (SAN:EPA), and `&` is in some symbols (M&M.NS).
  */
-const QUICK_ADD_SYMBOL_RE = /^[A-Z0-9^][A-Z0-9.\-/=^:&\s]*$/;
+const QUICK_ADD_SYMBOL_RE = /^[A-Z0-9^][A-Z0-9.\-/=^:&\s]*$/i;
+const QUICK_ADD_NAME_RE = /^\p{L}[\p{L}\p{M}\p{N}\s.&'’·・-]*$/u;
 /** What a refusal says the row takes. */
 export const QUICK_ADD_REFUSAL = "Type a ticker (AAPL, EURUSD=X, ^GSPC) or a list";
 /** The separators a pasted list carries; a typed line of symbols has spaces. */
@@ -62,7 +67,7 @@ export type QuickAddValidation =
   | (ResolvedQuickAdd & { status: "ready" })
   | (ResolvedQuickAdd & { status: "duplicate" })
   /** The symbol names several listings and none is the default: the add row asks which. */
-  | { status: "choose"; query: string }
+  | { status: "choose"; query: string; listings?: JapaneseNameReading["listings"] }
   | { status: "missing"; query: string; message: string }
   | { status: "error"; query: string; message: string }
   /**
@@ -78,7 +83,8 @@ export type QuickAddEntryValidation = Exclude<QuickAddValidation, { status: "idl
 export const IDLE_VALIDATION: QuickAddValidation = { status: "idle", query: "" };
 
 export function normalizeQuickAddQuery(value: string): string {
-  return value.replace(/^\s*\$/, "").trim().toUpperCase().replace(/\s+/g, " ");
+  const query = foldTypedText(value).replace(/^\s*\$/, "").trim().replace(/\s+/g, " ");
+  return QUICK_ADD_SYMBOL_RE.test(query) ? query.toUpperCase() : query;
 }
 
 /**
@@ -87,7 +93,8 @@ export function normalizeQuickAddQuery(value: string): string {
  * company's name or as the symbols it holds.
  */
 export function mayBeQuickAddList(value: string): boolean {
-  return QUICK_ADD_LIST_SEPARATOR.test(value) || /\S\s+\S/.test(value.trim());
+  const folded = foldTypedText(value);
+  return QUICK_ADD_LIST_SEPARATOR.test(folded) || isCompanyNameInput(folded);
 }
 
 /**
@@ -119,7 +126,7 @@ export async function readQuickAddEntries(
   value: string,
   memo: QuickAddListMemo = createQuickAddListMemo(),
 ): Promise<{ entries: string[]; total: number }> {
-  const split = splitSymbolArgs([value], { phrases: true });
+  const split = splitSymbolArgs([foldTypedText(value)], { phrases: true });
   const kept = split.slice(0, QUICK_ADD_LIST_MAX);
   const unread = [...new Set(kept.filter((entry) => !memo.read.has(entry)))];
   if (unread.length > 0) {
@@ -131,10 +138,34 @@ export async function readQuickAddEntries(
   return { entries: read.slice(0, QUICK_ADD_LIST_MAX), total: Math.max(split.length, read.length) };
 }
 
-export function isPlausibleTickerQuery(query: string): boolean {
+export function isPlausibleListingQuery(query: string): boolean {
   return query.length > 0
     && query.length <= QUICK_ADD_MAX_QUERY_LENGTH
-    && QUICK_ADD_SYMBOL_RE.test(query);
+    && (QUICK_ADD_SYMBOL_RE.test(query) || QUICK_ADD_NAME_RE.test(query));
+}
+
+async function resolveQuickAddListing(query: string, tickers: Map<string, TickerRecord>, dataProvider: DataProvider) {
+  const search = (value: string) => resolveTickerSearch({ query: value, activeTicker: null, tickers, dataProvider });
+  if (QUICK_ADD_SYMBOL_RE.test(query)) return search(query);
+
+  const searchJapanese = (reading: JapaneseNameReading) => {
+    if (reading.total > 1) {
+      throw new AmbiguousTickerError(query, reading.listings.map(({ key }) => key),
+        Object.fromEntries(reading.listings.map(({ key, name }) => [key, name])));
+    }
+    return search(reading.listings[0]!.key);
+  };
+  const native = hasNonLatinLetters(query);
+  const japanese = native ? await readJapaneseName(query) : null;
+  if (japanese) return searchJapanese(japanese);
+
+  const exact = await search(query);
+  if (exact) return exact;
+  const named = await findListingOfCompanyName(dataProvider, query, { oneWord: !isCompanyNameInput(query), quoted: true });
+  if (named) return search(publicTickerKey(named.symbol, named.exchange));
+
+  const kanji = native ? await readExactJapaneseName(query) : null;
+  return kanji ? searchJapanese(kanji) : null;
 }
 
 function tickerBelongsToCollection(
@@ -228,7 +259,7 @@ export async function resolveQuickAddValidation({
   financials: Map<string, { quote?: Quote | null }>;
 }): Promise<QuickAddValidation> {
   if (!query) return IDLE_VALIDATION;
-  if (!isPlausibleTickerQuery(query)) {
+  if (!isPlausibleListingQuery(query)) {
     return { status: "missing", query, message: QUICK_ADD_REFUSAL };
   }
 
@@ -240,12 +271,7 @@ export async function resolveQuickAddValidation({
   const changes = startTickerChangeLookup(registry.marketData, query);
 
   try {
-    const found = await resolveTickerSearch({
-      query,
-      activeTicker: null,
-      tickers,
-      dataProvider: registry.marketData,
-    });
+    const found = await resolveQuickAddListing(query, tickers, registry.marketData);
     if (!found) {
       const payload = await changes.settle();
       const line = tickerChangeLine(describeTickerChange(query, payload, null)) ?? describeFormerIssuer(query, payload, null)?.note;
@@ -291,7 +317,11 @@ export async function resolveQuickAddValidation({
     };
   } catch (error) {
     if (error instanceof AmbiguousTickerError && !(error instanceof AmbiguousContractError)) {
-      return { status: "choose", query };
+      return QUICK_ADD_SYMBOL_RE.test(query) ? { status: "choose", query } : {
+        status: "choose",
+        query,
+        listings: error.listings.map((key) => ({ key, name: error.listingNames[key] ?? "" })),
+      };
     }
     return { status: "error", query, message: isProviderBusy(error) ? "Search is busy" : "Ticker lookup failed" };
   }
