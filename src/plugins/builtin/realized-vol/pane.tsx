@@ -27,7 +27,7 @@ import { coneWindowDate } from "./chart-model";
 import type { RealizedVolEvidenceStatus } from "./evidence";
 import { DEFAULT_WINDOWS, ESTIMATOR_OPTIONS, selectedWindows } from "./settings";
 import { priceSeriesUnit } from "../../../market-data/market/index-level";
-import { fxVolatilityPair } from "../../../market-data/options-alternatives";
+import { currentIvCoverageNote, fxVolatilityPair } from "../../../market-data/options-alternatives";
 import { fxProxyChain, fxProxyChainLabel, fxProxyIvLessRv, fxProxyLabel, fxProxyNote, loadFxVolProxy } from "./fx-proxy";
 
 /** In session, while visible, the current ATM IV reference re-reads its expiry this often. */
@@ -75,6 +75,8 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     return snapshot;
   }, [instrumentKey]);
   const quote = financials?.quote;
+  const ivCoverage = showIv && instrument ? currentIvCoverageNote(instrument.symbol,
+    instrument.exchange || quote?.listingExchangeName || quote?.exchangeName) : null;
   const quoteRef = useRef(quote);
   quoteRef.current = quote;
   const spotAvailable = !!quote && Number.isFinite(quote.price) && quote.price > 0 && !quote.stale;
@@ -97,10 +99,10 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const history = useAsyncResource(scope && instrument ? historyLoader : null, {
     savedCopy: scope && !instrument?.instrument ? { key: ["realized-volatility-history", scope, instrumentKey] } : null,
   });
-  const loadedIv = useAsyncResource(instrument && showIv && spotAvailable && !fxPair ? ivLoader : null);
+  const loadedIv = useAsyncResource(instrument && showIv && spotAvailable && !fxPair && !ivCoverage ? ivLoader : null);
   const proxy = useAsyncResource(instrument && showIv && fxPair ? proxyLoader : null);
   useEffect(() => () => historyController.current?.abort(), [historyLoader]);
-  useEffect(() => () => ivController.current?.abort(), [ivLoader, showIv]);
+  useEffect(() => () => ivController.current?.abort(), [ivLoader, showIv, ivCoverage]);
   useEffect(() => () => proxyController.current?.abort(), [proxyLoader, showIv]);
   useAutoRefresh(history.updatedAt, history.load);
   useAutoRefresh(loadedIv.updatedAt, loadedIv.load);
@@ -128,9 +130,9 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     if (!controller.signal.aborted) setRefreshedIv({ owner, at: Date.now(), data });
   }, [ivLoader]);
   const refreshedCurrent = refreshedIv?.owner === ivLoader && refreshedIv.at > (loadedIv.updatedAt ?? 0) ? refreshedIv.data : null;
-  const iv = { ...loadedIv, data: refreshedCurrent ?? loadedIv.data };
+  const iv = { ...loadedIv, data: ivCoverage ? null : refreshedCurrent ?? loadedIv.data };
   ivDataRef.current = iv.data;
-  const ivRefresh = useLiveSessionRefresh(refreshIv, ATM_IV_REFRESH_MS, showIv && spotAvailable && !fxPair && !!iv.data?.reference && !loadedIv.loading,
+  const ivRefresh = useLiveSessionRefresh(refreshIv, ATM_IV_REFRESH_MS, showIv && spotAvailable && !fxPair && !ivCoverage && !!iv.data?.reference && !loadedIv.loading,
     loadedIv.updatedAt);
   const proxyData = showIv && fxPair ? proxy.data ?? null : null;
   // The proxy's IV30 is a dated close: drawn on its session, as the ATM IV is on its observation.
@@ -144,9 +146,9 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
   const chartInput = useMemo(() => model ? { history: model.history, rolling: model.series, windows: model.windows,
     priceUnit: priceSeriesUnit(quote?.currency ?? "", quote?.instrumentType, quote?.priceBasis), iv: showIv ? iv.data?.reference ?? proxyPoint : null } : null,
   [model, quote?.currency, quote?.instrumentType, quote?.priceBasis, showIv, iv.data, proxyPoint?.value, proxyPoint?.label, proxyPoint?.date.getTime()]);
-  const notices = [identityError, history.error, history.data?.error, iv.error, ivRefresh.error, iv.data?.error,
+  const notices = [identityError, history.error, history.data?.error, ivCoverage, iv.error, ivRefresh.error, iv.data?.error,
     ...(model?.warnings ?? []), model?.historyNote, model?.formingNote, ...(showIv ? iv.data?.warnings ?? [] : []),
-    ...(showIv && symbol && !spotAvailable && !fxPair ? ["Current ATM IV unavailable: underlying quote is missing or stale"] : []),
+    ...(showIv && symbol && !spotAvailable && !fxPair && !ivCoverage ? ["Current ATM IV unavailable: underlying quote is missing or stale"] : []),
     proxy.error, proxyData?.error, proxySpread.note,
   ].filter((value): value is string => !!value);
   usePaneNoticeFooter({ registrationId: "realized-vol-notices", notices: [...new Set(notices)], focused });
@@ -184,7 +186,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     role: "report-notice", label: "Chart window",
     getMetadata: () => ({ text: `Chart legend: ${legendWindow}-bar window`, key: "legendWindow", value: legendWindow }),
   } : null);
-  const ivErrors = showIv && !fxPair ? [...new Set([iv.error, ivRefresh.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null]
+  const ivErrors = showIv && !fxPair && !ivCoverage ? [...new Set([iv.error, ivRefresh.error, iv.data?.error, !iv.data?.reference ? "Current ATM IV unavailable" : null]
     .filter((value): value is string => !!value))] : [];
   const evidence: RealizedVolEvidenceStatus = {
     symbol: model?.symbol ?? symbol ?? "", view: view === "cone" ? "cone" : "graph", estimator, legendWindow,
@@ -195,6 +197,7 @@ export function RealizedVolPane({ width, height, focused }: PaneProps) {
     errors: [...new Set([history.error, history.data?.error, ...(model?.warnings ?? []), ...ivErrors]
       .filter((value): value is string => !!value))],
     ivErrors,
+    ...(ivCoverage ? { ivOutsideCoverage: true } : {}),
     currentIv: showIv && iv.data?.reference ? { value: iv.data.reference.value * 100,
       date: iv.data.reference.date.toISOString(), label: iv.data.reference.label,
       source: iv.data.reference.source, expiration: iv.data.reference.expiration } : null,

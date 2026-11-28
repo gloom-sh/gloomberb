@@ -1721,6 +1721,8 @@ export async function resolveCliListing(
      * lookup that searches for the listing itself (`resolveCliTicker`).
      */
     listingAbroad?: boolean;
+    /** Keep the venue of a bare listing already quoted or saved abroad for venue-specific coverage checks. */
+    qualifyBareAbroad?: boolean;
   } = {},
 ): Promise<CliListing> {
   // "JPM US Equity" is Bloomberg's code for JPM; "Putnam US Equity", whose root is no US ticker, is a name.
@@ -1852,6 +1854,14 @@ export async function resolveCliListing(
   const abroad = bare ? await readBareListingAbroad(resolved, deps, ownQuote) : null;
   // One whose own quote stopped trading (SOL's Emeren Group) is the company's line that still trades under it.
   const live = bare && !abroad && mayReadPastStopped(resolved, deps) ? await readPastStoppedListing(resolved, (await ownQuote(resolved.symbol)).quote, deps) : null;
+  if (options.qualifyBareAbroad && !abroad && !live && !listing.exchange && !readElse) {
+    const quote = bare && mayReadPastStopped(resolved, deps) ? (await ownQuote(resolved.symbol)).quote : null;
+    const exchange = canonicalExchange(savedExchange || quote?.listingExchangeName || quote?.exchangeName);
+    if (listingAbroadVenue(listing.symbol, exchange)) {
+      const key = `${listing.symbol}:${exchange}`;
+      return { ...resolved, key, exchange, request: { symbol: key, exchange } };
+    }
+  }
   return abroad ?? live ?? resolved;
 }
 
@@ -2510,7 +2520,7 @@ export async function requireCliListing(
   exchangeOption: string | null | undefined,
   deps: ListingDeps,
   ctx: Pick<CliCommandContext, "fail">,
-  options: { ownExchangeWins?: boolean; venueSuffix?: boolean; companyWord?: boolean; listingAbroad?: boolean } = {},
+  options: { ownExchangeWins?: boolean; venueSuffix?: boolean; companyWord?: boolean; listingAbroad?: boolean; qualifyBareAbroad?: boolean } = {},
 ): Promise<CliListing> {
   try {
     return await resolveCliListing(raw, exchangeOption, deps, options);

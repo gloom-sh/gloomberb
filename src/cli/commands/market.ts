@@ -76,7 +76,7 @@ import {
   nominalSessionLabel,
 } from "../../market-data/quotes/freshness";
 import {
-  coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, optionsUnavailableDetails, optionsUnavailableTitle,
+  coinOptionsAlternativesText, isCoinWithoutOptions, isOptionsUnavailableError, optionsListingCoverageTitle, optionsUnavailableDetails, optionsUnavailableTitle,
 } from "../../market-data/options-alternatives";
 import {
   atReportTtmRate, cliFuturesContract, futuresContractMetrics, exportedDividendFundamentals, fundamentalsReportTables, loadDividendDistributions,
@@ -4337,7 +4337,9 @@ async function runOptions(rawArgs: string[], ctx: Parameters<CliCommandDef["exec
     expirationDate = parsed;
   }
   await withMarketData(ctx, async (market) => {
-    const listing = await requireCliListing(raw, exchangeOption, market, ctx);
+    const listing = await requireCliListing(raw, exchangeOption, market, ctx, { venueSuffix: true, qualifyBareAbroad: true });
+    const refusal = optionsListingCoverageTitle(listing.key);
+    if (refusal) ctx.fail(refusal, optionsUnavailableDetails(listing.key, (symbol) => `gloom options ${symbol}`));
     const { symbol, exchange } = listing.request;
     const refresh = ctx.cliOptions.refresh;
     const venues = loadBareVenues(listing, market);

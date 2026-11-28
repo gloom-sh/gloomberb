@@ -18,7 +18,7 @@ import { loadModelDividendYield, type ModelDividendYield } from "../../../market
 import { abortable, abortError } from "../../../utils/async-deadline";
 import { extendedSession, modelSpotStamp, modelSpotStampVariants, type OptionModelSpot } from "../options/model-spot";
 import { errorMessage } from "../../../utils/errors";
-import { optionsUnavailableTitle, unservedOptionsVenue } from "../../../market-data/options-alternatives";
+import { optionsListingCoverageTitle } from "../../../market-data/options-alternatives";
 import { isTransientFailure } from "../../../api-client/errors";
 import { isTransientSourceFailure, serviceDidNotAnswerMessage } from "../../../sources/provider-errors";
 import { DATA_SERVICE_UNREACHABLE_MESSAGE, isNetworkFailure } from "../../../utils/network-failure";
@@ -102,19 +102,20 @@ export async function loadScenarioMarket(
   const options = { forceRefresh: request.forceRefresh };
   const warnings: string[] = [];
   const exchange = request.instrument.exchange;
+  const coverageTitle = !request.instrument.instrument ? optionsListingCoverageTitle(symbol, exchange) : null;
   // An expiry whose last session has closed has no chain: the default one lists the live expiries to name instead.
   const expired = request.expiration != null && !isLiveOptionExpiry(request.expiration, now, exchange);
   const settled = await abortable(Promise.allSettled([
     dependencies.loadQuote(request.instrument, options),
     dependencies.loadSnapshot(request.instrument, options),
-    dependencies.loadOptions({ instrument: request.instrument, expirationDate: expired ? undefined : request.expiration }, options),
+    coverageTitle ? null : dependencies.loadOptions({ instrument: request.instrument, expirationDate: expired ? undefined : request.expiration }, options),
     dependencies.loadYieldCurve(),
   ]), request.signal, CANCELLED);
   if (request.signal?.aborted) throw abortError(CANCELLED);
   const [quoteResult, financialsResult, chainResult, curveResult] = settled;
-  const entry = <T>(result: PromiseSettledResult<QueryEntry<T>>, label: string): QueryEntry<T> | null => {
+  const entry = <T>(result: PromiseSettledResult<QueryEntry<T> | null>, label: string): QueryEntry<T> | null => {
     if (result.status === "rejected") { warnings.push(`${label}: ${errorMessage(result.reason)}`); return null; }
-    if (result.value.error) warnings.push(`${label}: ${result.value.error.message}`);
+    if (result.value?.error) warnings.push(`${label}: ${result.value.error.message}`);
     return result.value;
   };
   const quoteEntry = entry(quoteResult, "Underlying quote");
@@ -164,7 +165,7 @@ export async function loadScenarioMarket(
     chain = chainEntry ? resolveEntryValue(chainEntry) : null;
   }
   let missingExpiry: string | undefined;
-  if (expired) {
+  if (expired && !coverageTitle) {
     missingExpiry = sentence(`expiry ${expiryIsoDate(request.expiration!)} for ${symbol} `
       + expiredExpiryText(request.expiration!, expirationDates, now, { exchange, flag: "expiration" }));
     warnings.push(missingExpiry); chain = null;
@@ -178,14 +179,14 @@ export async function loadScenarioMarket(
     warnings.push("Selected expiration unavailable in the returned options chain"); chain = null;
   }
   // A read that failed says why: a service that did not answer is asked again, a chain none lists is not.
-  const chainUnavailable = !missingExpiry && (!chain || chainEntry?.error)
-    ? chainReadFailure(symbol, request.instrument.exchange, chainRejection, chainEntry, chain != null) : undefined;
+  const chainUnavailable = coverageTitle ?? (!missingExpiry && (!chain || chainEntry?.error)
+    ? chainReadFailure(symbol, exchange, chainRejection, chainEntry, chain != null) : undefined);
   if (chainUnavailable && chainUnavailable !== noChainListed(symbol, request.instrument.exchange)) {
     // The router's "No options provider available" of a read that timed out reads as no chain at all.
     for (let index = warnings.length - 1; index >= 0; index -= 1) if (warnings[index]!.startsWith("Options chain: ")) warnings.splice(index, 1);
     warnings.push(chainUnavailable);
   }
-  if (!chain) warnings.push("Options chain unavailable");
+  if (!chain) warnings.push(coverageTitle ?? "Options chain unavailable");
   else if (chainEntry?.error || (chainEntry?.staleAt != null && chainEntry.staleAt <= now)) warnings.push("Options chain is stale");
   const rateExpiration = request.rateExpiration ?? (expired ? undefined : request.expiration) ?? expirationDates[0];
   const curve = curveResult.status === "fulfilled" ? curveResult.value : [];
@@ -242,7 +243,7 @@ function chainReadFailure(
  * them, never that none is listed.
  */
 function noChainListed(symbol: string, exchange: string | undefined): string {
-  return unservedOptionsVenue(symbol, exchange) ? optionsUnavailableTitle(symbol, exchange) : `No options chain is listed for ${symbol}.`;
+  return optionsListingCoverageTitle(symbol, exchange) ?? `No options chain is listed for ${symbol}.`;
 }
 
 /** What a strategy seed says when the market holds no current chain to seed it from. */

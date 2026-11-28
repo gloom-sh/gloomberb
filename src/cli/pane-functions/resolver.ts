@@ -278,6 +278,8 @@ export async function applyListingArgument(
   // A long list is a batch of tickers: its words cost no quote each to be read as companies' names, nor its codes
   // no source quotes to be read on their listings abroad.
   const companyWord = typed.length <= MAX_CHOICE_LOOKUPS;
+  const optionCoverage = headless?.usListingsOnly === "Options data" || headless?.usListingsOnly?.startsWith("Implied volatility") === true;
+  const qualifyBareAbroad = !!headless?.usListingsOnly || found.pane.id === "realized-vol" || found.pane.id === "options";
   let listings = named ? [named] : await Promise.all(typed.map((raw): Promise<CliListing> => {
     const series = !exchange && headless?.fredSeriesArgument ? fredSeriesArgument(raw) : null;
     if (series) {
@@ -285,7 +287,7 @@ export async function applyListingArgument(
       return Promise.resolve({ symbol, key: symbol, exchange: "", saved: null, request: { symbol, exchange: "" } });
     }
     return resolveCliListing(raw, exchange, context, {
-      ownExchangeWins: typed.length > 1, venueSuffix: true, companyWord, listingAbroad: companyWord,
+      ownExchangeWins: typed.length > 1, venueSuffix: true, companyWord, listingAbroad: companyWord || optionCoverage, qualifyBareAbroad,
     });
   }));
   // A separator stuck to the end of a pasted list (`UPST;`) is not part of a symbol; it is named.

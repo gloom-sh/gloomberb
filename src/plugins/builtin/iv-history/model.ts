@@ -1,6 +1,7 @@
 import { getPublishedUsEquityCalendarDay } from "../../../market-data/published-us-sessions";
 import type { PricePoint } from "../../../types/financials";
 import { rollingRealizedVolatility } from "../shared/volatility";
+import { isFormingBar } from "../shared/forming-bars";
 import { ivNotCollectedText, type IvCloseBasis, type IvCoverageStatus, type IvHistoryPayload, type IvMethod, type IvPoint, type IvRiskReversalStats,
   type IvScreenRow, type IvStats, type ScreenHv } from "./client";
 
@@ -369,7 +370,7 @@ export function projectIvHistory(
   const latestDate = [payload.latest?.date, tradeIv30.at(-1) && day(tradeIv30.at(-1)!.date)].filter((value): value is string => !!value).sort().at(-1) ?? null;
   const start = latestDate ? lookbackStart(latestDate, lookback) : null;
   const visible = <T extends { date: Date }>(points: T[]) => start ? points.filter((point) => day(point.date) >= start) : points;
-  const rolling = rollingRealizedVolatility(prices, { windows: [window] })
+  const rolling = rollingRealizedVolatility(prices.filter((point) => !isFormingBar(point)), { windows: [window] })
     .map((point) => ({ date: utc(day(point.date)), value: point.values[window] ?? null }));
   const hvByDay = new Map(rolling.map((point) => [day(point.date), point.value]));
   const spreadAll = tradeIv30.map((point) => {

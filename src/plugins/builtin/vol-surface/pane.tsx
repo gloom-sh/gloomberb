@@ -55,7 +55,7 @@ import { expiryLabel, expiryStamp, formatIv, formatPrice, selectSurfaceExpiry, s
 import { findListedExpiry, unlistedExpiryText } from "../../../utils/option-expiry";
 import { dvolCurrency, dvolGap, loadDvol, type DvolPayload } from "../volatility/dvol";
 import {
-  COIN_OPTIONS_HINT, fxVolatilityNote, isCoinWithoutOptions, optionsUnavailableHint, optionsUnavailableTitle, unservedOptionsVenue,
+  COIN_OPTIONS_HINT, fxVolatilityNote, isCoinWithoutOptions, optionsListingCoverageTitle, optionsUnavailableHint, optionsUnavailableTitle,
 } from "../../../market-data/options-alternatives";
 import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { surfaceThirtyDayAtm } from "./tables";
@@ -101,6 +101,9 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const { symbol, ticker, financials } = usePaneTicker();
   const { createPaneFromTemplate } = usePluginAppActions();
   const target = resolveOptionsTarget(ticker);
+  const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
+  const exchange = target?.effectiveExchange || (!target?.isOptionTicker ? financials?.quote?.listingExchangeName || financials?.quote?.exchangeName : undefined);
+  const coverageTitle = !target?.instrument ? optionsListingCoverageTitle(underlying, exchange) : null;
   const underlyingFinancials = useTickerFinancials(target?.isOptionTicker ? target.effectiveTicker : null, null);
   const [activeTab, setActiveTab] = usePluginPaneState("activeTabId", "surface");
   // The 3D surface spends the arrows on the camera and the Table on its cell
@@ -182,7 +185,7 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   }, [surfaceRequest]);
   const surfaceKey = scope && providerId && symbol ? { key: ["vol-surface", scope, providerId, target?.cacheKey,
     symbol, limit, ivSource, priceSide, spread, age, requestedExpiration, eventDates] } : null;
-  const resource = useAsyncResource(symbol && !historyDate ? request : null, {
+  const resource = useAsyncResource(symbol && !historyDate && !coverageTitle ? request : null, {
     savedCopy: surfaceKey,
     deferLoad: !spotAvailable,
   });
@@ -220,9 +223,8 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   const settledSnapshot = liveReload ?? resource.data;
   settledRef.current = settledSnapshot;
   // Stored close surfaces and IV rank come from the Cloud IV history of the underlying.
-  const underlying = (target?.effectiveTicker ?? symbol ?? "").toUpperCase();
   const datesLoader = useCallback(async () => (await loadSurfaceDates(underlying)).dates, [underlying]);
-  const dates = useAsyncResource(underlying ? datesLoader : null, {
+  const dates = useAsyncResource(underlying && !coverageTitle ? datesLoader : null, {
     savedCopy: scope ? { key: ["surface-dates", scope, underlying, target?.effectiveExchange] } : null,
   });
   // A symbol with no current price, or no option chain at all, says what became of it when something
@@ -236,11 +238,11 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // listing whose venue lists options Gloom does not serve (0700 on HKEX) what Gloom does serve.
   const coinNote = underlying && isCoinWithoutOptions(underlying)
     ? `${optionsUnavailableTitle(parsePublicTickerKey(underlying).symbol)} ${COIN_OPTIONS_HINT}`
-    : underlying && unservedOptionsVenue(underlying, target?.effectiveExchange)
-      ? `${optionsUnavailableTitle(underlying, target?.effectiveExchange)} ${optionsUnavailableHint(underlying, target?.effectiveExchange)}`
+    : coverageTitle
+      ? `${coverageTitle} ${optionsUnavailableHint(underlying, exchange)}`
       : underlying ? fxVolatilityNote(underlying, target?.effectiveExchange) : null;
   const fateNote = useAsyncResource(underlying && noChain && !coinNote ? fateLoader : null).data ?? coinNote;
-  const ivRank = useIvRank(underlying || null);
+  const ivRank = useIvRank(!coverageTitle ? underlying || null : null);
   // A coin's options (BTC-USD, ETH-USD) come with Deribit's volatility index.
   const coin = dvolCurrency(underlying);
   const dvolLoader = useCallback(async () => loadDvol(coin!), [coin]);
@@ -278,17 +280,17 @@ export function VolSurfacePane({ focused, width, height }: PaneProps) {
   // delayed surface keeps the configured refresh.
   const realtimeSurface = !!settledSnapshot?.expiries.some((entry) => entry.dataSource === "live" || entry.realtimeEligible === true);
   const liveRefresh = useLiveSessionRefresh(reloadLive, SURFACE_LIVE_RELOAD_MS,
-    !!symbol && spotAvailable && !historyDate && !fallbackDate && liveStreaming && realtimeSurface && !resource.loading,
+    !!symbol && !coverageTitle && spotAvailable && !historyDate && !fallbackDate && liveStreaming && realtimeSurface && !resource.loading,
     resource.updatedAt);
   const liveActive = liveRefresh.live;
   useAutoRefresh(resource.updatedAt, liveActive ? noRefresh : resource.load);
   const shownDate = historyDate ?? fallbackDate;
   const storedLoader = useCallback(async () => storedSurfaceSnapshot(await loadStoredSurface(underlying, shownDate!)), [underlying, shownDate]);
-  const stored = useAsyncResource(underlying && shownDate ? storedLoader : null, {
+  const stored = useAsyncResource(underlying && shownDate && !coverageTitle ? storedLoader : null, {
     savedCopy: scope ? { key: ["stored-surface", scope, underlying, target?.effectiveExchange, shownDate] } : null,
   });
   const active = shownDate ? stored : resource;
-  const snapshot: DatedSurfaceSnapshot | null | undefined = shownDate ? stored.data : liveSnapshot;
+  const snapshot: DatedSurfaceSnapshot | null | undefined = coverageTitle ? null : shownDate ? stored.data : liveSnapshot;
   // IV30 and its rank rate the latest stored close, so they sit beside the live surface only.
   const ivStats: StatItem[] = ivRank && snapshot && !snapshot.stored ? [
     { id: "iv30", label: "IV30", value: `${(ivRank.value * 100).toFixed(1)}%`, detail: `${formatDay(ivRank.date, "no-year")} close` },

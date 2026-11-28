@@ -8,6 +8,7 @@ import { numberErrorMessage, wholeNumberOptionMessage } from "../../../utils/dec
 import { errorMessage } from "../../../utils/errors";
 import { expirationHint, expiredExpiryText, expiryIsoDate, isLiveOptionExpiry, readOptionExpiration } from "../../../utils/option-expiry";
 import { zonedDateKey } from "../../../utils/zoned-date-time";
+import { usListingsOnlyNote } from "../../../utils/sec";
 import { ivRankReason, loadIvScreen, type ImpliedVolatilityApi, type IvScreenRow } from "../iv-history/client";
 import { scenarioFreshness, scenarioQuoteTimes, type ScenarioQuoteTimes } from "./freshness";
 import { loadScenarioMarket, scenarioPositionFromSettings, scenarioSpotBasis, type ScenarioLoaderDependencies, type ScenarioMarketSnapshot } from "./client";
@@ -270,15 +271,19 @@ export async function screenNames<T>(
   let curve: ReturnType<ScenarioLoaderDependencies["loadYieldCurve"]> | null = null;
   const scenario: ScenarioLoaderDependencies = { ...dependencies.scenario, loadYieldCurve: () => curve ??= dependencies.scenario.loadYieldCurve() };
   const symbols = instruments.map((instrument) => instrument.symbol.trim().toUpperCase());
-  const [ivRanks, earnings] = await Promise.all([
-    loadIvRanks(symbols, signal, dependencies.ivApi),
-    loadNextEarningsDates(dependencies.earnings, symbols, zonedDateKey(now, "America/New_York")),
-  ]);
+  const coverage = instruments.map(({ symbol, exchange }) => usListingsOnlyNote("Options data", symbol, exchange));
+  const covered = symbols.filter((_symbol, index) => !coverage[index]);
+  const [ivRanks, earnings] = covered.length ? await Promise.all([
+    loadIvRanks(covered, signal, dependencies.ivApi),
+    loadNextEarningsDates(dependencies.earnings, covered, zonedDateKey(now, "America/New_York")),
+  ]) : [{ rows: new Map<string, IvScreenRow>(), error: null }, EARNINGS_CALENDAR_UNAVAILABLE] as const;
   signal?.throwIfAborted();
   const markets: ScenarioMarketSnapshot[] = [];
   const missingRanks: string[] = [];
   const names = await mapWithConcurrency(instruments, CONCURRENCY, async (instrument, index): Promise<ScreenedName<T>> => {
     const symbol = symbols[index]!;
+    const refusal = coverage[index];
+    if (refusal) return { symbol, ivRank: null, value: null, note: refusal, state: "not covered" };
     const ivRow = ivRanks.rows.get(symbol);
     const rank = ivRow?.iv30?.rank;
     const ivRank = rank != null && Number.isFinite(rank) ? rank : null;

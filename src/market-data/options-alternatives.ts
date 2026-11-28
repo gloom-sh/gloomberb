@@ -2,6 +2,7 @@ import { isRoundTheClockCoin } from "../utils/crypto-pair";
 import { currencyPairCode, isCurrencyCode } from "../utils/currency-pair";
 import { canonicalExchange, displayTickerKey, parsePublicTickerKey } from "../utils/exchanges";
 import { parseFuturesGeneric } from "../utils/futures-generic";
+import { listingAbroadVenue, usListingsOnlyNote } from "../utils/sec";
 
 /** A US-listed fund whose options track an instrument that has none of its own. */
 export interface ListedOptionsAlternative {
@@ -163,6 +164,16 @@ export function optionsUnavailableTitle(symbol: string, exchange?: string | null
     return `Options on ${venue} listings (${listing}) are not served.`;
   }
   return `Options are not available for ${displayTickerKey(typed)}.`;
+}
+
+export function optionsListingCoverageTitle(symbol: string, exchange?: string | null): string | null {
+  const refusal = usListingsOnlyNote("Options data", symbol, exchange);
+  return refusal && unservedOptionsVenue(symbol, exchange) ? optionsUnavailableTitle(symbol, exchange) : refusal;
+}
+
+export function currentIvCoverageNote(symbol: string, exchange?: string | null): string | null {
+  const venue = listingAbroadVenue(symbol, exchange);
+  return venue ? `Options data covers US listings only, so ${parsePublicTickerKey(symbol).symbol}:${venue} has no current IV.` : null;
 }
 
 /**
