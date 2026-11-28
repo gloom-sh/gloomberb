@@ -25,7 +25,7 @@ const LISTING_EVENT_ALERTS: ReadonlyArray<{ kind: ListingResearchAlertKind; id: 
  * (BHP on ASX, Sanofi in Paris saved under the bare SAN, which is Banco
  * Santander's NYSE receipt) or over the counter, or a venue nothing names.
  */
-export function usCompanyAlertListing(
+function usCompanyAlertListing(
   ticker: TickerRecord,
   financials: TickerFinancials | null | undefined,
 ): { symbol: string; exchange: string } | null {
