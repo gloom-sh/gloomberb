@@ -155,7 +155,7 @@ function projectHiloSnapshot(
   };
 }
 
-export interface HiloHeadlessDependencies {
+interface HiloHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     client: Pick<HeadlessPaneApiClient, "subscribeScanner">,
@@ -169,7 +169,7 @@ const defaultDependencies: HiloHeadlessDependencies = {
   load: (_args, client, signal) => loadReportSnapshot<ScannerHiloPayload>(client, "hilo", signal),
 };
 
-export function createHiloHeadless(
+function createHiloHeadless(
   dependencies: HiloHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"snapshot"> {
   return {
@@ -239,7 +239,7 @@ type FlowReportTab = "prints" | "tide" | "strikes";
 const FLOW_REPORT_RECORDED = 100;
 
 /** The side rule, said once in every report that sums prints by side. */
-export const FLOW_SIDE_RULE = "Net premium counts a print at the ask as bought and one at the bid as sold; mid or unknown prints count as neither.";
+const FLOW_SIDE_RULE = "Net premium counts a print at the ask as bought and one at the bid as sold; mid or unknown prints count as neither.";
 
 function utcTime(value: unknown): string {
   const time = Number(value);
@@ -386,7 +386,7 @@ const flowDependencies: FlowHeadlessDependencies = {
   session: (search, client, signal) => client.getScannerFlowSession(search, signalWithTimeout(signal, 20_000)),
 };
 
-export function createFlowHeadless(
+function createFlowHeadless(
   dependencies: FlowHeadlessDependencies = flowDependencies,
 ): HeadlessPaneDefinition<"bundle"> {
   const keys: FlowHeadlessFilterKey[] = ["minPremium", "side", "kind", "volOi", "expiry"];

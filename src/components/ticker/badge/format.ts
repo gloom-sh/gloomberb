@@ -35,7 +35,7 @@ export function tickerBadgeColors(tone: string, hovered: boolean, palette: Theme
 }
 
 /** One decimal on every tick, so a chip does not narrow when the move lands on a whole percent. */
-export function formatTickerBadgeChange(changePercent: number): string {
+function formatTickerBadgeChange(changePercent: number): string {
   const body = Math.abs(changePercent).toFixed(1);
   if (!/[1-9]/.test(body)) return `${body}%`;
   return `${changePercent > 0 ? "+" : "-"}${body}%`;

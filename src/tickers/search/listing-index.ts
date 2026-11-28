@@ -258,7 +258,7 @@ function changed(): void {
 }
 
 /** Installs the shipped listings, grouped by symbol in the order given. */
-export function installListingDirectory(rows: readonly KeptListing[]): void {
+function installListingDirectory(rows: readonly KeptListing[]): void {
   const next = new Map<string, InstrumentSearchResult[]>();
   const symbols: string[] = [];
   for (const row of rows) {
@@ -398,7 +398,7 @@ type RefreshOutcome = "refreshed" | "not-due" | "failed";
  * failed, a query was left out, a source cannot batch) is asked again the
  * next time: the day and the slice move on only once it has.
  */
-export async function refreshListingDirectory(searchBatch: SearchBatch, now = Date.now()): Promise<RefreshOutcome> {
+async function refreshListingDirectory(searchBatch: SearchBatch, now = Date.now()): Promise<RefreshOutcome> {
   if (directorySymbols.length === 0) return "failed";
   if (now - refreshedAt < REFRESH_INTERVAL_MS) return "not-due";
   const start = cursor % directorySymbols.length;

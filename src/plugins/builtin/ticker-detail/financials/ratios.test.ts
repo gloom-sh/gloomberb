@@ -231,7 +231,7 @@ describe("financial ratios", () => {
     expect(netDebt[0]!.value).toBeCloseTo((7.272 + 6.995 - 8.29) / 7.951);
     // A balance sheet without its lease line has no net debt, never one without leases beside years with them.
     expect(netDebt[2]).toEqual({ value: "not-reported", inputs: ["not-reported", "not-reported", 6.214 * B] });
-    expect(table.rows.filter((row) => row.kind === "input").slice(0, 3).map((row) => row.label)).toEqual(["Net Debt", "incl. leases", "\u00f7 EBITDA"]);
+    expect(table.rows.filter((row) => row.kind === "input").slice(0, 3).map((row) => row.label)).toEqual(["Net Debt", "of which leases", "\u00f7 EBITDA"]);
     // A total that already holds the lease line counts the leases once.
     const held = annual({ ...year("2025-12-31", 7.272, 6.995, 8.29, 7.951), totalDebt: (7.272 + 6.995) * B });
     expect(ratioTableForFinancials(held, leverage, "annual").cells.get("net-debt-ebitda")![0]!.inputs[0] as number / B).toBeCloseTo(7.272 + 6.995 - 8.29);

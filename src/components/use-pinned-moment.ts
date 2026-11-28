@@ -13,7 +13,7 @@ import { usePaneFooter, type PaneFooterSegment } from "./layout/pane/footer";
  * without saying so. Kept in a capture of the pane: it is why the later rows
  * read muted.
  */
-export function pinnedMomentFooterSegment(at: number, now = Date.now(), timeZone?: string): PaneFooterSegment {
+function pinnedMomentFooterSegment(at: number, now = Date.now(), timeZone?: string): PaneFooterSegment {
   return {
     id: "pinned-moment",
     capture: true,
@@ -108,7 +108,7 @@ export interface PinFollow<T> {
  * newest first gets the print nearest the moment either way. Rows with no
  * time are left out.
  */
-export function pinnedRowOf<T>(
+function pinnedRowOf<T>(
   rows: readonly T[],
   at: number,
   moment: (row: T) => number | null,
@@ -137,11 +137,6 @@ const NOT_PINNED = { pinnedRow: null, beforeRows: false } as const;
  * its pane drops its own, whether or not it still followed the pin then.
  */
 const followedPins = new WeakMap<PinnedMoment, Map<string, string>>();
-
-/** How many lists remember following `pin`, for tests of what a closed pane leaves behind. */
-export function pinFollowersForTests(pin: PinnedMoment): number {
-  return followedPins.get(pin)?.size ?? 0;
-}
 
 /** Whether a pane is still open in a layout tab, the active one or one switched away from. */
 function paneInLayouts(state: AppState, paneId: string): boolean {

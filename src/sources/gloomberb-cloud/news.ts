@@ -237,7 +237,7 @@ const LIVE_STORY_WINDOW_MS = (CLOUD_NEWS_DELAY_HOURS - 1) * 60 * 60 * 1000;
  * story seen too recently to have been held back. Otherwise null: a quiet
  * feed read live looks the same as a held-back one.
  */
-export function cloudNewsAccess(
+function cloudNewsAccess(
   response: Pick<CloudNewsListResponse, "items" | "access">,
   sentSession: boolean,
   now = Date.now(),

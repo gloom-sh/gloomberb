@@ -6,7 +6,7 @@ import { useThemeColors } from "../../../theme/theme-context";
 import { powerNumber } from "./model";
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const COLUMNS: DataTableColumn[] = [{ id: "month", label: "Month", width: 18, align: "left", flexGrow: 1 }, { id: "mwh", label: "Generation MWh", width: 20, align: "right" }, { id: "change", label: "Change MWh", width: 20, align: "right" }];
-export function generationRows(project: PowerProject) {
+function generationRows(project: PowerProject) {
   if (!/^\d{4}$/.test(project.period ?? "")) return [];
   let previous: number | null = null;
   return MONTHS.map((month, index) => {

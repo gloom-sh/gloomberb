@@ -1015,7 +1015,7 @@ const LISTED_ACTIONS = ["list", "show", "create", "delete", "add", "remove", "po
  * is close, and the command that shows a book's drift and the trades that
  * rebalance it, with the portfolio the rest names.
  */
-export function unknownPortfolioAction(args: readonly string[], config: AppConfig): { message: string; details: string } | null {
+function unknownPortfolioAction(args: readonly string[], config: AppConfig): { message: string; details: string } | null {
   const [word = "", ...rest] = args;
   const near = suggestCliCommand(word, LISTED_ACTIONS);
   // One word close to no subcommand is a collection's name mistyped, which the generic answer lists.

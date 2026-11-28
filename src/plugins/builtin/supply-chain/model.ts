@@ -8,7 +8,7 @@ import { entityTicker, supplyDisplayName } from "./graph-model";
 import { activeRelationship, corroborationLabel, evidenceDate, evidenceLabel, isUnconfirmed, matchesSupplyOptions, trustTier } from "./trust";
 
 /** Each role's slot of the shared series palette; the buildout pane's flow draws its suppliers, customers and competitors in the same. */
-export const ROLE_SLOTS: Readonly<Record<SupplyRole, string>> = {
+const ROLE_SLOTS: Readonly<Record<SupplyRole, string>> = {
   supplier: SERIES_COLORS[0], customer: SERIES_COLORS[1], partner: SERIES_COLORS[3], competitor: SERIES_COLORS[5], investee: SERIES_COLORS[7],
 };
 /**

@@ -185,7 +185,7 @@ export function percent(value: number | null, suffix = "%", digits = 2) {
   return `${value > 0 ? "+" : ""}${fixed}${suffix}`;
 }
 export const decimal = (value: number | null, digits = 2) => value == null || !Number.isFinite(value) ? MISSING_VALUE : value.toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits });
-export function sortMembers(rows: readonly FundMember[], sort: SortPreference<string>) {
+function sortMembers(rows: readonly FundMember[], sort: SortPreference<string>) {
   return [...rows].sort((a, b) => compareSortValues(a[sort.columnId as keyof FundMember] as number | string | null,
     b[sort.columnId as keyof FundMember] as number | string | null, sort.direction) || a.id.localeCompare(b.id));
 }

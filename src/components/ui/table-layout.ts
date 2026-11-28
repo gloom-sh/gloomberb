@@ -5,6 +5,8 @@ import { clipToDisplayWidth, displayWidth } from "../../utils/format";
 export interface TableWidthColumn {
   width: number;
   flexGrow?: number;
+  /** The fewest cells a fit narrows this column to, where the pane knows what its text needs (`tableColumnFitFloor`). */
+  fitFloor?: number;
   align?: string;
   label?: string;
 }
@@ -250,14 +252,17 @@ const FIT_TEXT_FLOOR = 12;
  * (`fitColumnsToWidth`). A column the pane set to grow (`flexGrow`) is the
  * one that takes up a change in the pane's width, so it gives up length
  * first: down to half its set width, never under `FIT_TEXT_FLOOR` cells or
- * its own header. Any other column is drawn at its set width or not at all,
- * since a figure or a date cut short reads as another one.
+ * its own header. A pane that knows what the column's text needs says so
+ * (`fitFloor`: the longest name a fixed list holds), and the least needed
+ * columns then leave before that text is cut. Any other column is drawn at
+ * its set width or not at all, since a figure or a date cut short reads as
+ * another one.
  */
-export function tableColumnFitFloor(column: TableWidthColumn): number {
+function tableColumnFitFloor(column: TableWidthColumn): number {
   const width = tableColumnWidth(column);
   if (!((column.flexGrow ?? 0) > 0)) return width;
   const header = column.label ? displayWidth(column.label) + HEADER_RESERVED_WIDTH : 0;
-  return Math.min(width, Math.max(header, FIT_TEXT_FLOOR, Math.ceil(width / 2)));
+  return Math.min(width, Math.max(header, column.fitFloor ?? Math.max(FIT_TEXT_FLOOR, Math.ceil(width / 2))));
 }
 
 /**

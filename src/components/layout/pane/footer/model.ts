@@ -452,7 +452,7 @@ const TRAILING_PUNCTUATION = /[\s,.;:·\-–—(]+$/u;
  * `text` cut after its last whole word that fits `width` with an ellipsis,
  * never inside a word; empty when not even its first word fits.
  */
-export function cutAtWord(text: string, width: number): string {
+function cutAtWord(text: string, width: number): string {
   if (displayWidth(text) <= width) return text;
   const ellipsis = "…";
   let best = "";

@@ -62,7 +62,7 @@ export function minimumPanelRows(plotRows: number, panelCount: number): number {
  * over the same panels), so each panel lays out at exactly its rows and a
  * pane resized later keeps the split.
  */
-export function weightsFromRows(
+function weightsFromRows(
   rows: readonly { id: string; rows: number }[],
   weightTotal: number,
 ): Record<string, number> {
@@ -76,7 +76,7 @@ export function weightsFromRows(
  * negative): the panel above gains what the one below gives, each keeping
  * `minRows`. The others keep theirs.
  */
-export function movePanelBoundary(rows: readonly number[], index: number, deltaRows: number, minRows: number): number[] {
+function movePanelBoundary(rows: readonly number[], index: number, deltaRows: number, minRows: number): number[] {
   const next = [...rows];
   if (index <= 0 || index >= rows.length) return next;
   const above = rows[index - 1]!;

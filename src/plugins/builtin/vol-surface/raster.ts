@@ -27,7 +27,7 @@ export function deltaLabel(coordinate: number): string {
   return `${Math.round(Math.abs(coordinate) * 100)}${coordinate < 0 ? "P" : "C"}`;
 }
 /** Four to six round vol levels spanning the range. */
-export function volatilityTicks(low: number, high: number): number[] {
+function volatilityTicks(low: number, high: number): number[] {
   const span = Math.max(high - low, 1e-6);
   const step = [0.005, 0.01, 0.02, 0.025, 0.05, 0.1, 0.2, 0.25, 0.5, 1].find((candidate) => span / candidate <= 6) ?? 1;
   const ticks: number[] = [];

@@ -86,7 +86,7 @@ const BADGE_WIDTH = 5;
  * whose filing opens on Enter or o. The name gives way first, so the markers survive a narrow column;
  * the cell says how wide it draws whole (`contentWidth`), so the table fits the column to it.
  */
-export function holderNameCell(
+function holderNameCell(
   name: string,
   { receipts, fund }: { receipts: string; fund: boolean },
   color: string,

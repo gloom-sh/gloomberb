@@ -303,7 +303,7 @@ export function scheduledResultsMessage(symbol: string, result: Pick<EarningsRes
   return `${actual} vs ${formatNumber(result.epsEstimate, 2)} expected${shown == null ? "" : ` (${shown > 0 ? "+" : ""}${shown.toFixed(1)}%)`}`;
 }
 
-export interface EarningsDateRow {
+interface EarningsDateRow {
   symbol: string;
   earningsDate: Date;
 }
@@ -312,7 +312,7 @@ export interface EarningsDateRow {
  * The next earnings day of `symbol` on or after `today`. The day is the UTC
  * date of the report time, the day ERN and `gloom earnings` show.
  */
-export function nextEarningsDate(events: readonly EarningsDateRow[], symbol: string, today: string): string | null {
+function nextEarningsDate(events: readonly EarningsDateRow[], symbol: string, today: string): string | null {
   const wanted = symbol.trim().toUpperCase();
   const dates = events
     .filter((event) => event.symbol?.trim().toUpperCase() === wanted && Number.isFinite(event.earningsDate?.getTime()))
@@ -323,7 +323,7 @@ export function nextEarningsDate(events: readonly EarningsDateRow[], symbol: str
 }
 
 /** The CPI board's release status and, when the server sends it, the published release calendar. */
-export interface CpiReleaseCalendar {
+interface CpiReleaseCalendar {
   release: { nextReleaseAt: string | null };
   schedule?: ReadonlyArray<{ date?: unknown }>;
 }
@@ -332,7 +332,7 @@ const newYorkDay = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_Yor
 const isDateKey = (value: unknown): value is string => typeof value === "string" && /^\d{4}-\d{2}-\d{2}$/.test(value);
 
 /** The next CPI release day on or after `today`, from the BLS calendar or the board's next release. */
-export function nextCpiReleaseDate(board: CpiReleaseCalendar, today: string): string | null {
+function nextCpiReleaseDate(board: CpiReleaseCalendar, today: string): string | null {
   const next = board.release.nextReleaseAt && Number.isFinite(Date.parse(board.release.nextReleaseAt))
     ? newYorkDay.format(new Date(board.release.nextReleaseAt))
     : null;

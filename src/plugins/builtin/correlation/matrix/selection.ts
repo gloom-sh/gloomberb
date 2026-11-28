@@ -37,7 +37,7 @@ export function matrixSelection(symbols: readonly string[], cursor: MatrixCursor
  * return basis, a cell's note). The kit budget includes the read line. No
  * compact strip: the matrix wins.
  */
-export function matrixChartRows(width: number, height: number, count: number, matrixWidth: number, noteRows = 0): number {
+function matrixChartRows(width: number, height: number, count: number, matrixWidth: number, noteRows = 0): number {
   const layout = chartTableLayout({
     width, height, queryRows: 1 + noteRows, tableRows: count,
     tableChromeRows: matrixWidth > width - 1 ? 2 : 1,

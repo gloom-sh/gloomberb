@@ -37,7 +37,7 @@ import { usePluginState } from "../../runtime";
 import { useCloudUpgradeAction } from "../shared/cloud-upgrade";
 import { logFailure } from "../../../utils/log-failure";
 
-export const TRIAL_OFFER_EXPERIMENT = "web_terminal_trial_offer";
+const TRIAL_OFFER_EXPERIMENT = "web_terminal_trial_offer";
 /**
  * On-screen time before the offer would show. Short enough that most
  * visitors reach it, which the test needs to read in weeks rather than months.

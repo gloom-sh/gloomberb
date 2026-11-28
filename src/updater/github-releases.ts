@@ -79,7 +79,7 @@ function stripTagPrefix(name: string, tagName: string): string {
   return name.replace(new RegExp(`^${escapedTag}\\s*(?:-|:)\\s*`, "i"), "").trim();
 }
 
-export function normalizeChangelogRelease(release: GitHubReleasePayload): ChangelogRelease | null {
+function normalizeChangelogRelease(release: GitHubReleasePayload): ChangelogRelease | null {
   const tagName = release.tag_name?.trim();
   if (!tagName) return null;
 

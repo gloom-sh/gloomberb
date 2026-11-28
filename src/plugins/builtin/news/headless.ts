@@ -36,7 +36,7 @@ const NEWS_COLUMNS = [
       newsSummaryLine({ title: String(row.headline ?? ""), summary: typeof value === "string" ? value : undefined }) ?? "" },
 ];
 
-export interface NewsHeadlessDependencies {
+interface NewsHeadlessDependencies {
   loadNews(
     query: NewsQuery,
     context: HeadlessPaneContext,
@@ -169,7 +169,7 @@ function queryFor(
   };
 }
 
-export function createNewsFeedHeadless(
+function createNewsFeedHeadless(
   dependencies: NewsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"snapshot"> {
   return {
@@ -189,7 +189,7 @@ export function createNewsFeedHeadless(
   };
 }
 
-export function createTickerNewsHeadless(
+function createTickerNewsHeadless(
   dependencies: NewsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"snapshot"> {
   return {

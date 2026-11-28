@@ -48,7 +48,7 @@ const TWSE_CLOSURES: Record<number, readonly string[]> = {
 };
 
 /** Closures by canonical venue code. */
-export const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, readonly string[]>>> = {
+const PUBLISHED_APAC_CLOSURES: Readonly<Record<string, Record<number, readonly string[]>>> = {
   KRX: KRX_CLOSURES,
   KOSDAQ: KRX_CLOSURES,
   TWSE: TWSE_CLOSURES,

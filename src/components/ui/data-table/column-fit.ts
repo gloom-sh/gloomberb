@@ -39,7 +39,7 @@ interface ColumnFitOptions {
  * sorted column stay, each with the set the pane's order lists it in. The
  * same array where everything fits, or where what must stay does not.
  */
-export function fitDataTableColumns<C extends DataTableColumn>(
+function fitDataTableColumns<C extends DataTableColumn>(
   columns: readonly C[],
   cells: number,
   options: Pick<ColumnFitOptions, "anchoredColumns" | "sortColumnId"> & Partial<Pick<ColumnFitOptions, "dropOrder" | "asOfColumnIds" | "columnGap" | "horizontalPadding">>,

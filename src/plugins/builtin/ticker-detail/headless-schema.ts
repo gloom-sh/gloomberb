@@ -7,6 +7,7 @@ import { PRICE_WINDOW_FROM_HELP, PRICE_WINDOW_TO_HELP } from "../../../utils/pri
 import type { HeadlessPaneOptionDef, HeadlessPaneOptionValue } from "../../../types/headless";
 import { QUOTE_MONITOR_MAX_TICKERS } from "../../../tickers/list";
 import { STATEMENT_CURRENCY_OPTION } from "../shared/statement-currency";
+import { RATIO_TABS } from "./financials/ratios";
 
 /** The most tickers one FA report reads: each is a full statements load. */
 const FINANCIAL_REPORT_MAX_TICKERS = 10;
@@ -20,16 +21,21 @@ const WINDOW_OPTIONS: HeadlessPaneOptionDef[] = [
 ];
 
 /** The financials tab's statements and ratio tabs, as FA and DES's `--statement` name them. */
-export const FINANCIAL_STATEMENT_VALUES: HeadlessPaneOptionValue[] = [
+const FINANCIAL_STATEMENT_VALUES: HeadlessPaneOptionValue[] = [
   { value: "income", aliases: ["income statement", "is"] },
   { value: "balance", aliases: ["balance sheet", "bs"] },
   { value: "cashflow", aliases: ["cash flow", "cash flow statement", "cf", "cashflows"] },
-  { value: "profitability", aliases: ["ratios", "returns", "profit"] },
-  { value: "leverage", aliases: ["coverage", "credit"] },
-  { value: "liquidity" },
-  { value: "efficiency", aliases: ["working capital"] },
-  { value: "valuation", aliases: ["multiples"] },
+  ...RATIO_TABS.map(({ key, aliases }) => ({ value: key, ...(aliases ? { aliases } : {}) })),
 ];
+
+export const FINANCIAL_STATEMENT_OPTION = {
+  key: "statement",
+  description: "Statement or ratio tab to display.",
+  type: "enum",
+  aliases: ["financialStatement"],
+  values: FINANCIAL_STATEMENT_VALUES,
+  showValueAliases: true,
+} satisfies HeadlessPaneOptionDef;
 
 type PaneSchema = Pick<HeadlessPaneDefinition, "argument" | "options" | "discovery">;
 
@@ -45,11 +51,8 @@ export const paneSchemas = {
       FINANCIAL_PERIOD_OPTION,
       { ...STATEMENT_CURRENCY_OPTION, shot: { reportOnly: "compares converted statement rows; GF charts converted figures" } },
       {
-        key: "statement",
-        description: "Statement or ratio tab to display.",
-        type: "enum",
+        ...FINANCIAL_STATEMENT_OPTION,
         aliases: ["tab", "financialStatement"],
-        values: FINANCIAL_STATEMENT_VALUES,
         defaultValue: "income",
       },
       {
@@ -64,16 +67,18 @@ export const paneSchemas = {
     discovery: {
       id: "financial-statements",
       aliases: ["financials", "financial statement", "income statement", "balance sheet", "cash flow statement", "financial ratios"],
-      // What a memo asks for by name: `catalog roic` and `catalog "operating margin"` find FA, and `fn ROIC V` opens
-      // the tab with it, as `fn runway VKTX` is the liquidity view, where cash + ST investments, burn and runway are.
       intents: [
         "ROIC (return on invested capital), ROE, ROA and gross, operating and net margins, with NOPAT and invested capital",
         "Capex, capex as a share of revenue, free cash flow and reinvestment rate by fiscal year",
       ],
       opens: [
+        ...RATIO_TABS.map((tab) => ({
+          words: tab.ratios.flatMap((ratio) => [ratio.label, ...ratio.searchAliases ?? []]),
+          label: tab.name,
+          argument: "",
+          options: { statement: tab.key },
+        })),
         { words: ["runway", "cash runway", "burn", "cash burn", "months of cash"], argument: "", options: { statement: "liquidity" } },
-        { words: ["roic", "return on invested capital", "nopat", "operating margin", "gross margin", "net margin", "margins"], argument: "",
-          options: { statement: "profitability" } },
         { words: ["capex", "capital expenditure", "capital expenditures", "reinvestment rate"], argument: "", options: { statement: "cashflow" } },
       ],
       limitations: [

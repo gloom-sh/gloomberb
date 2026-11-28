@@ -2,7 +2,7 @@ import type { NativeChartBitmap } from "../../../components/chart/native/chart-r
 
 type ImageObjectFit = "contain" | "cover";
 
-export interface JimpImageLike {
+interface JimpImageLike {
   bitmap: {
     width: number;
     height: number;
@@ -79,7 +79,7 @@ function loadSourceImage(src: string): Promise<JimpImageLike> {
   return promise;
 }
 
-export function resizeImageToBitmap(source: JimpImageLike, options: ImageBitmapOptions): NativeChartBitmap {
+function resizeImageToBitmap(source: JimpImageLike, options: ImageBitmapOptions): NativeChartBitmap {
   const width = Math.max(1, Math.round(options.width));
   const height = Math.max(1, Math.round(options.height));
   const image = source.clone();

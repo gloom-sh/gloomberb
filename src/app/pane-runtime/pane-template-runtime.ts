@@ -58,7 +58,7 @@ function shareDataOpens(template: Pick<PaneTemplateDef, "publicShare">, shareDat
  * Whether opening a template asks for its settings first, in the same form the
  * command bar opens, which creates the pane when it is sent.
  */
-export function templateAsksForSettings(
+function templateAsksForSettings(
   template: Pick<PaneTemplateDef, "wizard" | "publicShare">,
   options: PaneTemplateCreateOptions | undefined,
 ): boolean {

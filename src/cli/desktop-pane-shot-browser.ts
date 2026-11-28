@@ -193,12 +193,12 @@ const SANDBOX_REFUSED = /No usable sandbox|Running as root without --no-sandbox/
 const STDERR_KEPT_BYTES = 16_384;
 
 /** Whether Chrome starts without its sandbox from the outset: as root on Linux, where it refuses one. */
-export function startsWithoutSandbox(platform: NodeJS.Platform, uid: number | undefined): boolean {
+function startsWithoutSandbox(platform: NodeJS.Platform, uid: number | undefined): boolean {
   return platform === "linux" && uid === 0;
 }
 
 /** Whether a Chrome that failed to start said it was for want of its sandbox. */
-export function chromeSandboxRefused(stderr: string): boolean {
+function chromeSandboxRefused(stderr: string): boolean {
   return SANDBOX_REFUSED.test(stderr);
 }
 
@@ -386,7 +386,7 @@ class ChromeSandboxRefusedError extends Error {}
  * Starts the capture browser with one blank page of `widthPx` by `heightPx`,
  * its profile in `userDataDir`. Nothing is loaded until `open`.
  */
-export async function launchShotBrowser(
+async function launchShotBrowser(
   chrome: string,
   options: ShotBrowserOptions,
 ): Promise<ShotBrowser> {

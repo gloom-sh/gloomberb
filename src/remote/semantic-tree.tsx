@@ -67,7 +67,7 @@ export function remoteUiNodeSnapshot(id: string, registration: RemoteUiNodeRegis
   };
 }
 
-export function createRemoteUiRegistry(): RemoteUiRegistry {
+function createRemoteUiRegistry(): RemoteUiRegistry {
   const nodes = new Map<string, RegisteredRemoteUiNode>();
 
   return {

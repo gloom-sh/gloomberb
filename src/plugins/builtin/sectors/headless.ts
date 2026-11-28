@@ -32,7 +32,7 @@ const extendedColumn = (session: ExtendedSession): HeadlessPaneColumn => extende
   (value, row) => `${price(value, row)} ${percent(row.extendedChangePercent)}`,
 );
 
-export function projectSectorRows(
+function projectSectorRows(
   definitions: readonly SectorDef[],
   outcomes: readonly SectorRowOutcome[],
 ): SectorRow[] {
@@ -62,7 +62,7 @@ export function projectSectorRows(
   })), DEFAULT_SORT_PREFERENCE);
 }
 
-export interface SectorsHeadlessDependencies {
+interface SectorsHeadlessDependencies {
   load(
     args: HeadlessPaneLoadArgs,
     definitions: readonly SectorDef[],
@@ -74,7 +74,7 @@ const defaultDependencies: SectorsHeadlessDependencies = {
   load: (_args, definitions, provider) => loadSectorRows(definitions, provider),
 };
 
-export function createSectorsHeadless(
+function createSectorsHeadless(
   dependencies: SectorsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

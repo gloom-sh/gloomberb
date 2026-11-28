@@ -72,9 +72,10 @@ import { loadEarningsCalendar } from "./data/cache";
 import { EarningsHistoryView } from "./history";
 import {
   ALL_SCOPE,
+  COLLECTION_SETTING,
   earningsScopeOptions,
-  MINE_SCOPE,
   readEarningsScope,
+  requestedEarningsScope,
   fundSymbols,
   type EarningsScope,
 } from "./scope";
@@ -147,6 +148,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   // Before the Names filter, a Mine toggle; a layout saved with it on opens on Mine.
   const [mineOnly] = usePluginPaneState<boolean>("mineOnly", false);
   const [savedScope, setScope] = usePluginPaneState<string | null>("scope", null);
+  // PF's Earnings Calendar opens the board on the list on screen, by its Names value; a choice made in the pane wins.
+  const [openedOn] = usePaneSettingValue<string>(COLLECTION_SETTING, "");
   const [order, setOrder] = usePluginPaneState<Order>("order", "cap");
   const [sort, setSort] = usePluginPaneState<BoardSort>("sort", { column: "cap", direction: "desc" });
   // Keyed by symbol and date, so a reload or a shared layout keeps the row.
@@ -171,10 +174,10 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const desktop = useUiCapabilities().nativePaneChrome === true;
   const config = usePaneAppConfig();
   const scopeOptions = useMemo(
-    () => earningsScopeOptions({ portfolios: config.portfolios, watchlists: config.watchlists }),
-    [config.portfolios, config.watchlists],
+    () => earningsScopeOptions({ portfolios: config.portfolios, watchlists: config.watchlists }, savedScope == null ? openedOn : null),
+    [config.portfolios, config.watchlists, openedOn, savedScope],
   );
-  const scopeOption = readEarningsScope(savedScope ?? (mineOnly ? MINE_SCOPE : ALL_SCOPE), scopeOptions);
+  const scopeOption = readEarningsScope(requestedEarningsScope(savedScope, openedOn, mineOnly), scopeOptions);
   const scoped = scopedSymbols.length > 0;
   const scope = scoped ? MARKET_SCOPE : scopeOption.scope;
   const view: BoardView = !desktop ? "table"
@@ -199,7 +202,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
   const range = chosenRange ?? (requestedBoardRange(requestedDate, requestedWeek) || highlightedData?.report.date || "");
   // Keyed by content: ticker records change for many reasons, the board reloads only when the list's names do.
   const collectionKey = useMemo(() => {
-    if (scope.kind !== "portfolio" && scope.kind !== "watchlist") return "";
+    // A deleted list has no names, whatever tickers still carry its id.
+    if ((scope.kind !== "portfolio" && scope.kind !== "watchlist") || scope.deleted) return "";
     return [...tickers.values()]
       .filter(({ metadata }) => (scope.kind === "portfolio" ? metadata.portfolios : metadata.watchlists).includes(scope.id))
       .map(({ metadata }) => metadata.ticker.trim().toUpperCase())
@@ -465,7 +469,8 @@ export function EarningsBoard({ focused, width, height, scopedSymbols, highlight
     ? kind === "upcoming" ? `Every report ${rangeWords ?? "these days"} is out.` : "None of these reports is out yet."
     : market ? noCalendarReportsTitle(rangeWords)
     : scope.kind === "mine" && named.length === 0 ? "No portfolio or watchlist names."
-      : (scope.kind === "portfolio" || scope.kind === "watchlist") && named.length === 0 ? `No tickers in ${scope.name}.`
+      : (scope.kind === "portfolio" || scope.kind === "watchlist") && named.length === 0
+        ? scope.deleted ? `This ${scope.kind} was deleted.` : `No tickers in ${scope.name}.`
         : rangeWords ? `No reports from these companies ${rangeWords}.` : "No upcoming reports.";
   // The table's two views. The week draws both kinds as logos, and a company's report history replaces the board.
   const { strip: kindStrip, rows: kindRows } = usePaneTabs(calendar || open ? null : {

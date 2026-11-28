@@ -56,7 +56,7 @@ function chunk<T>(items: readonly T[], size: number): T[][] {
  * day, left and right along the row and on into the next day at the same
  * depth. Null when there is nowhere to go.
  */
-export function moveInWeek<T>(grid: readonly (readonly (readonly T[])[])[], from: Position, direction: "up" | "down" | "left" | "right"): Position | null {
+function moveInWeek<T>(grid: readonly (readonly (readonly T[])[])[], from: Position, direction: "up" | "down" | "left" | "right"): Position | null {
   const rows = grid[from.day] ?? [];
   if (direction === "up" || direction === "down") {
     const row = from.row + (direction === "down" ? 1 : -1);

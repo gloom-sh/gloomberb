@@ -33,7 +33,7 @@ import { getSharedRegistry } from "../../../registry";
  * US listing, an index or a pair as its symbol. A board of Tokyo names read
  * "8058" on one card and "8031:JPX" on the rest (9 Nov 2026).
  */
-export function quoteMonitorLabel(symbol: string, ticker: TickerRecord | null): string {
+function quoteMonitorLabel(symbol: string, ticker: TickerRecord | null): string {
   // By the venue's own code (9992:HKEX), as titles and the CLI name it; the card stays bound to the key as saved.
   if (parsePublicTickerKey(symbol).exchange) return displayTickerKey(symbol);
   if (/^\^|=|-USD$/i.test(symbol)) return symbol;

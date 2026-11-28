@@ -59,6 +59,7 @@ export function isBrokerAccountSnapshotKey(key: Pick<ResourceCacheKey, "namespac
  * Saves an account snapshot written by a process without the cache database
  * (the desktop view), keeping its own times. Anything else is refused.
  */
+/** @knipignore Dynamically called by scripts/warm-start/desktop-backend.ts. */
 export function saveBrokerAccountRecord(
   resources: Pick<AppResourceStorePort, "set">,
   record: CachedResourceRecord | null | undefined,
@@ -75,6 +76,7 @@ export function saveBrokerAccountRecord(
   return true;
 }
 
+/** @knipignore Dynamically called by scripts/warm-start/desktop-backend.ts. */
 export function deleteBrokerAccountRecord(resources: Pick<AppResourceStorePort, "delete">, key: ResourceCacheKey): void {
   if (isBrokerAccountSnapshotKey(key)) resources.delete(key);
 }

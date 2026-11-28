@@ -17,6 +17,12 @@ import { EarningsBoard } from "./board";
 import { EarningsHistoryView } from "./history";
 import { EARNINGS_CALENDAR, earningsBoardHeadless, earningsCalendarHeadless } from "./headless";
 import { scopedSymbolsFromSettings } from "./model";
+import { COLLECTION_SETTING, ownNamesPersonalData, requestedEarningsScope, withoutCollectionScope } from "./scope";
+import { earningsPluginMeta } from "../builtin-plugin-meta";
+import { isRecord } from "../../../utils/guards";
+
+/** Where the board keeps its Names choice: the plugin's state namespace, which kept Macro's. */
+const STATE_ID = earningsPluginMeta.stateId ?? earningsPluginMeta.id;
 
 /** `ERN <ticker>`: that company's reports, with the footer's ways into its other panes. */
 function TickerEarnings({ symbol, focused, width, height }: { symbol: string; focused: boolean; width: number; height: number }) {
@@ -88,17 +94,27 @@ export const earningsModule: PluginModule = {
       name: "Earnings Calendar",
       icon: "$",
       component: EarningsPane,
-      // ERN and EVTS open this pane: EVTS sets `board`, a scoped ERN sets the tickers.
-      identitySettings: ["board", "symbols", "symbolsText"],
-      personalData: ({ settings, tickers }) => {
+      // ERN and EVTS open this pane: EVTS sets `board`, a scoped ERN sets the tickers, PF's Earnings Calendar its list.
+      identitySettings: ["board", "symbols", "symbolsText", COLLECTION_SETTING],
+      personalData: ({ settings, paneState, tickers }) => {
         const symbols = settings.board === true ? [] : scopedSymbolsFromSettings(settings).symbols;
         if (!symbols) return null;
-        // Single-ticker report history is public. The board marks owned names.
+        // Single-ticker report history is public. The board marks owned names, and on one of the person's lists is theirs.
         if (symbols.length === 1) return null;
+        const own = isRecord(paneState.pluginState) && isRecord(paneState.pluginState[STATE_ID]) ? paneState.pluginState[STATE_ID] : {};
+        const list = symbols.length === 0
+          ? ownNamesPersonalData(requestedEarningsScope(own.scope, settings[COLLECTION_SETTING], own.mineOnly), tickers.values())
+          : null;
+        if (list) return list;
         return [...tickers.values()].some(({ metadata }) => (
           metadata.portfolios.length > 0
           && (symbols.length === 0 || symbols.includes(metadata.ticker.trim().toUpperCase()))
         )) ? "holdings" : null;
+      },
+      // The person's lists stay on the device: a link to a board on one opens on the market.
+      portableShare: {
+        private: { settings: [COLLECTION_SETTING] },
+        prepareState: (state) => withoutCollectionScope(state, STATE_ID),
       },
       defaultPosition: "right",
       defaultMode: "floating",

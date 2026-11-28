@@ -11,13 +11,13 @@ import { ALERTS_PLUGIN_ID } from "./constants";
  */
 export const FIRED_LOG_KEY = "firedLog";
 /** The newest fired alerts kept; older ones fall off as new ones are added. */
-export const MAX_FIRED_ALERTS = 1000;
+const MAX_FIRED_ALERTS = 1000;
 /**
  * The newest rule changes (created, re-armed, deleted) kept, apart from the
  * fired alerts: a change never counts against them, so no number of changes
  * pushes an alert that went off out of the log.
  */
-export const MAX_ALERT_CHANGES = 200;
+const MAX_ALERT_CHANGES = 200;
 
 export interface FiredAlert {
   id: string;

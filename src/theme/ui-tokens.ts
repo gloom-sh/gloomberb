@@ -80,9 +80,9 @@ export function hoverColour(palette: Palette): string {
  * in a theme whose selection sits close to its background (high contrast,
  * blue, midnight).
  */
-export const INACTIVE_SELECTION_MIN = 1.3;
+const INACTIVE_SELECTION_MIN = 1.3;
 /** The least contrast any text keeps on the inactive selection, tones and muted text included. */
-export const INACTIVE_SELECTION_TEXT_MIN = 3;
+const INACTIVE_SELECTION_TEXT_MIN = 3;
 /** How far from the panel toward the selection the inactive selection starts, steps and stops. */
 const INACTIVE_SELECTION_BLEND = { from: 0.35, step: 0.01, to: 0.6 } as const;
 

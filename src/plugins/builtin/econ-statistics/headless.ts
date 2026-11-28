@@ -140,7 +140,7 @@ function exportAsOf(view: StatViewModel): string | null {
   return view.revisedOn ?? view.releasedOn ?? (view.periodicity ? null : view.latest.date);
 }
 
-export function projectStatsHeadlessBundle(
+function projectStatsHeadlessBundle(
   bundle: StatsBundle,
   range: StatRangeId,
   selectedId: string,

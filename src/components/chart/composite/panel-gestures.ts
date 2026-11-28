@@ -73,7 +73,7 @@ export interface PanSample {
 /** Only the last moments of a drag count: a pointer that stopped before letting go throws nothing. */
 const PAN_RELEASE_WINDOW_MS = 100;
 /** How long a throw takes to lose about two thirds of its speed. */
-export const PAN_COAST_DECAY_MS = 325;
+const PAN_COAST_DECAY_MS = 325;
 /**
  * Plot widths per second a release must reach to coast, and below which a
  * coast stops. Only a flick coasts: a drag placing a bar under the pointer

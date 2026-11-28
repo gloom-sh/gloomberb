@@ -161,7 +161,7 @@ export function shortCalendarEnd(
  * central bank's next decision, or a country's next CPI release as its
  * statistics office schedules it.
  */
-export function pastReleaseListing(event: Pick<EconEvent, "pastListing">): boolean {
+function pastReleaseListing(event: Pick<EconEvent, "pastListing">): boolean {
   return event.pastListing === true;
 }
 
@@ -569,7 +569,7 @@ export function figureGap(
  * A release past its time with a figure due is not: figureGap says it is
  * awaited for a day, and its blank after that is a figure the source lost.
  */
-export function actualMayBeBlank(
+function actualMayBeBlank(
   event: Pick<EconEvent, "actual" | "forecast" | "prior" | "date" | "time" | "timeNote">,
   now: number,
 ): boolean {

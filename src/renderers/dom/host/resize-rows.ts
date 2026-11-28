@@ -1,7 +1,7 @@
 import { isLiveResizing, onLiveResizeEnd, onLiveResizeStart } from "../../../ui/live-resize";
 
 /** Set on a row that keeps its width through a live resize; styles.css applies the width. */
-export const RESIZE_HELD_ATTRIBUTE = "data-gloom-resize-held";
+const RESIZE_HELD_ATTRIBUTE = "data-gloom-resize-held";
 const HELD_WIDTH_PROPERTY = "--gloom-resize-held-width";
 /** Rows this far past the view still follow, as a share of its height: more than a frame of movement brings in. */
 const NEAR_VIEW_SHARE = 0.25;

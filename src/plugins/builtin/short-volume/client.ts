@@ -25,7 +25,7 @@ function validObservation(point: ShortVolumeObservation): boolean {
 }
 
 /** Keep exact source quantities and missing observations across the Cloud boundary. */
-export function validateShortVolume(payload: ShortVolumePayload, symbol: string, scope: ShortVolumeScope): ShortVolumePayload {
+function validateShortVolume(payload: ShortVolumePayload, symbol: string, scope: ShortVolumeScope): ShortVolumePayload {
   const invalid = () => { throw new Error("The server returned invalid daily short-volume history"); };
   if (!payload || payload.version !== 1 || payload.symbol !== symbol || payload.scope !== scope
     || typeof payload.finraSymbol !== "string" || !["available", "partial", "unavailable"].includes(payload.status)

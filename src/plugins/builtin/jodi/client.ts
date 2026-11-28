@@ -6,7 +6,7 @@ import { unavailableOnServer } from "../shared/cloud-resource";
 import type { BalanceCommodity, Board } from "./model";
 
 /** What the pane says while the server has no balances to serve: before its first read of JODI's files. */
-export const JODI_NOT_AVAILABLE = "Oil and gas balances are not available yet.";
+const JODI_NOT_AVAILABLE = "Oil and gas balances are not available yet.";
 
 export interface Balances {
   oil: Board;

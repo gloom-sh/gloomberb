@@ -98,7 +98,7 @@ const FAIL_ROWS: readonly RowDef[] = FAIL_ASSETS.flatMap(([asset, label]) => [
 ]);
 
 /** Every series a board needs, with the series that holds each one's change from the week before. */
-export const changeSeriesId = (key: string): string => `${key}C`;
+const changeSeriesId = (key: string): string => `${key}C`;
 
 /** Sums with the float noise of fractional $mn figures rounded away. */
 function sum(values: readonly number[]): number {

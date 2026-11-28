@@ -89,7 +89,7 @@ function declaredPaneShareItem(paneId: string): PaneShareItemPart | null {
   return { title: titled.part.title, excerpt: excerpt || null };
 }
 
-export interface PaneShareItemSource {
+interface PaneShareItemSource {
   /** The pane's instance id, when what it says it is on may name the item (`shareItem.open`); null when not. */
   paneId: string | null;
   /** The pane's name. */
@@ -105,7 +105,7 @@ export interface PaneShareItemSource {
  * shows, else the argument its function was opened with; null when it is on
  * none of these.
  */
-export function resolvePaneShareItem(source: PaneShareItemSource): ShareItem | null {
+function resolvePaneShareItem(source: PaneShareItemSource): ShareItem | null {
   const declared = source.paneId ? shareItem(source.paneName, declaredPaneShareItem(source.paneId)) : null;
   if (declared) return declared;
   const ticker = source.ticker;

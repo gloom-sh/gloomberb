@@ -21,7 +21,7 @@ type SortId = Exclude<keyof RichCheapRow, "stale" | "riskReversalFullYear">;
 const HV_WINDOW = 20;
 /** Pane borders and the footer's own padding. */
 const FOOTER_MARGIN = 6;
-export const VCA_COLUMNS: DataTableColumn[] = [
+const VCA_COLUMNS: DataTableColumn[] = [
   { id: "symbol", label: "Symbol", width: 8, align: "left" },
   { id: "iv30", label: "IV30", width: 7, align: "right" },
   { id: "date", label: "As of", width: 12, align: "right" },
@@ -49,7 +49,7 @@ export const VCA_COLUMNS: DataTableColumn[] = [
  * set, and neither figure is left beside the IV's "As of". Where every date
  * agrees and the pane draws none, the percentile leaves before the reversal.
  */
-export const VCA_COLUMN_DROP_ORDER = ["spot", "iv1yPercentile", "iv1y", ["riskReversalPercentile", "skewDate"], ["riskReversal", "skewDate"], "termSlope",
+const VCA_COLUMN_DROP_ORDER = ["spot", "iv1yPercentile", "iv1y", ["riskReversalPercentile", "skewDate"], ["riskReversal", "skewDate"], "termSlope",
   ["hv", "hvDate", "ivHv"]] as const;
 
 /**
@@ -57,7 +57,7 @@ export const VCA_COLUMN_DROP_ORDER = ["spot", "iv1yPercentile", "iv1y", ["riskRe
  * the footer; a column no row fills, or whose dates agree with the row's own,
  * is left out.
  */
-export function vcaColumns(rows: readonly RichCheapRow[], dates: RichCheapDates = richCheapDates(rows)): DataTableColumn[] {
+function vcaColumns(rows: readonly RichCheapRow[], dates: RichCheapDates = richCheapDates(rows)): DataTableColumn[] {
   // A close solved from quote midpoints names itself, which a date alone has no room for.
   const dateWidth = rows.some((row) => !row.stale && readingSource(row.method, row.basis) === "close mid") ? 16 : 12;
   return VCA_COLUMNS.filter((column) => {

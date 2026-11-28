@@ -320,7 +320,7 @@ export async function catalogCommandHits(ctx: CliCommandContext, token: string):
 }
 
 /** A board's rows in a shot: "72" when the image holds them all, "37 of 72 rows" when it was cut. */
-export function shotRowsText(rows: { shown: number; total: number }): string {
+function shotRowsText(rows: { shown: number; total: number }): string {
   return rows.shown >= rows.total ? String(rows.total) : `${rows.shown} of ${rows.total} rows`;
 }
 
@@ -374,7 +374,7 @@ const tablesHoldFigures = (tables: CliReportTables) => tablesHold(tables, (cell)
  * with a figure from a read that did answer (VIX's term structure beside
  * quotes it has none of).
  */
-export function reportHasNoData(data: {
+function reportHasNoData(data: {
   empty: boolean; rowCount: number; unavailableSymbols: readonly string[]; errors?: readonly string[]; locked?: unknown;
 }, tables?: CliReportTables): boolean {
   if (data.locked) return false;
@@ -403,7 +403,7 @@ function reportFailedUnreached(data: Parameters<typeof reportHasNoData>[0], tabl
  * not be reached: that is no answer rather than no data, and fails as
  * retryable `service_unreachable`, whatever else it shows.
  */
-export function reportFailure(
+function reportFailure(
   data: { empty: boolean; rowCount: number; symbols: readonly string[]; unavailableSymbols: readonly string[]; errors?: readonly string[]; reason?: unknown },
   asked: string,
   { failsWithoutData = false, tables }: { failsWithoutData?: boolean; tables?: CliReportTables } = {},
@@ -567,7 +567,7 @@ export async function runPaneFunction(args: string[], ctx: CliCommandContext) {
  * when the report knows, and what to run instead. A FRED series ID given where
  * a ticker goes (`fn G DEXSFUS`) is charted with the `fred:` prefix.
  */
-export function emptySeriesExport(
+function emptySeriesExport(
   token: string,
   arg: string,
   data: { unavailableSymbols: readonly string[]; errors?: readonly string[] },
@@ -614,7 +614,7 @@ const FN_PROGRESS_AFTER_MS = 5_000;
  * file, a pipe, a script reading it) never gets it. Nothing for a quick one,
  * or with --quiet.
  */
-export function progressNotice(
+function progressNotice(
   ctx: Pick<CliCommandContext, "cliOptions">,
   label: string,
   afterMs = SHOT_PROGRESS_AFTER_MS,

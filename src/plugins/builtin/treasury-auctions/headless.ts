@@ -222,7 +222,7 @@ function marketOf(args: Pick<HeadlessPaneLoadArgs, "argument" | "options">) {
   return auctionSearchMarket(typeof args.argument === "string" ? args.argument : "").market ?? "us";
 }
 
-export function createTreasuryAuctionsHeadless(
+function createTreasuryAuctionsHeadless(
   dependencies: TreasuryAuctionsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

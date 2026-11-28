@@ -9,7 +9,7 @@ import type { HeadlessPaneArgumentDef, HeadlessPaneOptionDef } from "../../../ty
 
 export type ViewSourceCatalog = Pick<PaneFunctionCatalog, "panes" | "paneTemplates">;
 
-export interface ViewSourceInfo {
+interface ViewSourceInfo {
   /** What `source.pane` takes: the function code the person types, or the pane id. */
   token: string;
   label: string;
@@ -23,7 +23,7 @@ export interface ViewSourceInfo {
 const NEAR_SOURCE_LIMIT = 5;
 
 /** Same sources as the assistant's function tools: templates first, then panes no template covers. */
-export function listViewSources(catalog: ViewSourceCatalog): ViewSourceInfo[] {
+function listViewSources(catalog: ViewSourceCatalog): ViewSourceInfo[] {
   const sources: ViewSourceInfo[] = [];
   const templated = new Set<string>();
   for (const template of catalog.paneTemplates.values()) {
@@ -104,7 +104,7 @@ function wordMatches(word: string, candidates: readonly string[]): boolean {
 }
 
 /** The sources whose code, name or keywords share a word with what was typed, best first. */
-export function nearViewSources(sources: readonly ViewSourceInfo[], name: string): ViewSourceInfo[] {
+function nearViewSources(sources: readonly ViewSourceInfo[], name: string): ViewSourceInfo[] {
   const typed = nameWords(name).filter((word) => word.length >= 3);
   const joined = typed.join("");
   if (typed.length === 0) return [];

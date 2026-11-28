@@ -207,16 +207,6 @@ export function useTabCursorLink(sourceId: string | null, { viewer = true }: { v
   return link;
 }
 
-/**
- * The moment the layout tab's crosshair is pinned at, for a pane that is not a
- * chart (news, the tape): null while nothing is pinned. It follows the pin, not
- * a pointer passing over a chart, so a list re-renders when the pin moves and
- * never on a pointer move.
- */
-export function usePinnedTabTime(): number | null {
-  return usePinnedTabMoment()?.at ?? null;
-}
-
 /** A pinned cursor as the moment a list follows, the same object until the pin moves. */
 const pinnedMoments = new WeakMap<TabCursor, PinnedMoment>();
 function pinnedMomentOf(cursor: TabCursor | undefined): PinnedMoment | null {

@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import type { ColumnConfig } from "../../../types/config";
 import { columnUsesClock } from "./cell-version";
 
-export const AGE_CLOCK_MS = 1_000;
+const AGE_CLOCK_MS = 1_000;
 const DAY_MS = 86_400_000;
 
 function resolveColumnClock(columns: readonly ColumnConfig[]): "age" | "day" | null {

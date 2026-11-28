@@ -26,7 +26,7 @@ const SPLIT_MIN_WIDTH = 108;
  * honouring it would silently rewrite the persisted setting as the user types.
  * Pointer and activation commits are explicit, so they are always honoured.
  */
-export function shouldPersistSelection({
+function shouldPersistSelection({
   id,
   reason,
   selectionOnScreen,

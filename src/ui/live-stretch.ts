@@ -29,7 +29,7 @@ export const LivePaneFrameContext = createContext<LivePaneFrame | null>(null);
  * resize: cells of surface per cell of frame, from where both were when it
  * began.
  */
-export interface StretchAxis {
+interface StretchAxis {
   pane: number;
   own: number;
   slope: number;
@@ -41,7 +41,7 @@ const LEARN_AFTER_CELLS = 3;
 const clamp01 = (value: number) => Math.max(0, Math.min(1, value));
 
 /** Until it renders at another size, a surface is taken to keep its share of the pane. */
-export function startStretchAxis(pane: number, own: number): StretchAxis {
+function startStretchAxis(pane: number, own: number): StretchAxis {
   return { pane, own, slope: pane > 0 ? clamp01(own / pane) : 1 };
 }
 
@@ -51,7 +51,7 @@ export function startStretchAxis(pane: number, own: number): StretchAxis {
  * the frame's follows it, and one within a cell of nothing stays put: a chart
  * across the pane, and one of a fixed height in a column of text.
  */
-export function learnStretchAxis(axis: StretchAxis, pane: number, own: number): StretchAxis {
+function learnStretchAxis(axis: StretchAxis, pane: number, own: number): StretchAxis {
   const moved = pane - axis.pane;
   if (Math.abs(moved) < LEARN_AFTER_CELLS) return axis;
   const grew = own - axis.own;
@@ -60,7 +60,7 @@ export function learnStretchAxis(axis: StretchAxis, pane: number, own: number): 
 }
 
 /** The size the surface will render at once its content catches up with a frame of `livePane`. */
-export function predictStretchAxis(axis: StretchAxis, renderedPane: number, own: number, livePane: number): number {
+function predictStretchAxis(axis: StretchAxis, renderedPane: number, own: number, livePane: number): number {
   return Math.max(0, own + axis.slope * (livePane - renderedPane));
 }
 
@@ -72,7 +72,7 @@ const NO_FOLLOW = { x: false, y: false } as const;
  * when both are its cells. Always both axes: an axis whose prediction is back
  * at its cells has to be drawn there, not left at the last move's size.
  */
-export function liveStretchFrame(
+function liveStretchFrame(
   css: { x: boolean; y: boolean },
   axes: { x: StretchAxis; y: StretchAxis },
   rendered: CellSize,

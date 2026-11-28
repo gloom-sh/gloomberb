@@ -202,7 +202,7 @@ function scalarText(value: JsonValue): string {
 }
 
 /** Compact single line form of a tool call's arguments for the timeline. */
-export function summarizeToolArguments(args: Record<string, JsonValue>): string {
+function summarizeToolArguments(args: Record<string, JsonValue>): string {
   const parts: string[] = [];
   const leading = ["symbol", "symbols", "text", "query", "paneId", "resource"];
   const seen = new Set<string>();
@@ -623,7 +623,7 @@ export function canRateTurn(state: ASKGConversationState, turn: ASKGTurn): boole
  * a conversation read from the platform renders through exactly the same view
  * as one that just streamed.
  */
-export function turnsFromConversation(
+function turnsFromConversation(
   conversation: ASKGConversationDetail,
 ): ASKGTurn[] {
   const turns: ASKGTurn[] = [];

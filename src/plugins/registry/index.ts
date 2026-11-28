@@ -109,8 +109,7 @@ export interface DisabledPluginOwner {
 export {
   getSharedMarketData,
   getSharedRegistry,
-  setSharedMarketDataForTests,
-  setSharedRegistryForTests
+  setSharedRegistryForTests,
 } from "./shared";
 
 /**

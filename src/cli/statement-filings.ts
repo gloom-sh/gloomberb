@@ -17,7 +17,7 @@ import { nonUsSecListingVenue } from "../utils/sec";
  */
 
 /** A filing as these reports read it: the form, the day SEC dated it, its accession and its 8-K items. */
-export interface PeriodicFiling {
+interface PeriodicFiling {
   form: string;
   /** YYYY-MM-DD */
   filed: string;
@@ -103,7 +103,7 @@ export interface StatementFiling {
  * of report is the period's date: the report its figures first appeared in.
  * A fiscal fourth quarter's is the 10-K.
  */
-export function statementFiling(
+function statementFiling(
   row: FinancialStatement | null | undefined,
   filings: readonly PeriodicFiling[],
   forms: readonly PeriodicForm[],
@@ -186,7 +186,7 @@ function monthText(index: number): string {
  * quarter. Of several such releases, the newest quarter's first one. The
  * fiscal quarter is read on the grid of the latest annual period's year end.
  */
-export function detectResultsRelease({ latestQuarter, latestAnnual, filings }: {
+function detectResultsRelease({ latestQuarter, latestAnnual, filings }: {
   /** Period end dates, YYYY-MM-DD. */
   latestQuarter: string | null | undefined;
   latestAnnual: string | null | undefined;

@@ -37,7 +37,7 @@ const SURFACE_TENOR_RATIO = 1.35;
  * still loaded when the catalogue is short; a larger limit adds the skipped
  * expiries starting from the longest tenor.
  */
-export function selectSurfaceExpiries(catalogue: readonly number[], limit: number, now: number): number[] {
+function selectSurfaceExpiries(catalogue: readonly number[], limit: number, now: number): number[] {
   const sorted = [...new Set(catalogue)].sort((a, b) => a - b);
   const kept: number[] = [];
   const skipped: number[] = [];

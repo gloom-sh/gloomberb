@@ -17,7 +17,7 @@ export function paneHoldsUnsentWork(paneId: string | null | undefined): boolean 
 }
 
 /** Marks a pane as holding unsent work until the returned release is called. */
-export function holdPaneUnsentWork(paneId: string): () => void {
+function holdPaneUnsentWork(paneId: string): () => void {
   const token = Symbol(paneId);
   let entry = holders.get(paneId);
   if (!entry) {

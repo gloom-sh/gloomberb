@@ -122,7 +122,7 @@ export function hasTrialPhase(phases: readonly string[]): boolean {
  * before 1 before early phase 1, a study of two phases (2/3) by its later
  * one, and a study with no phase to show after them all.
  */
-export function trialPhaseRank(phases: readonly string[]): number {
+function trialPhaseRank(phases: readonly string[]): number {
   let rank = 0;
   for (const phase of phases) {
     const code = phase.trim().toUpperCase();

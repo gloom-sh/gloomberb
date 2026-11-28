@@ -73,7 +73,7 @@ type CallColumn = DataTableColumn;
  * ("written results"), takes its room. A length no call states (a written
  * call has none) leaves the table.
  */
-export function callListColumns(width: number, showTicker: boolean): CallColumn[] {
+function callListColumns(width: number, showTicker: boolean): CallColumn[] {
   const tickerWidth = showTicker ? 8 : 0;
   const dateWidth = 10;
   const periodWidth = 8;
@@ -100,7 +100,7 @@ export function callListColumns(width: number, showTicker: boolean): CallColumn[
 }
 
 /** One cell of a call in the list. PERIOD and LENGTH say per row when their dash is no value lost (format.ts). */
-export function callListCell(call: CloudEarningsCallPayload, column: CallColumn, now: number): DataTableCell {
+function callListCell(call: CloudEarningsCallPayload, column: CallColumn, now: number): DataTableCell {
   switch (column.id) {
     case "ticker":
       return { text: call.ticker };

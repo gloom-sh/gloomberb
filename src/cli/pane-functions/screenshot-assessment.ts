@@ -51,7 +51,7 @@ function showsToken(visible: string, token: string, notBefore = "", notAfter = "
  * "+2", and the legend was the only place the other two showed, so a good
  * picture read "not usable".
  */
-export function shotShowsText(visibleText: string, value: string): boolean {
+function shotShowsText(visibleText: string, value: string): boolean {
   const visible = visibleText.toLowerCase();
   if (showsToken(visible, value.toLowerCase())) return true;
   const { symbol, exchange } = parsePublicTickerKey(value);
@@ -60,7 +60,7 @@ export function shotShowsText(visibleText: string, value: string): boolean {
   return showsToken(visible, `${symbol}:${exchange}`.toLowerCase()) || showsToken(visible, symbol.toLowerCase(), ":.$¥€£", ":");
 }
 
-export function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
+function isPaneScreenshotUsable(signals: PaneScreenshotReadinessSignals): boolean {
   return !signals.refused
     && !signals.blankColumns?.length
     && (signals.interactive || signals.confirmedEmpty || ((signals.rowCount > 0 || signals.contentShown === true) && !signals.emptyStateDetected))
@@ -98,7 +98,7 @@ export function shotStatusIssues(
  * rows than the image draws, the rows drawn of all they hold ("36 of 76").
  * Null when the image holds every row, or no table says how many it holds.
  */
-export function shotTableRows(
+function shotTableRows(
   resolved: Pick<ResolvedPaneFunction, "pane" | "instance">,
   render: Pick<DesktopPaneShotRenderResult, "rows" | "reportRows" | "tableRowTotals">,
 ): { shown: number; total: number } | null {
@@ -426,7 +426,7 @@ function stateSaid(lines: readonly string[] | undefined): string {
  * figures above the bars are not its rows); else, for a pane without a table
  * such as a ticker overview, its labeled values.
  */
-export function liveDomRowCount(render: Pick<DesktopPaneShotRenderResult, "rows" | "visibleKeyValues" | "semanticUi">): number {
+function liveDomRowCount(render: Pick<DesktopPaneShotRenderResult, "rows" | "visibleKeyValues" | "semanticUi">): number {
   const plotted = (render.semanticUi ?? []).reduce((count, node) => (
     node.role === "chart-data" && isRecord(node.metadata) && typeof node.metadata.plottedValueCount === "number"
       ? count + Math.max(0, node.metadata.plottedValueCount) : count
@@ -436,7 +436,7 @@ export function liveDomRowCount(render: Pick<DesktopPaneShotRenderResult, "rows"
 
 /** Labeled values that hold data. A grid of labels over "-" placeholders,
  * as for a ticker without fundamentals, is an empty pane. */
-export function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKeyValues"]): number {
+function filledKeyValueCount(rows: DesktopPaneShotRenderResult["visibleKeyValues"]): number {
   return (rows ?? []).filter(({ label, text }) => {
     const value = text.startsWith(label) ? text.slice(label.length) : text;
     return !PLACEHOLDER_VALUE.test(value.trim());
@@ -476,7 +476,7 @@ function plotsData(node: RemoteUiNodeSnapshot): boolean {
   return lists.some((list) => list.some((series) => isRecord(series) && typeof series.pointCount === "number" && series.pointCount > 0));
 }
 
-export function essentialFigureMismatches(render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "visibleText">): string[] {
+function essentialFigureMismatches(render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "visibleText">): string[] {
   return render.semanticUi.filter((node) => node.role === "figure-layout").flatMap((node) => {
     const metadata = node.metadata;
     if (!isRecord(metadata) || !Array.isArray(metadata.figures) || !Array.isArray(metadata.omitted)) return ["Essential figure evidence is unavailable."];
@@ -494,7 +494,7 @@ export function essentialFigureMismatches(render: Pick<DesktopPaneShotRenderResu
  * grid stands in for it. Both are fine for a person using the pane and wrong
  * for a capture of it.
  */
-export function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResult, "surfaces">): string[] {
+function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResult, "surfaces">): string[] {
   const surfaces = render.surfaces ?? [];
   return [
     ...(surfaces.some((surface) => surface.state === "blank") ? ["the 3D surface drew no mesh"] : []),
@@ -503,7 +503,7 @@ export function surfaceNotDrawnMismatches(render: Pick<DesktopPaneShotRenderResu
 }
 const SURFACE_GRID_STAND_IN = "the 3D surface was replaced by a 2D grid";
 
-export function shotUnusableReasonFor(
+function shotUnusableReasonFor(
   resolved: ResolvedPaneFunction,
   payload: DesktopPaneShotPayload,
   render: Pick<DesktopPaneShotRenderResult, "loadingStateDetected" | "errorStateDetected" | "emptyStateDetected" | "accessGate" | "surfaces" | "stateText" | "errorStateMarkers" | "emptyStateMarkers">,
@@ -574,7 +574,7 @@ function shotExpectedSelections(
   ];
 }
 
-export function missingActiveTabSelections(
+function missingActiveTabSelections(
   semanticUi: RemoteUiNodeSnapshot[],
   expected: PaneScreenshotExpectedSelection[],
 ): PaneScreenshotExpectedSelection[] {

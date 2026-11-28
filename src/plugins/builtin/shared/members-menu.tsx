@@ -15,7 +15,7 @@ import { ROTATION_LIMIT } from "../relative-rotation/model";
 import { SHORT_WATCH_LIMIT } from "../short-interest/watch-model";
 
 /** One member of a theme, a fund or a screen's matches, in the order its list shows it. */
-export interface MemberListing {
+interface MemberListing {
   symbol: string;
   name?: string | null;
   exchange?: string | null;
@@ -53,7 +53,7 @@ interface MemberDestination {
  * RIPL resolve the list the way the command bar does, which takes ten
  * tickers; RIPL's own setting takes more, but not through a new pane.
  */
-export const MEMBER_DESTINATIONS: readonly MemberDestination[] = [
+const MEMBER_DESTINATIONS: readonly MemberDestination[] = [
   { templateId: "relative-rotation-rrg", label: "Relative Rotation (RRG)", limit: ROTATION_LIMIT, minimum: 1 },
   { templateId: "correlation-pane", label: "Correlation Matrix (CORR)", limit: MAX_CORRELATION_TICKERS, minimum: 2 },
   { templateId: "short-watch-pane", label: "Short Squeeze Watch (SIW)", limit: SHORT_WATCH_LIMIT, minimum: 1 },
@@ -64,13 +64,13 @@ export const MEMBER_DESTINATIONS: readonly MemberDestination[] = [
  * A watchlist is a list to read and follow; a whole Russell 2000 stays in
  * MEMB. Larger lists save their first 100 as listed.
  */
-export const MEMBER_WATCHLIST_LIMIT = 100;
+const MEMBER_WATCHLIST_LIMIT = 100;
 
 /**
  * Distinct members in list order, as `SYMBOL:EXCHANGE` when the list names the
  * listing: CORR and RIPL resolve each one, and a bare CCJ also matches Xetra.
  */
-export function memberSymbols(members: readonly MemberListing[]): string[] {
+function memberSymbols(members: readonly MemberListing[]): string[] {
   const seen = new Set<string>();
   return members.flatMap((member) => {
     const symbol = member.symbol.trim().toUpperCase();
@@ -86,7 +86,7 @@ export function memberSymbols(members: readonly MemberListing[]): string[] {
  * disabled below its minimum. A disabled row cannot be selected, so its reason
  * sits beside the label rather than in the description under the list.
  */
-export function memberDestinationChoices(symbols: readonly string[], destinations: readonly MemberDestination[]) {
+function memberDestinationChoices(symbols: readonly string[], destinations: readonly MemberDestination[]) {
   return destinations.map((destination) => {
     const taken = symbols.slice(0, destination.limit);
     const tooFew = taken.length < destination.minimum;
@@ -109,7 +109,7 @@ export function memberDestinationChoices(symbols: readonly string[], destination
  * reads as the whole fund; so does a list that is the first part of a larger
  * one (`total`), as a screen's loaded matches are.
  */
-export function memberListText(list: Pick<MemberList, "title" | "search" | "noun" | "total">, count: number) {
+function memberListText(list: Pick<MemberList, "title" | "search" | "noun" | "total">, count: number) {
   const noun = list.noun ?? "members";
   const query = list.search?.query.trim();
   const search = query ? { query, total: list.search!.total } : null;
@@ -129,13 +129,13 @@ export function memberListText(list: Pick<MemberList, "title" | "search" | "noun
 }
 
 /** The save dialog's choice that names a new watchlist rather than one already there. */
-export const NEW_WATCHLIST_CHOICE = "watchlist:new";
+const NEW_WATCHLIST_CHOICE = "watchlist:new";
 
 /**
  * Where a list can be saved: a new watchlist, then each watchlist there is,
  * in the order the app lists them, with how many tickers it holds.
  */
-export function watchlistTargetChoices(
+function watchlistTargetChoices(
   watchlists: readonly { id: string; name: string }[],
   tickers: ReadonlyMap<string, TickerRecord>,
 ) {
@@ -153,7 +153,7 @@ export function watchlistTargetChoices(
 }
 
 /** The requested name, numbered when a watchlist already has that name or id. */
-export function uniqueWatchlistName(requested: string, watchlists: readonly { id: string; name: string }[]): string {
+function uniqueWatchlistName(requested: string, watchlists: readonly { id: string; name: string }[]): string {
   const base = requested.trim();
   const taken = (name: string) => watchlists.some((list) =>
     list.name.toLowerCase() === name.toLowerCase() || list.id === slugifyName(name, "watchlist"));
@@ -168,7 +168,7 @@ export function uniqueWatchlistName(requested: string, watchlists: readonly { id
  * symbol on another venue (CCJ on Xetra) stays as it is: the member's listing
  * gets its own `SYMBOL:EXCHANGE` record, the way search opens a second listing.
  */
-export function planMemberWatchlist(
+function planMemberWatchlist(
   tickers: ReadonlyMap<string, TickerRecord>,
   watchlistId: string,
   members: readonly MemberListing[],

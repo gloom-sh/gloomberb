@@ -28,12 +28,12 @@ function validRow(row: PerpBoardRow) {
 function envelope(data: { access: string; locked: number | boolean; asOf: string | null }) {
   return !!data && ["pro", "preview"].includes(data.access) && (typeof data.locked === "boolean" || isNonNegativeInt(data.locked)) && isNullableIsoInstant(data.asOf);
 }
-export function validatePerpsBoard(data: PerpBoardPayload): PerpBoardPayload {
+function validatePerpsBoard(data: PerpBoardPayload): PerpBoardPayload {
   if (!envelope(data) || !Array.isArray(data.rows) || !data.rows.every(validRow)
     || new Set(data.rows.map((row) => row.marketId)).size !== data.rows.length) throw new Error("The server returned unreadable perpetual markets");
   return data;
 }
-export function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?: string): PerpHistoryPayload {
+function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?: string): PerpHistoryPayload {
   if (!envelope(data) || typeof data.marketId !== "string" || expectedMarketId !== undefined && data.marketId !== expectedMarketId || !Array.isArray(data.rows) || !Array.isArray(data.funding) || !Array.isArray(data.candles)
     || !data.rows.every((row) => isIsoInstant(row.time) && [row.markPrice, row.oraclePrice, row.premium, row.fundingRate, row.fundingIntervalHours, row.openInterestBase, row.openInterestUsd].every(isNullableFinite) && (row.fundingIntervalHours === null || row.fundingIntervalHours > 0))
     || !data.funding.every((row) => isIsoInstant(row.time) && isFiniteNumber(row.rate) && isPositiveNumber(row.intervalHours) && row.marketId === data.marketId && isIsoInstant(row.observedAt) && typeof row.sourceUrl === "string")
@@ -44,7 +44,7 @@ export function validatePerpsHistory(data: PerpHistoryPayload, expectedMarketId?
 export const fetchPerpsHistory = async (query: PerpHistoryQuery, client: Pick<typeof apiClient, "getCloudPerpsHistory"> = apiClient) => validatePerpsHistory(await client.getCloudPerpsHistory(query), query.marketId);
 
 const RANKING_KEYS = ["fundingPositive", "fundingNegative", "oiSurges", "premiumDislocations", "closedMarketDislocations"] as const;
-export function validatePerpsRankings(data: PerpRankingsPayload): PerpRankingsPayload {
+function validatePerpsRankings(data: PerpRankingsPayload): PerpRankingsPayload {
   // A market can rank in several lists, but only once in each.
   if (!envelope(data) || !RANKING_KEYS.every((key) => Array.isArray(data[key]) && data[key].every(validRow)
     && new Set(data[key].map((row) => row.marketId)).size === data[key].length)) throw new Error("The server returned unreadable perpetual rankings");
@@ -111,7 +111,7 @@ const cascadeEnvelope = (data: { access: string; locked: boolean; asOf: string; 
   !!data && ["pro", "preview"].includes(data.access) && typeof data.locked === "boolean" && isIsoInstant(data.asOf) && typeof data.baseAsset === "string" && isStringArray(data.notes);
 const named = (row: { marketId: string; venue: string; symbol: string }) => !!row && typeof row.marketId === "string" && typeof row.venue === "string" && typeof row.symbol === "string";
 const TOTALS = ["long24h", "short24h", "long7d", "short7d", "count24h", "count7d"] as const;
-export function validatePerpsLiquidations(data: PerpLiquidationsPayload): PerpLiquidationsPayload {
+function validatePerpsLiquidations(data: PerpLiquidationsPayload): PerpLiquidationsPayload {
   if (!cascadeEnvelope(data) || !isIsoInstant(data.from) || !isNullableIsoInstant(data.collectingSince) || !data.totals || !TOTALS.every((key) => isNonNegative(data.totals[key]))
     || !Array.isArray(data.markets) || !data.markets.every((row) => named(row) && TOTALS.every((key) => isNonNegative(row[key])) && isNullableIsoInstant(row.lastEventAt))
     || new Set(data.markets.map((row) => row.marketId)).size !== data.markets.length
@@ -125,7 +125,7 @@ export function validatePerpsLiquidations(data: PerpLiquidationsPayload): PerpLi
 const BANDS = ["bid05", "ask05", "bid1", "ask1", "bid2", "ask2"] as const;
 const validSnapshot = (row: PerpDepthSnapshot) => !!row && typeof row.marketId === "string" && isIsoInstant(row.bucket) && isIsoInstant(row.observedAt) && isNullableIsoInstant(row.sourceAsOf)
   && isPositiveNumber(row.mid) && BANDS.every((band) => isNonNegative(row[band])) && isNonNegative(row.bidReach) && isNonNegative(row.askReach) && isFiniteNumber(row.levels) && isNullableFinite(row.grouping);
-export function validatePerpsDepth(data: PerpDepthPayload): PerpDepthPayload {
+function validatePerpsDepth(data: PerpDepthPayload): PerpDepthPayload {
   if (!cascadeEnvelope(data) || !Array.isArray(data.rows) || !data.rows.every((row) => validSnapshot(row) && named(row) && typeof row.stale === "boolean")
     || new Set(data.rows.map((row) => row.marketId)).size !== data.rows.length
     || !Array.isArray(data.history) || !data.history.every(validSnapshot) || !Array.isArray(data.sources)) throw new Error("The server returned unreadable order book depth");
@@ -179,7 +179,7 @@ export const loadPerpsEquity = (listing: PerpEquityListing, access: string, forc
 const PERP_EQUITIES_PAGE = 100;
 export const perpsListCache = makeCache<PerpEquitiesPayload>("perps-equities");
 /** One answer per listing asked about, in its order; a contract only with its proof for that listing. */
-export function validatePerpsEquities(data: PerpEquitiesPayload, listings: readonly PerpEquityListing[]): PerpEquitiesPayload {
+function validatePerpsEquities(data: PerpEquitiesPayload, listings: readonly PerpEquityListing[]): PerpEquitiesPayload {
   if (!envelope(data) || !Array.isArray(data.results) || data.results.length !== listings.length
     || !data.results.every((result, index) => !!result && (result.market === null
       || sameListing(result.listing, listings[index]!) && validRow(result.market) && provesListing(result.market, listings[index]!))))

@@ -218,15 +218,17 @@ function rankMatchBlock(
   blockItems: ResultItem[],
   query: string,
 ): ResultItem[] {
+  const namedViews = localItems.filter((item) => item.exactViewMatch);
+  const searchable = namedViews.length ? localItems.filter((item) => !item.exactViewMatch) : localItems;
   if (blockItems.length === 0) {
-    return fuzzyFilter(localItems, query, rootItemSearchText, (item) => item.label, rootItemIsFunction);
+    return [...namedViews, ...fuzzyFilter(searchable, query, rootItemSearchText, (item) => item.label, rootItemIsFunction)];
   }
   const block = new Set(blockItems);
-  const ranked = fuzzyFilter([...localItems, ...blockItems], query, rootItemSearchText, (item) => item.label, rootItemIsFunction);
+  const ranked = fuzzyFilter([...searchable, ...blockItems], query, rootItemSearchText, (item) => item.label, rootItemIsFunction);
   const firstBlockIndex = ranked.findIndex((item) => block.has(item));
   const local = ranked.filter((item) => !block.has(item));
-  if (firstBlockIndex < 0) return [...local, ...blockItems];
-  return [...local.slice(0, firstBlockIndex), ...blockItems, ...local.slice(firstBlockIndex)];
+  if (firstBlockIndex < 0) return [...namedViews, ...local, ...blockItems];
+  return [...namedViews, ...local.slice(0, firstBlockIndex), ...blockItems, ...local.slice(firstBlockIndex)];
 }
 
 function rootItemSearchText(item: ResultItem): string {

@@ -46,7 +46,7 @@ export const expiryDay = (expiration: number) => new Date(expiration * 1000).toI
  * expiry after `after` stands in for an ordinary day's vol. Null on a side
  * the catalogue does not reach.
  */
-export function eventBrackets(catalogue: readonly number[], date: string): { before: number | null; after: number | null; next: number | null } {
+function eventBrackets(catalogue: readonly number[], date: string): { before: number | null; after: number | null; next: number | null } {
   const sorted = [...new Set(catalogue)].sort((a, b) => a - b);
   const afterIndex = sorted.findIndex((expiration) => expiryDay(expiration) >= date);
   return {

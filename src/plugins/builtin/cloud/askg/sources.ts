@@ -159,11 +159,8 @@ const SERVER_TOOL_SOURCES: Record<string, ServerToolSource> = {
  */
 const SERVER_TOOLS_WITHOUT_ARGS: ReadonlySet<string> = new Set(["macro.calendar", "macro.yield_curve"]);
 
-/** The tool names the table above places, for the test that holds each to a real function. */
-export const MAPPED_SERVER_TOOLS: readonly string[] = Object.keys(SERVER_TOOL_SOURCES);
-
 /** The function a tool the platform ran shows its data in, or null when none does. */
-export function serverToolCommand(name: string, args: Record<string, JsonValue>): ASKGSourceCommand | null {
+function serverToolCommand(name: string, args: Record<string, JsonValue>): ASKGSourceCommand | null {
   return SERVER_TOOL_SOURCES[name]?.(args) ?? null;
 }
 
@@ -324,7 +321,7 @@ function citationRefs(group: string): number[] {
 }
 
 /** The source numbers an answer cites, in the order it first cites each. */
-export function citedRefs(answer: string): number[] {
+function citedRefs(answer: string): number[] {
   const refs: number[] = [];
   for (const match of withoutCode(withoutWrittenSourceLinks(answer)).matchAll(CITATION_RE)) {
     for (const ref of citationRefs(match[1]!)) if (!refs.includes(ref)) refs.push(ref);

@@ -69,7 +69,7 @@ export interface UseInlineTickersOptions {
  * low-weight targets: about one update a second, and they give way to the
  * symbols a user is watching when a plan's symbol budget runs out.
  */
-export const INLINE_TICKER_STREAM_WEIGHT = 20;
+const INLINE_TICKER_STREAM_WEIGHT = 20;
 
 const NO_INSTRUMENTS: InstrumentRef[] = [];
 const resolutionInFlight = new Map<string, Promise<void>>();

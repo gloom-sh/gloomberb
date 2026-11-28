@@ -84,7 +84,7 @@ function matchesScope(
  * Muted only when every sector is muted. A story spanning a muted and an
  * unmuted sector still matters, so partial overlap is deliberately kept.
  */
-export function isSectorMuted(
+function isSectorMuted(
   article: MarketNewsItem,
   mutedSectors: ReadonlySet<string>,
 ): boolean {

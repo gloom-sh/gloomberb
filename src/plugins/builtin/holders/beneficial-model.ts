@@ -24,7 +24,7 @@ export interface BeneficialSortPreference {
 export const DEFAULT_BENEFICIAL_SORT: BeneficialSortPreference = { columnId: "percentOfClass", direction: "desc" };
 
 /** What the filer did in its latest 13F against the quarter before. */
-export interface ThirteenFAction {
+interface ThirteenFAction {
   label: string;
   /** The share change as a fraction of the prior position: NEW sorts first, EXIT is -1. */
   value: number;
@@ -69,7 +69,7 @@ const REPORTING_THRESHOLD = 5;
  * keeps the route's word for a stake under the threshold, but is never read
  * as an exit.
  */
-export function disclosedStake(
+function disclosedStake(
   filing: Pick<BeneficialOwnerFiling, "percentOfClass" | "shares" | "status">,
 ): BeneficialOwnerStatus | null {
   const { percentOfClass: percent, shares } = filing;
@@ -89,7 +89,7 @@ function signedPercent(fraction: number): string {
  * nothing is NEW, one reported at zero shares after a sale EXIT; without a
  * reported change it is unknown, never "no change".
  */
-export function thirteenFAction(holder: HolderRecord | undefined): ThirteenFAction | null {
+function thirteenFAction(holder: HolderRecord | undefined): ThirteenFAction | null {
   if (!holder) return null;
   const { shares, changeShares, changePercent } = holder;
   if (shares === 0 && changeShares != null && changeShares < 0) return { label: "EXIT", value: -1 };
@@ -118,7 +118,7 @@ function sameEntity(left: string, right: string): boolean {
  * When that person is the filer and the cover spells it in capitals, the
  * filer's own spelling is kept (`SRS Investment Management, LLC`).
  */
-export function beneficialHolderName(
+function beneficialHolderName(
   filing: Pick<BeneficialOwnerFiling, "filerName" | "filerCik" | "reportingPersons">,
 ): string {
   let best: BeneficialOwnerFiling["reportingPersons"][number] | null = null;
@@ -149,7 +149,7 @@ const BASE_RANGE = [2 / 3, 3 / 2] as const;
  * point, or 2% of the stake) is not a new count. Null for an exit, a report
  * without both figures, or a count that cannot be this class's.
  */
-export function stakeToday(
+function stakeToday(
   filing: Pick<BeneficialOwnerFiling, "shares" | "percentOfClass">,
   sharesOutstanding: number | null | undefined,
 ): StakeToday | null {

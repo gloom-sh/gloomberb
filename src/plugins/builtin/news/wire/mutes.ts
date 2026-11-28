@@ -14,14 +14,14 @@ import { NEWS_QUERY_PRESETS, parseNewsIndustryCode } from "../../../../news/quer
 const NEWS_PLUGIN_ID = "news";
 
 /** Saved as `pluginConfig.news.newsMutedSources`: the picker writes string[]. */
-export const NEWS_MUTED_SOURCES_KEY = "newsMutedSources";
+const NEWS_MUTED_SOURCES_KEY = "newsMutedSources";
 /** Saved as `pluginConfig.news.newsMutedKeywords`: the text field edits a comma-separated string. */
-export const NEWS_MUTED_KEYWORDS_KEY = "newsMutedKeywords";
+const NEWS_MUTED_KEYWORDS_KEY = "newsMutedKeywords";
 
 /** Guard against a runaway saved value flooding every filter pass. */
-export const MAX_MUTED_KEYWORDS = 200;
+const MAX_MUTED_KEYWORDS = 200;
 
-export interface NewsMutes {
+interface NewsMutes {
   sources: string[];
   keywords: string[];
 }
@@ -34,7 +34,7 @@ function pushUnique(seen: Set<string>, values: string[], entry: string): void {
 }
 
 /** Muted publishers saved by the Muted Sources picker. */
-export function parseNewsMutedSources(value: unknown): string[] {
+function parseNewsMutedSources(value: unknown): string[] {
   if (!Array.isArray(value)) return [];
   const seen = new Set<string>();
   const sources: string[] = [];
@@ -56,7 +56,7 @@ function rawKeywordEntries(value: unknown): unknown[] {
  * comma-separated string the field edits, plus a string[] for programmatic
  * writes; entries may themselves contain separators.
  */
-export function parseNewsMutedKeywords(value: unknown): string[] {
+function parseNewsMutedKeywords(value: unknown): string[] {
   const seen = new Set<string>();
   const keywords: string[] = [];
   for (const raw of rawKeywordEntries(value)) {
@@ -69,7 +69,7 @@ export function parseNewsMutedKeywords(value: unknown): string[] {
   return keywords;
 }
 
-export function readNewsMutesFromPluginConfig(
+function readNewsMutesFromPluginConfig(
   pluginConfig: Record<string, unknown> | undefined,
 ): NewsMutes {
   return {
@@ -108,7 +108,7 @@ function articleMatchesMute(
 }
 
 /** Drops stories whose publisher or headline matches a mute. Empty lists mute nothing. */
-export function applyNewsMutes<T extends { source?: string; title?: string }>(
+function applyNewsMutes<T extends { source?: string; title?: string }>(
   articles: readonly T[],
   mutes: { sources: readonly string[]; keywords: readonly string[] } | null | undefined,
 ): T[] {
@@ -143,7 +143,7 @@ const MAX_SOURCE_OPTIONS = 200;
  * from recently loaded articles, plus already-muted names so a source with no
  * recent stories can still be un-muted.
  */
-export function collectNewsSourceOptions(
+function collectNewsSourceOptions(
   articles: readonly { source?: string }[],
   extraSources: readonly string[] = [],
 ): PaneSettingOption[] {

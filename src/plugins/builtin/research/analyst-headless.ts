@@ -79,7 +79,7 @@ function overviewEntries(data: AnalystResearchData, quote: Quote | null): Headle
   ];
 }
 
-export interface AnalystResearchHeadlessDependencies {
+interface AnalystResearchHeadlessDependencies {
   loadData(
     symbol: string,
     args: HeadlessPaneLoadArgs,
@@ -101,7 +101,7 @@ const defaultDependencies: AnalystResearchHeadlessDependencies = {
   },
 };
 
-export function createAnalystResearchHeadless(
+function createAnalystResearchHeadless(
   dependencies: AnalystResearchHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"bundle"> {
   return {

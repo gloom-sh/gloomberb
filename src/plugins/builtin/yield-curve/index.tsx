@@ -140,7 +140,7 @@ function draftTextFilter(field: ReturnType<typeof useDraftField>, focused: boole
   };
 }
 
-export function YieldCurvePane({ focused, width, height }: PaneProps) {
+function YieldCurvePane({ focused, width, height }: PaneProps) {
   const [tab, setTab] = usePluginPaneState<GcTab>("yield-curve:tab", "curve");
   const [curveSetting, setCurve] = usePaneSettingValue<string>("curve", "us");
   const curve = curveIdOf(curveSetting) ?? "us";

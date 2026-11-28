@@ -108,7 +108,7 @@ const NEAREST_DATES = 10;
  * data a capture shows 15 minutes after it is taken, which is not a missing
  * date. Otherwise the stored dates are named, newest first.
  */
-export function storedSurfaceMiss(symbol: string, date: string, dates: readonly string[]): string {
+function storedSurfaceMiss(symbol: string, date: string, dates: readonly string[]): string {
   if (dates.includes(date)) {
     return `The ${symbol} ${date} close capture is not shown yet: without real-time data a capture shows ${CLOUD_QUOTE_DELAY_MINUTES} minutes after it is taken.`;
   }

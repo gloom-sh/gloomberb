@@ -27,7 +27,7 @@ const FILING_WORDS = new Set(["FILING", "FILINGS", "EDGAR"]);
 /** What a lookup without a form lists: the reports people open, not the ownership and sale notices around them. */
 const NARRATIVE_FORMS = ["10-K", "10-Q", "8-K", "20-F", "40-F", "6-K", "S-1", "DEF 14A"];
 
-export interface FilingLookup {
+interface FilingLookup {
   ticker: string;
   /** The form asked for ("10-K"); null lists the narrative forms. */
   form: string | null;
@@ -47,7 +47,7 @@ function canonicalForm(token: string): string {
  * filings ("AAPL 10-K", "10-q msft", "nvda filings"). A bare ticker is not
  * one; it would ask for every issuer anyone types.
  */
-export function parseFilingLookup(query: string): FilingLookup | null {
+function parseFilingLookup(query: string): FilingLookup | null {
   const tokens = query.trim().toUpperCase().replace(/\bDEF\s+14A\b/g, "DEF14A").split(/\s+/).filter(Boolean);
   let form: string | null = null;
   let asked = false;
@@ -76,7 +76,7 @@ function filedAt(filing: SecFilingItem): Date {
 }
 
 /** The filings a lookup lists, newest first. A form matches its amendments (10-K/A). */
-export function selectLookupFilings(
+function selectLookupFilings(
   filings: readonly SecFilingItem[],
   lookup: FilingLookup,
   limit = FILING_ROW_LIMIT,

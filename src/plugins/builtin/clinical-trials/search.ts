@@ -39,7 +39,7 @@ const COMPANY_NAME_END = /\b(?:therapeutics|pharmaceuticals?|pharma|biopharma(?:
  * matches studies that name a Viking and some therapeutics. Anything quoted,
  * written with the registry's operators, or one word stays as typed.
  */
-export function registryTerm(term: string): string {
+function registryTerm(term: string): string {
   const text = term.trim().replace(/\s+/g, " ");
   if (!text.includes(" ") || /["()[\]]/.test(text) || /\b(?:AND|OR|NOT)\b/.test(text)) return text;
   return COMPANY_NAME_END.test(text) ? `"${text}"` : text;
@@ -49,7 +49,7 @@ export function registryTerm(term: string): string {
 const LISTING_NAME_TAIL = /\s+(?:group|holdings?)$/i;
 
 /** The name a company's studies are searched under as their lead sponsor: its name without a group's or holding's tail. */
-export function leadSponsorName(company: string): string {
+function leadSponsorName(company: string): string {
   const name = company.trim().replace(/\s+/g, " ");
   return name.replace(LISTING_NAME_TAIL, "") || name;
 }
@@ -77,7 +77,7 @@ const PHARMACEUTICAL_TAIL = /\s+pharmaceuticals?$/i;
  * under another, else its name, then that name without a trailing
  * "Pharmaceutical(s)".
  */
-export function leadSponsorNames(company: Pick<ListedCompany, "name" | "legalName">): string[] {
+function leadSponsorNames(company: Pick<ListedCompany, "name" | "legalName">): string[] {
   const alias = SPONSOR_ALIASES.find(([pattern]) => pattern.test(company.legalName.trim()) || pattern.test(company.name.trim()))?.[1];
   if (alias) return [alias];
   const name = leadSponsorName(company.name);

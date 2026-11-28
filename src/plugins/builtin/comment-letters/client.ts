@@ -56,7 +56,7 @@ const TICKER = /^[A-Z0-9][A-Z0-9.-]{0,9}$/;
  * EDGAR names a filer "Apple Inc.  (AAPL)  (CIK 0000320193)", with two
  * spaces between the parts and every ticker the filer has, or none.
  */
-export function parseFilerName(value: string): { companyName?: string; tickers: string[] } {
+function parseFilerName(value: string): { companyName?: string; tickers: string[] } {
   const parts = value.trim().split(/\s{2,}/).filter((part) => !/^\(CIK\s+\d+\)$/i.test(part));
   if (parts.length === 0 || !parts[0]) return { tickers: [] };
   const last = parts[parts.length - 1]!;
@@ -105,7 +105,7 @@ function parseHit(row: unknown): CommentLetter | null {
  * documents comes back once per document and is kept once. The search
  * reports at most 10,000 matches ("10,000 or more") and pages no further.
  */
-export function parseLetterSearchPage(payload: unknown, offset: number): Omit<CommentLetterPage, "issuer"> {
+function parseLetterSearchPage(payload: unknown, offset: number): Omit<CommentLetterPage, "issuer"> {
   const hits = asRecord(asRecord(payload)?.hits);
   const raw = Array.isArray(hits?.hits) ? hits.hits : [];
   const total = asRecord(hits?.total);
@@ -130,7 +130,7 @@ export function parseLetterSearchPage(payload: unknown, offset: number): Omit<Co
   };
 }
 
-export function buildLetterSearchUrl({ query, cik, offset = 0 }: { query?: string; cik?: string; offset?: number }): string {
+function buildLetterSearchUrl({ query, cik, offset = 0 }: { query?: string; cik?: string; offset?: number }): string {
   const url = new URL(EFTS_URL);
   const text = query?.trim();
   if (text) url.searchParams.set("q", text);
@@ -142,7 +142,7 @@ export function buildLetterSearchUrl({ query, cik, offset = 0 }: { query?: strin
 }
 
 /** A query that could be a ticker on its own: AAPL, brk.b, BF-B. */
-export function tickerCandidate(query: string): string | null {
+function tickerCandidate(query: string): string | null {
   const text = query.trim();
   return /^[A-Za-z]{1,5}(?:[.-][A-Za-z]{1,2})?$/.test(text) ? text.toUpperCase() : null;
 }
@@ -155,7 +155,7 @@ const sameTicker = (left: string, right: string): boolean =>
  * null. A name that only contains the word (a trust named after it) is not
  * the company.
  */
-export function parseTickerMatch(payload: unknown, ticker: string): CommentLetterIssuer | null {
+function parseTickerMatch(payload: unknown, ticker: string): CommentLetterIssuer | null {
   const hits = asRecord(asRecord(payload)?.hits);
   const rows = Array.isArray(hits?.hits) ? hits.hits : [];
   for (const row of rows) {

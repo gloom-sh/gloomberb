@@ -9,7 +9,7 @@ import { zonedWallClockToUtcMs } from "../../../../utils/zoned-date-time";
  * extended-hours options market, so a chain or surface can only move between
  * the open and the close (13:00 on published early closes).
  */
-export interface OptionsSessionState {
+interface OptionsSessionState {
   open: boolean;
   /** The next open or close, used to re-evaluate exactly at the boundary. */
   nextChangeAt: number | null;
@@ -38,7 +38,7 @@ function regularSession(date: string): { open: number; close: number } | null {
   };
 }
 
-export function usOptionsSession(now: number): OptionsSessionState {
+function usOptionsSession(now: number): OptionsSessionState {
   if (!Number.isFinite(now)) return { open: false, nextChangeAt: null };
   const date = newYorkDate(now);
   const today = regularSession(date);
@@ -86,7 +86,7 @@ const INDEX_SETTLEMENT_LAG_MS = 15 * 60_000;
  * session's settled close at `now`, and when it settles if not yet. A date
  * without a session (a weekend, a holiday) has nothing still trading.
  */
-export function indexCloseSettlement(date: string, now: number): { settled: boolean; settlesAt: number | null } {
+function indexCloseSettlement(date: string, now: number): { settled: boolean; settlesAt: number | null } {
   const session = regularSession(date);
   const settlesAt = session ? session.close + INDEX_SETTLEMENT_LAG_MS : Number.NaN;
   return Number.isFinite(settlesAt) ? { settled: now >= settlesAt, settlesAt } : { settled: true, settlesAt: null };

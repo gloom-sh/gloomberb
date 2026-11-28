@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { assignTestBuckets, type SizedTestFile } from "./test-parallel";
+import { assignTestBuckets, buildTestChunks, type SizedTestFile } from "./test-parallel";
 
 describe("assignTestBuckets (LPT)", () => {
   test("places heaviest files first and balances total weight across workers", () => {
@@ -30,5 +30,17 @@ describe("assignTestBuckets (LPT)", () => {
     const buckets = assignTestBuckets(files, 4);
     expect(buckets).toHaveLength(2);
     expect(buckets.flat().sort()).toEqual(["one.test.ts", "two.test.ts"]);
+  });
+
+  test("buildTestChunks isolates heavy files into solo chunks ahead of batched fast files", () => {
+    const files: SizedTestFile[] = [
+      { path: "slow-a.test.ts", weight: 1_000_200 },
+      { path: "slow-b.test.ts", weight: 1_000_100 },
+      ...Array.from({ length: 20 }, (_, i) => ({ path: `fast-${i}.test.ts`, weight: 100 + i })),
+    ];
+    const chunks = buildTestChunks(files, 4);
+    expect(chunks[0]).toEqual(["slow-a.test.ts"]);
+    expect(chunks[1]).toEqual(["slow-b.test.ts"]);
+    expect(chunks.flat().sort()).toEqual(files.map((f) => f.path).sort());
   });
 });

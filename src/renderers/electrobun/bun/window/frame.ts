@@ -34,7 +34,7 @@ export function normalizeWindowFrame(
   };
 }
 
-export function constrainWindowFrame(frame: WindowFrame, minimumSize?: WindowMinimumSize): WindowFrame {
+function constrainWindowFrame(frame: WindowFrame, minimumSize?: WindowMinimumSize): WindowFrame {
   if (!minimumSize) return frame;
   return {
     ...frame,

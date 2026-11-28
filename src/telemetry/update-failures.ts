@@ -300,8 +300,3 @@ export function reviewLastUpdateAttempt(): void {
     logFailure("telemetry-update-failures", "Could not review the last update")(error);
   }
 }
-
-/** Test seam. */
-export function resetUpdateFailureReporterForTests(): void {
-  host = null;
-}

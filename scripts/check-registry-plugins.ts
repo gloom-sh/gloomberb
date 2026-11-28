@@ -1,12 +1,12 @@
-import { mkdtempSync, rmSync } from "fs";
+import { cpSync, mkdirSync, mkdtempSync, rmSync } from "fs";
 import { tmpdir } from "os";
-import { join } from "path";
+import { basename, join, resolve } from "path";
 
 import { PluginBundleError, bundleExternalPlugin } from "../src/plugins/bundle";
 import { findMissingHostExport } from "../src/plugins/compat";
 import { linkHostPackages } from "../src/plugins/host-link";
 import { resolvePluginBrowserEntry, resolvePluginEntry } from "../src/plugins/loader";
-import { annotate, cloneRegistryPlugins } from "./registry-plugins";
+import { annotate, cloneRegistryPlugins, runWithConcurrency } from "./registry-plugins";
 
 /**
  * Compiles every plugin the registry lists against this checkout, the way the
@@ -26,18 +26,39 @@ import { annotate, cloneRegistryPlugins } from "./registry-plugins";
  * compiled binary and the desktop's terminal bundle.
  */
 
-const pluginsDir = mkdtempSync(join(tmpdir(), "gloom-registry-plugins-"));
+const args = process.argv.slice(2);
+let savePluginsDir: string | null = null;
+for (let index = 0; index < args.length; index += 1) {
+  const arg = args[index]!;
+  if (arg === "--save-plugins-dir") savePluginsDir = args[++index] ?? null;
+  else if (arg.startsWith("--save-plugins-dir=")) savePluginsDir = arg.slice("--save-plugins-dir=".length);
+}
+
+const workDir = mkdtempSync(join(tmpdir(), "gloom-registry-plugins-"));
+const cloneDir = savePluginsDir ? resolve(savePluginsDir) : workDir;
 const failures: string[] = [];
 let listed = 0;
 
 try {
-  const result = await cloneRegistryPlugins(pluginsDir);
+  if (savePluginsDir) {
+    rmSync(cloneDir, { recursive: true, force: true });
+    mkdirSync(cloneDir, { recursive: true });
+  }
+  const result = await cloneRegistryPlugins(cloneDir);
   listed = result.listed;
-  const cloned = result.cloned;
+  // When keeping clean checkouts for check-packaged-registry-plugins.ts, copy
+  // before linking host packages so the saved folder stays unlinked.
+  const cloned = savePluginsDir
+    ? result.cloned.map(({ id, dir }) => {
+      const copyDir = join(workDir, basename(dir));
+      cpSync(dir, copyDir, { recursive: true });
+      return { id, dir: copyDir };
+    })
+    : result.cloned;
 
-  for (const { dir } of cloned) linkHostPackages(dir, undefined, pluginsDir);
+  for (const { dir } of cloned) linkHostPackages(dir, undefined, workDir);
 
-  for (const { id, dir } of cloned) {
+  await runWithConcurrency(cloned, 6, async ({ id, dir }) => {
     const nativeEntry = await resolvePluginEntry(dir);
     // The terminal imports the native entry; the desktop and web compile the
     // browser one. Both, when a plugin ships two.
@@ -46,7 +67,7 @@ try {
       : ["browser"];
     for (const target of targets) {
       try {
-        await bundleExternalPlugin(dir, join(pluginsDir, ".out", id, target), {
+        await bundleExternalPlugin(dir, join(workDir, ".out", id, target), {
           target,
           define: { "process.env.NODE_ENV": "\"production\"" },
         });
@@ -60,9 +81,9 @@ try {
       }
     }
     console.log(`checked ${id}`);
-  }
+  });
 } finally {
-  rmSync(pluginsDir, { recursive: true, force: true });
+  rmSync(workDir, { recursive: true, force: true });
 }
 
 if (listed === 0) process.exit(0);

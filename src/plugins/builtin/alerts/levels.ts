@@ -31,7 +31,7 @@ export function activePriceAlertsFor(alertsJson: unknown, target: AlertTarget): 
  * trades now: above for a level overhead, below for one underneath, and
  * crosses when the price sits on it or is unknown.
  */
-export function levelAlertCondition(level: number, currentPrice: number | null): AlertCondition {
+function levelAlertCondition(level: number, currentPrice: number | null): AlertCondition {
   if (currentPrice === null || !Number.isFinite(currentPrice) || level === currentPrice) return "crosses";
   return level > currentPrice ? "above" : "below";
 }

@@ -62,25 +62,40 @@ async function run(args: string[], snapshot: "built" | "absent" = "built"): Prom
 const loadedPlugins = async (args: string[]) => (await run(args)).plugins;
 
 test("catalog and the commands that read market data load none of the composite plugins", async () => {
-  expect(await loadedPlugins(["catalog", "GP"])).toEqual([]);
-  expect(await loadedPlugins(["catalog", "operating margin", "--json"])).toEqual([]);
-  expect(await loadedPlugins(["valuation", "V"])).toEqual([]);
+  const [gp, margin, val] = await Promise.all([
+    loadedPlugins(["catalog", "GP"]),
+    loadedPlugins(["catalog", "operating margin", "--json"]),
+    loadedPlugins(["valuation", "V"]),
+  ]);
+  expect(gp).toEqual([]);
+  expect(margin).toEqual([]);
+  expect(val).toEqual([]);
 }, 60_000);
 
 test("fn loads the plugin that holds its function and no other", async () => {
-  expect(await loadedPlugins(["fn", "HDS", "AAPL"])).toEqual(["ownership", "shared"]);
-  expect(await loadedPlugins(["fn", "EQS"])).toEqual(["screeners"]);
+  const [hds, eqs, sec, zzzz] = await Promise.all([
+    loadedPlugins(["fn", "HDS", "AAPL"]),
+    loadedPlugins(["fn", "EQS"]),
+    loadedPlugins(["fn", "SEC", "AAPL"]),
+    loadedPlugins(["fn", "ZZZZ", "AAPL"]),
+  ]);
+  expect(hds).toEqual(["ownership", "shared"]);
+  expect(eqs).toEqual(["screeners"]);
   // A function of a plugin whose setup other plugins rely on (the chart composer's FRED cache), and a word no function answers to, ask them all.
-  expect((await loadedPlugins(["fn", "SEC", "AAPL"])).length).toBeGreaterThan(10);
-  expect((await loadedPlugins(["fn", "ZZZZ", "AAPL"])).length).toBeGreaterThan(10);
+  expect(sec.length).toBeGreaterThan(10);
+  expect(zzzz.length).toBeGreaterThan(10);
 }, 90_000);
 
 test("without a snapshot file the plugins are asked, and catalog prints what it prints with one", async () => {
-  for (const args of [["catalog", "GP"], ["catalog", "operating margin"]]) {
-    const absent = await run(args, "absent");
+  const cases = [["catalog", "GP"], ["catalog", "operating margin"]];
+  const [pairs, hdsAbsent] = await Promise.all([
+    Promise.all(cases.map(async (args) => ({ args, absent: await run(args, "absent"), built: await run(args) }))),
+    run(["fn", "HDS", "AAPL"], "absent"),
+  ]);
+  for (const { args, absent, built } of pairs) {
     expect(absent.plugins.length, args.join(" ")).toBeGreaterThan(10);
     expect(absent.stdout.length, args.join(" ")).toBeGreaterThan(0);
-    expect(absent.stdout, args.join(" ")).toBe((await run(args)).stdout);
+    expect(absent.stdout, args.join(" ")).toBe(built.stdout);
   }
-  expect((await run(["fn", "HDS", "AAPL"], "absent")).plugins.length).toBeGreaterThan(10);
+  expect(hdsAbsent.plugins.length).toBeGreaterThan(10);
 }, 120_000);

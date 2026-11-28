@@ -25,7 +25,7 @@ export const debtMaturitiesCache = createPluginCache<DebtMaturitiesPayload>({
   schemaVersion: 2,
   policy: { staleMs: 6 * 60 * 60_000, expireMs: 14 * 24 * 60 * 60_000 },
 });
-export const BUCKET_IDS = [
+const BUCKET_IDS = [
   "InNextTwelveMonths",
   "InYearTwo",
   "InYearThree",
@@ -156,7 +156,7 @@ function validQuarter(
  * comes with no annual schedule, is dropped and the schedule stands. The
  * payload keeps the field only when it carries a 10-Q.
  */
-export function validateDebtMaturities(
+function validateDebtMaturities(
   data: DebtMaturitiesPayload,
   symbol: string,
 ): DebtMaturitiesPayload {

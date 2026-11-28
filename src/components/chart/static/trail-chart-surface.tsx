@@ -58,7 +58,7 @@ const isBlank = (char: string | undefined) => char === undefined || char === " "
  * and the quadrant names in the corners where the trails leave room, then the
  * 100/100 crosshair and the cursor as box lines in the cells nothing else uses.
  */
-export function layoutTrailOverlay({ marks, heads, centerX, centerY, cursorX = null, anchors = [], yName, quadrants }: {
+function layoutTrailOverlay({ marks, heads, centerX, centerY, cursorX = null, anchors = [], yName, quadrants }: {
   /** The plot's rows as the trails draw them, one char per cell. */
   marks: readonly string[];
   /** The selected head first: earlier heads get the better places. */
@@ -182,7 +182,7 @@ export function layoutTrailOverlay({ marks, heads, centerX, centerY, cursorX = n
  * the axis name at the right end, then whichever round ticks still fit, each a
  * cell clear of the next.
  */
-export function layoutTrailAxis({ width, ticks, name, readout }: {
+function layoutTrailAxis({ width, ticks, name, readout }: {
   width: number;
   /** Round values and the column each marks. */
   ticks: ReadonlyArray<{ label: string; x: number }>;

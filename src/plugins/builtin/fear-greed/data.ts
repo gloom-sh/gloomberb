@@ -39,7 +39,7 @@ interface CnnSeries {
   data?: unknown;
 }
 
-export type CnnFearGreedGraphData = Partial<Record<CnnGraphKey, CnnSeries>>;
+type CnnFearGreedGraphData = Partial<Record<CnnGraphKey, CnnSeries>>;
 
 interface NormalizedRawPoint {
   x: number;
@@ -243,7 +243,7 @@ function latestTimestamp(series: CnnSeries | undefined, points: NormalizedRawPoi
     ?? (points.length > 0 ? new Date(points[points.length - 1]!.x) : null);
 }
 
-export function normalizeFearGreedData(
+function normalizeFearGreedData(
   charts: CnnFearGreedGraphData,
   latest: CnnFearGreedGraphData = charts,
 ): FearGreedData {

@@ -2,7 +2,6 @@ export { renderCrosshairStrips } from "./raster/crosshair";
 
 export {
   computeBitmapSize,
-  computeNativePlacement,
   computeNativePlacements,
   excludeCellRects,
   intersectCellRects,

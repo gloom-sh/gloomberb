@@ -57,6 +57,7 @@ export interface HeadlessPaneOptionDef {
   type: HeadlessPaneOptionType;
   aliases?: string[];
   values?: HeadlessPaneOptionValue[];
+  showValueAliases?: boolean;
   defaultValue?: string | number | boolean;
   minimum?: number;
   maximum?: number;
@@ -864,7 +865,13 @@ export interface HeadlessPaneDefinition<Shape extends HeadlessPaneShape = Headle
      * the function first. A case can also preset options (`fn PDUFA` is
      * `fn CATL --type pdufa`); an option typed after the word wins over it.
      */
-    opens?: ReadonlyArray<{ words: readonly string[]; argument: string; options?: Readonly<Record<string, string>> }>;
+    opens?: ReadonlyArray<{
+      words: readonly string[];
+      argument: string;
+      options?: Readonly<Record<string, string>>;
+      /** A named view to show and prefer on an exact match; its words aren't loose search keywords. */
+      label?: string;
+    }>;
     intents?: string[];
     dataRequirements?: string[];
     limitations?: string[];

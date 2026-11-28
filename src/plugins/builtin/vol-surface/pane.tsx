@@ -67,7 +67,7 @@ const DVOL_REFRESH_MS = 5 * 60_000;
  * The figures above a coin's surface: Deribit's DVOL now, its change on the
  * day, and the surface's 30-day IV at the forward with its gap to DVOL.
  */
-export function dvolStats(dvol: DvolPayload | null | undefined, atm: number | null): StatItem[] {
+function dvolStats(dvol: DvolPayload | null | undefined, atm: number | null): StatItem[] {
   const latest = dvol?.latest;
   if (!dvol || !latest) return [];
   const previous = dvol.observations.findLast((row) => row.date < latest.at.slice(0, 10))?.value ?? null;

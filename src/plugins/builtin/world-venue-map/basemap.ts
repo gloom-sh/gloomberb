@@ -12,7 +12,7 @@
 import { mercatorY } from "./model";
 
 /** What a generated chunk exports: coordinates as integers of `STEP` degrees, polyline-encoded. */
-export interface BasemapChunk {
+interface BasemapChunk {
   STEP: number;
   LAND: string;
   BORDERS: string;
@@ -44,7 +44,7 @@ const WORLD_BOX: GeoBox = [-180, -60, 180, 90];
  * a laptop. 1:50m keeps about a fiftieth of a degree, so closer in its
  * coastlines turn into straight runs; further out 1:10m only costs paint.
  */
-export const DETAIL_MIN_PX_PER_DEGREE = 32;
+const DETAIL_MIN_PX_PER_DEGREE = 32;
 /** Below this the world is far enough out for a faint graticule to help. */
 export const GRATICULE_MAX_PX_PER_DEGREE = 4.5;
 /** Tiles decoded and kept; a long session over many seas drops the oldest. */
@@ -57,7 +57,7 @@ export function basemapLevel(pxPerDegree: number): BasemapLevel {
 }
 
 /** Decodes a chunk's rings or lines into flat integer runs: x0, y0, x1, y1... */
-export function decodeParts(text: string): Int32Array[] {
+function decodeParts(text: string): Int32Array[] {
   if (!text) return [];
   return text.split(" ").map((part) => {
     const values: number[] = [];
@@ -93,7 +93,7 @@ function onCutEdge(x1: number, y1: number, x2: number, y2: number, box: readonly
 }
 
 /** Builds the land, coast and border paths of one chunk cut to `box`. */
-export function basemapPaths(chunk: BasemapChunk, box: GeoBox): BasemapPaths {
+function basemapPaths(chunk: BasemapChunk, box: GeoBox): BasemapPaths {
   const scale = Math.round(1 / chunk.STEP);
   const cut = box.map((value) => Math.round(value * scale));
   const x = (value: number) => value / scale;

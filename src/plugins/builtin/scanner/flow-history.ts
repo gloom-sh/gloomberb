@@ -34,7 +34,7 @@ function emptyHistory(key: string): FlowHistoryState {
 }
 
 /** Where the next page starts: below the last page, or below the oldest live print. */
-export function nextFlowCursor(
+function nextFlowCursor(
   pages: readonly ScannerFlowEvent[],
   oldestLive: { at: number; id: string } | null,
 ): { at: number; id: string } | undefined {

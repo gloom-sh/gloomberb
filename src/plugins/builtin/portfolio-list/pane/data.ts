@@ -17,7 +17,7 @@ import { columnContextVersion } from "../cell-version";
 import type { ResolvedPortfolioAccountState } from "../summary";
 
 export const VISIBLE_QUOTE_REFRESH_COOLDOWN_MS = 15_000;
-export const VISIBLE_QUOTE_STREAM_MAX_AGE_MS = 15_000;
+const VISIBLE_QUOTE_STREAM_MAX_AGE_MS = 15_000;
 export const VISIBLE_QUOTE_STREAM_WATCHDOG_MS = 5_000;
 export const VISIBLE_SNAPSHOT_REFRESH_COOLDOWN_MS = 5 * 60_000;
 export const VISIBLE_FINANCIAL_WARMUP_DELAY_MS = 350;

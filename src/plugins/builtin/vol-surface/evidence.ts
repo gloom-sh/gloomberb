@@ -77,7 +77,7 @@ function gridCounts(values: (number | null)[][]): { values: number; quads: numbe
 }
 
 /** Evidence comes from the active rendered view's model, never from the presence of a canvas. */
-export function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolSurfaceEvidence {
+function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolSurfaceEvidence {
   const { snapshot, view, selectedExpiry } = input;
   const grid = (view === "surface" || view === "table") && input.grid ? {
     tenors: [...input.grid.tenors], coordinates: [...input.grid.moneyness],
@@ -129,7 +129,7 @@ export function volSurfaceSemanticEvidence(input: VolSurfaceEvidenceInput): VolS
 }
 
 /** The evidence plus `ready: false` while an expiry is still loading, which holds a capture: a partial surface is no surface. */
-export function volSurfaceEvidenceMetadata(input: VolSurfaceEvidenceInput): VolSurfaceEvidence & { ready: boolean } {
+function volSurfaceEvidenceMetadata(input: VolSurfaceEvidenceInput): VolSurfaceEvidence & { ready: boolean } {
   const evidence = volSurfaceSemanticEvidence(input);
   return { ...evidence, ready: !evidence.loading };
 }
@@ -140,7 +140,7 @@ export function useVolSurfaceEvidence(input: VolSurfaceEvidenceInput): void {
 }
 
 /** Verify values and recompute counts so asserted readiness alone cannot certify a chart. */
-export function readVolSurfaceEvidence(value: unknown): VolSurfaceEvidence | null {
+function readVolSurfaceEvidence(value: unknown): VolSurfaceEvidence | null {
   if (!isRecord(value) || value.kind !== "volatility-surface" || value.version !== 1
     || typeof value.symbol !== "string" || !iv(value.spot) || !Array.isArray(value.expiries)
     || !Array.isArray(value.failures) || !isFiniteNumber(value.sourcePointCount) || value.sourcePointCount <= 0

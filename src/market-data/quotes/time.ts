@@ -232,7 +232,7 @@ export interface QuoteAgeFormatOptions {
   seconds?: boolean;
 }
 
-export function formatQuoteAge(lastUpdated: number | undefined, now = Date.now(), options: QuoteAgeFormatOptions = {}): string {
+function formatQuoteAge(lastUpdated: number | undefined, now = Date.now(), options: QuoteAgeFormatOptions = {}): string {
   const clamped = clampQuoteTimestamp(lastUpdated, now);
   if (clamped == null) return MISSING_VALUE;
 

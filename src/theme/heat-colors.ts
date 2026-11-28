@@ -173,7 +173,7 @@ function linearToSrgb(channel: number): number {
 }
 
 /** OKLab, so equal steps of the scale look like equal steps of colour. */
-export function hexToOklab(hex: string): Oklab {
+function hexToOklab(hex: string): Oklab {
   const h = hex.replace("#", "");
   const r = srgbToLinear(parseInt(h.slice(0, 2), 16));
   const g = srgbToLinear(parseInt(h.slice(2, 4), 16));

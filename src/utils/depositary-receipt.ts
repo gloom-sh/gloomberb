@@ -22,7 +22,7 @@ interface ListingEvidence {
  * profile description opens with. A listing in another currency is the
  * ordinary line even when its profile mentions the receipts.
  */
-export function isDepositaryReceipt(input: ListingEvidence): boolean {
+function isDepositaryReceipt(input: ListingEvidence): boolean {
   if (typeof input.isDepositaryReceipt === "boolean") return input.isDepositaryReceipt;
   const currency = input.currency?.trim().toUpperCase();
   if (currency && currency !== "USD") return false;

@@ -142,7 +142,7 @@ function trialDate(struct: Record<string, unknown>) {
  * Parse one v2 study record (`{ protocolSection: { ... } }`) into a trial.
  * Returns null when the record has no NCT id.
  */
-export function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
+function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
   const study = recordOrNull(raw);
   if (!study) return null;
   const protocol = asRecord(study.protocolSection);
@@ -196,7 +196,7 @@ export function parseClinicalTrial(raw: unknown): ClinicalTrial | null {
 }
 
 /** Parse a v2 `studies` response payload into a page. Pure: no network. */
-export function parseClinicalTrialsPage(payload: unknown): ClinicalTrialsPage {
+function parseClinicalTrialsPage(payload: unknown): ClinicalTrialsPage {
   const record = asRecord(payload);
   const studies = Array.isArray(record.studies) ? record.studies : [];
   const trials = studies
@@ -260,7 +260,7 @@ function excludeClause(area: string, values: string[]): string | null {
  * pane orders what has loaded. Filters go to the registry with the search, so
  * every page it returns already matches them.
  */
-export function buildStudiesUrl(query: StudiesQuery = {}): string {
+function buildStudiesUrl(query: StudiesQuery = {}): string {
   const params = new URLSearchParams();
   params.set("format", "json");
   params.set("pageSize", String(query.pageSize ?? DEFAULT_PAGE_SIZE));

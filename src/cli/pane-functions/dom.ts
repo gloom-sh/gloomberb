@@ -282,7 +282,7 @@ function reportRows(result: PaneScreenshotResult): DesktopPaneShotRenderedRow[] 
   }];
 }
 
-export async function buildDomPaneReportFromRender(
+async function buildDomPaneReportFromRender(
   resolved: ResolvedPaneFunction,
   result: PaneScreenshotResult,
   /** Reads data for the lock note, which names a free route only when it has data for the symbol. */

@@ -20,7 +20,7 @@ const QUIET_MAX_WAIT_MS = 8_000;
  * The instruments a saved layout would show if switched to, in the order its
  * panes appear, resolved the same way the live layout resolves them.
  */
-export function collectSavedLayoutInstruments(
+function collectSavedLayoutInstruments(
   config: AppConfig,
   tickers: Map<string, TickerRecord>,
   limit = MAX_WARM_INSTRUMENTS,

@@ -31,7 +31,7 @@ export interface QuoteUpdateOptions {
   freshnessScopeKey?: string;
 }
 
-export function normalizeQuoteStreamSubscriptionTarget(target: QuoteSubscriptionTarget): QuoteSubscriptionTarget | null {
+function normalizeQuoteStreamSubscriptionTarget(target: QuoteSubscriptionTarget): QuoteSubscriptionTarget | null {
   const symbol = normalizeSymbol(target.symbol);
   if (!symbol) return null;
   return {
@@ -61,7 +61,7 @@ function buildQuoteStreamSubscriptionIdentityKey(target: QuoteSubscriptionTarget
   return `${instrumentIdentityKey(instrumentFromQuoteTarget(target))}|${target.route ?? "auto"}`;
 }
 
-export function buildQuoteStreamSubscriptionKey(target: QuoteSubscriptionTarget): string {
+function buildQuoteStreamSubscriptionKey(target: QuoteSubscriptionTarget): string {
   const weight = Number.isFinite(target.weight) ? String(target.weight) : "";
   return [
     buildQuoteStreamSubscriptionIdentityKey(target),

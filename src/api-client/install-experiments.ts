@@ -139,9 +139,3 @@ export function recordFirstRunTickersFinished(
     });
   })().catch(logFailure("install-experiments", "Recording the first-run tickers step failed"));
 }
-
-/** Test seam: forgets the arms asked for in this session. */
-export function resetInstallExperimentsForTests(): void {
-  answers.clear();
-  confirmed.clear();
-}

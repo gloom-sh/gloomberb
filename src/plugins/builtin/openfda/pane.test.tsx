@@ -2,8 +2,8 @@ import { afterEach, expect, test } from "bun:test";
 import { act, useCallback, useMemo, useState } from "react";
 import { createOpenTuiTestHarness, settleFrame } from "../../../renderers/opentui/test-utils";
 import { appReducer, createInitialState, type AppAction, type AppState } from "../../../state/app/context";
-import { createTestDataProvider, createTestQuote } from "../../../test-support/data-provider";
-import { createProviderMiss, ProviderBusyError } from "../../../sources/provider-errors";
+import { createTestDataProvider } from "../../../test-support/data-provider";
+import { createProviderMiss } from "../../../sources/provider-errors";
 import { createTestPaneConfig, TestPaneProvider } from "../../../test-support/pane";
 import { createTestPluginRuntime } from "../../../test-support/plugin-runtime";
 import { setHttpFetchTransport } from "../../../utils/http-transport";
@@ -13,32 +13,11 @@ import { OPENFDA_PANE_ID, OPENFDA_PLUGIN_ID, type OpenFdaDataset } from "./types
 const tui = createOpenTuiTestHarness();
 const PANE = "fda:test";
 
-afterEach(() => {
-  setHttpFetchTransport(null);
-  quoteBusy = false;
-});
+afterEach(() => setHttpFetchTransport(null));
 
-const VACCINE_REPORT = {
-  safetyreportid: "30000001",
-  receivedate: "20260620",
-  serious: "1",
-  patient: {
-    reaction: [{ reactionmeddrapt: "Headache" }],
-    drug: [{ medicinalproduct: "ASTRAZENECA COVID-19 VACCINE", drugcharacterization: "1" }],
-  },
-};
-
-const asked: string[] = [];
-let quoteBusy = false;
+// What the router says when no listing trades under a symbol: neither search below names a ticker.
 const provider = createTestDataProvider({
-  getQuote: async (symbol: string) => {
-    asked.push(symbol);
-    if (quoteBusy) throw new ProviderBusyError();
-    if (symbol === "CAT") return createTestQuote({ symbol, name: "Caterpillar Inc.", instrumentType: "EQUITY" });
-    // What the router says when no listing trades under a symbol.
-    if (symbol !== "AZN") throw createProviderMiss(`Not a ticker: ${symbol}.`, undefined, { notFound: true });
-    return createTestQuote({ symbol, name: "AstraZeneca PLC", instrumentType: "EQUITY" });
-  },
+  getQuote: async (symbol: string) => { throw createProviderMiss(`Not a ticker: ${symbol}.`, undefined, { notFound: true }); },
 });
 
 const runtime = createTestPluginRuntime({ getMarketData: () => provider });
@@ -72,63 +51,9 @@ test.each([["device", "/device/event.json", "device reports"], ["recall", "/drug
   },
 );
 
-// FDA records name the firm and its products, never a symbol: `FDA AZN` matched nothing.
-test("a ticker that matches nothing is searched as its company's name; a term that still finds nothing says what to try", async () => {
-  const searched: string[] = [];
-  setHttpFetchTransport(async (url) => {
-    const search = new URL(url).searchParams.get("search") ?? "";
-    searched.push(search);
-    return /AstraZeneca/i.test(search)
-      ? new Response(JSON.stringify({ meta: { results: { skip: 0, limit: 50, total: 1 } }, results: [VACCINE_REPORT] }), { status: 200 })
-      : new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), { status: 404 });
-  });
-  await act(async () => { await tui.render(<Harness query="AZN" />, { width: 110, height: 10 }); });
-  await settleFrame(tui.setup(), 12);
-  expect(tui.frame()).toContain("ASTRAZENECA COVID-19 VACCINE");
-  expect(searched.map((search) => /AstraZeneca/.test(search) ? "AstraZeneca" : /AZN/.test(search) ? "AZN" : search)).toEqual(["AZN", "AstraZeneca"]);
-
-  // A word in lower case is a search, never a ticker: `cat` is not Caterpillar, and the search box keeps it.
-  searched.length = 0;
-  await act(async () => { await tui.render(<Harness query="cat" />, { width: 110, height: 10 }); });
-  await settleFrame(tui.setup(), 12);
-  expect(searched).toHaveLength(1);
-  expect(tui.frame()).toContain("No drug reports match cat.");
-  expect(asked).not.toContain("CAT");
-
-  // No company trades as ZZZZ: the empty table points to what the search reads, not to a key.
-  await act(async () => { await tui.render(<Harness query="ZZZZ" />, { width: 110, height: 10 }); });
-  await settleFrame(tui.setup(), 12);
-  expect(tui.frame()).toContain("No drug reports match ZZZZ.");
-  expect(tui.frame()).toContain("Try the drug's brand or generic name");
-  expect(tui.frame()).not.toContain("Press /");
-});
-
-// A quote that could not be read is no answer: the pane says so instead of reporting that nothing matches AZN, and asks again on refresh.
-test("a ticker whose company could not be looked up shows the failure, and a refresh looks again", async () => {
-  const searched: string[] = [];
-  setHttpFetchTransport(async (url) => {
-    const search = new URL(url).searchParams.get("search") ?? "";
-    searched.push(search);
-    return /AstraZeneca/i.test(search)
-      ? new Response(JSON.stringify({ meta: { results: { skip: 0, limit: 50, total: 1 } }, results: [VACCINE_REPORT] }), { status: 200 })
-      : new Response(JSON.stringify({ error: { code: "NOT_FOUND" } }), { status: 404 });
-  });
-  quoteBusy = true;
-  await act(async () => { await tui.render(<Harness query="AZN" />, { width: 110, height: 10 }); });
-  await settleFrame(tui.setup(), 12);
-  expect(tui.frame()).toContain("Couldn't look up AZN's company.");
-  expect(tui.frame()).not.toContain("No drug reports match AZN.");
-
-  quoteBusy = false;
-  await act(async () => { tui.setup().mockInput.pressKey("r"); });
-  await settleFrame(tui.setup(), 12);
-  expect(tui.frame()).toContain("ASTRAZENECA COVID-19 VACCINE");
-  expect(searched.some((search) => /AstraZeneca/.test(search))).toBe(true);
-});
-
 // Every report is of the drug the search names: the title and Labeler line say it, so the terminal draws no Drug column.
 test("every report of the searched drug leaves the Drug column out of the terminal view", async () => {
-  const ozempic = (id: number, reaction: string) => ({ ...VACCINE_REPORT, safetyreportid: `3100000${id}`, patient: {
+  const ozempic = (id: number, reaction: string) => ({ safetyreportid: `3100000${id}`, receivedate: "20260620", serious: "1", patient: {
     reaction: [{ reactionmeddrapt: reaction }], drug: [{ medicinalproduct: "OZEMPIC", drugcharacterization: "1", openfda: { manufacturer_name: ["Novo Nordisk A/S"] } }] } });
   setHttpFetchTransport(async () => Response.json({ meta: { results: { skip: 0, limit: 50, total: 2 } }, results: [ozempic(1, "Nausea"), ozempic(2, "Vomiting")] }));
   await act(async () => { await tui.render(<Harness query="ozempic" />, { width: 110, height: 10 }); });

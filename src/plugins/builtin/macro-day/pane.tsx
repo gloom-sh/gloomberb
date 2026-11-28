@@ -50,7 +50,7 @@ const FIGURES = [["actual", "Actual"], ["forecast", "Forecast"], ["prior", "Prio
  * Whether the print came in hot, cool or in line, in words, so it never rests on the Actual's colour alone; a
  * surprise read from another print than the headline's names it: "Hot (core m/m)".
  */
-export function macroSurpriseText(event: Pick<MacroDayEvent, "figures">): string {
+function macroSurpriseText(event: Pick<MacroDayEvent, "figures">): string {
   const surprise = macroSurpriseOf(event.figures);
   if (!surprise) return "";
   const basis = macroSurpriseBasisLabel(event.figures);
@@ -70,7 +70,7 @@ function figureColumns(rows: readonly MacroDayEvent[]): DataTableColumn[] {
  * With every release listed, the release's name, widened to take a policy decision and the earnings marker where a row
  * has them. With one selected, a column only for those: every row would repeat the name.
  */
-export function columnsFor(release: string, rows: readonly MacroDayEvent[], basis: MacroDayMoveBasis = "return"): DataTableColumn[] {
+function columnsFor(release: string, rows: readonly MacroDayEvent[], basis: MacroDayMoveBasis = "return"): DataTableColumn[] {
   const values = [...figureColumns(rows), ...moveColumns(basis)];
   if (release === "all") return [DATE, { id: "release", label: "Release", align: "left",
     width: tableColumnWidth({ label: "Release", width: Math.max(6, ...rows.map((event) => displayWidth(macroDayEventLabel(event)))) }) }, ...values];
@@ -80,7 +80,7 @@ export function columnsFor(release: string, rows: readonly MacroDayEvent[], basi
 }
 
 /** By the sign the text shows: an average that rounds to 0.00% (or 0.0bp) is neither up nor down. */
-export const moveTone = (value: number | null, basis: MacroDayMoveBasis = "return") =>
+const moveTone = (value: number | null, basis: MacroDayMoveBasis = "return") =>
   value == null || !/[1-9]/.test((value * 100).toFixed(macroDayMoveDecimals(basis))) ? undefined
     : value > 0 ? "positive" as const : "negative" as const;
 

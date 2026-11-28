@@ -11,7 +11,6 @@ import { resolveCurrencyUnit } from "../../../utils/currency-units";
 import { notTheShare } from "../../../utils/share-multiples";
 import { datedByReport, type ReportDate } from "./report-dates";
 
-export type { EpsStep };
 
 const DAY_MS = 86_400_000;
 const YEAR_MS = 365.25 * DAY_MS;
@@ -103,7 +102,7 @@ export interface PeBandModel {
  * company's report of that quarter, when `reports` has it, including one with
  * no publication date of its own.
  */
-export function trailingEpsSteps(financials: TickerFinancials, reports: readonly ReportDate[] = []): EpsStep[] {
+function trailingEpsSteps(financials: TickerFinancials, reports: readonly ReportDate[] = []): EpsStep[] {
   return sharedTrailingEpsSteps(financials, (row: FinancialStatement) => datedByReport(knownWhenFiled(row), reports));
 }
 
@@ -155,7 +154,7 @@ function quantile(sorted: readonly number[], q: number): number {
  * history's alone. Three lines at least, widened toward the side the lines
  * leave more of the span uncovered.
  */
-export function chooseMultiples(pes: readonly number[], current?: number | null): number[] {
+function chooseMultiples(pes: readonly number[], current?: number | null): number[] {
   const sorted = pes.filter((value) => Number.isFinite(value) && value > 0).sort((a, b) => a - b);
   if (!sorted.length) return [];
   const today = current != null && Number.isFinite(current) && current > 0 ? current : null;
@@ -225,7 +224,7 @@ function percentileRank(values: readonly number[], value: number): number | null
  * latest period, unless it is overdue. An unavailable sum does not erase the
  * figure before it; that figure stays in force until it goes stale.
  */
-export function stepAt(steps: readonly EpsStep[], time: number): EpsStep | null {
+function stepAt(steps: readonly EpsStep[], time: number): EpsStep | null {
   let step: EpsStep | null = null;
   for (const candidate of steps) {
     if (candidate.eps == null || candidate.knownAt.getTime() > time) continue;

@@ -5,7 +5,7 @@ import type { InstrumentSearchResult } from "../../../types/instrument";
 import { canonicalExchange } from "../../../utils/exchanges";
 
 /** A company's listing as Gloom Cloud's search marks its primary one. */
-export interface FoundListing {
+interface FoundListing {
   ticker: string;
   exchange: string | null;
   entityName: string | null;
@@ -41,7 +41,7 @@ function listedExchange(result: InstrumentSearchResult): string {
 }
 
 /** What a sponsor's name is searched as: the name without its legal form, when that is one word; null for any longer name. */
-export function sponsorSearchName(sponsor: string): string | null {
+function sponsorSearchName(sponsor: string): string | null {
   const short = shortCompanyName(sponsor.trim());
   return short && !/\s/.test(short) ? short : null;
 }
@@ -61,7 +61,7 @@ export function sponsorSearchName(sponsor: string): string | null {
  * A longer name (a university, a hospital, a start-up with its subsidiary
  * line) is never matched.
  */
-export function pickSponsorListing(sponsor: string, rows: readonly InstrumentSearchResult[]): FoundListing | null {
+function pickSponsorListing(sponsor: string, rows: readonly InstrumentSearchResult[]): FoundListing | null {
   const short = sponsorSearchName(sponsor);
   if (!short) return null;
   const sponsorForms = wordsOf(sponsor).filter((word) => COUNTRY_FORMS.has(word));

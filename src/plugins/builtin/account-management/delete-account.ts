@@ -8,7 +8,7 @@ import { t } from "../../../i18n";
  * refused the same way) or, for an account with no password, `log_in`.
  * Null when the error is anything else.
  */
-export function deleteAccountRefusal(error: unknown): "password" | "log_in" | null {
+function deleteAccountRefusal(error: unknown): "password" | "log_in" | null {
   if (!(error instanceof ApiRequestError) || error.status !== 403) return null;
   const confirm = error.details?.confirm;
   return confirm === "password" || confirm === "log_in" ? confirm : null;
@@ -19,10 +19,10 @@ export function deleteAccountRefusal(error: unknown): "password" | "log_in" | nu
  * through the browser, and the session it gets is no fresher than the
  * browser's, so logging out and in here alone would bring another old one.
  */
-export const DELETE_ACCOUNT_LOG_IN_AGAIN =
+const DELETE_ACCOUNT_LOG_IN_AGAIN =
   "To delete your account, sign out of gloom.sh in your browser and back in, then log out here and back in.";
 
-export type DeleteAccountMessage = { tone: "info" | "success" | "error"; text: string };
+type DeleteAccountMessage = { tone: "info" | "success" | "error"; text: string };
 
 export interface DeleteAccountSteps {
   /** Deletes the account, with the password when one is given. */

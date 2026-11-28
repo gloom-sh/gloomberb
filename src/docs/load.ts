@@ -71,11 +71,6 @@ const siteFetchJson: FetchJson = async (url) => {
 
 let fetchJson = siteFetchJson;
 
-/** Tests read a fixed site, or none; null restores the real one. */
-export function setDocsFetchForTests(next: FetchJson | null): void {
-  fetchJson = next ?? siteFetchJson;
-}
-
 let snapshot: Promise<DocsFeed> | null = null;
 
 /** The copy that ships with the app. Loaded on first use: the web build keeps it out of the startup bundle. */

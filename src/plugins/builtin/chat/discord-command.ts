@@ -9,7 +9,7 @@ import type { DiscordComposerCommand } from "./composer-commands";
  * user's often is not, so the page handles the web sign-in and then starts the
  * Discord authorization itself.
  */
-export const DISCORD_LINK_URL = "https://gloom.sh/discord/link";
+const DISCORD_LINK_URL = "https://gloom.sh/discord/link";
 
 /** The Discord calls the composer's /discord command makes. */
 export interface DiscordCommandApi {
@@ -24,7 +24,7 @@ const discordCommandApi: DiscordCommandApi = {
   setMirror: (enabled) => apiClient.setChatDiscordMirror(enabled),
 };
 
-export const DISCORD_UNAVAILABLE = "Discord sync is not available yet";
+const DISCORD_UNAVAILABLE = "Discord sync is not available yet";
 const DISCORD_USAGE = "Use /discord to connect, /discord unlink, or /discord mirror on|off";
 
 type DiscordCommandOutcome = Pick<AppNotificationRequest, "body" | "type">;

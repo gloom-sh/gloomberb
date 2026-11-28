@@ -39,7 +39,7 @@ function wrapKittySequence(control: string, payload = ""): string {
   return `${APC_START}${control};${payload}${APC_END}`;
 }
 
-export function chunkBase64Payload(base64: string, chunkSize = DEFAULT_CHUNK_SIZE): string[] {
+function chunkBase64Payload(base64: string, chunkSize = DEFAULT_CHUNK_SIZE): string[] {
   const chunks: string[] = [];
   for (let index = 0; index < base64.length; index += chunkSize) {
     chunks.push(base64.slice(index, index + chunkSize));

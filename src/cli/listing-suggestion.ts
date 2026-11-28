@@ -13,7 +13,7 @@ const SUGGESTION_TIMEOUT_MS = 6_000;
 /** Searches in flight at once while a list's missing symbols are looked up. */
 const SUGGESTION_CONCURRENCY = 4;
 /** A list with more missing symbols than this is an import with stale codes, not a typo; it gets no suggestions and no extra searches. */
-export const MAX_SUGGESTED_SYMBOLS = 10;
+const MAX_SUGGESTED_SYMBOLS = 10;
 /** Symbols shorter than this are too short for one edit to leave them recognisable. */
 const MIN_TYPO_LENGTH = 4;
 
@@ -61,7 +61,7 @@ function nearness(typed: string, candidate: TickerSearchCandidate): number | nul
  * result is never taken for being first, and a tie between different symbols
  * is no suggestion at all.
  */
-export function nearestListing(typed: string, candidates: readonly TickerSearchCandidate[]): ListingSuggestion | null {
+function nearestListing(typed: string, candidates: readonly TickerSearchCandidate[]): ListingSuggestion | null {
   const typedKey = typed.trim().replace(/^\$/, "").toUpperCase();
   const near = candidates
     .filter((candidate) => (candidate.label || candidate.symbol).toUpperCase() !== typedKey)

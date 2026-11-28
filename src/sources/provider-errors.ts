@@ -20,7 +20,7 @@ const CONTROL_CHARACTERS = /[\p{Cc}\u200e\u200f\u202a-\u202e\u2066-\u2069]/gu;
  * line, no control characters, at most 200 characters. Anything that is not a
  * non-empty string has no reason.
  */
-export function cleanProviderReason(value: unknown): string | undefined {
+function cleanProviderReason(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const line = value.replace(ANSI_SEQUENCE, "").replace(LINE_BREAKS, " ").replace(CONTROL_CHARACTERS, "").replace(/\s+/g, " ").trim();
   if (!line) return undefined;

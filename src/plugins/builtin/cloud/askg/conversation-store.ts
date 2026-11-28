@@ -8,7 +8,7 @@ import { SidebarWidthSnapshotStore } from "../../shared/snapshot-store";
 
 const WIDTH_STATE_KEY = "askg-sidebar-width";
 
-export interface ASKGConversationListSnapshot {
+interface ASKGConversationListSnapshot {
   conversations: ASKGConversationSummary[];
   loading: boolean;
   /** Set when the last refresh failed; the list keeps its previous rows. */
@@ -39,7 +39,7 @@ function describeError(error: unknown): string {
  * is loaded on open and handed straight to the controller, which owns the one
  * conversation being read.
  */
-export class ASKGConversationListStore extends SidebarWidthSnapshotStore<ASKGConversationListSnapshot> {
+class ASKGConversationListStore extends SidebarWidthSnapshotStore<ASKGConversationListSnapshot> {
   private transport: ASKGTransport | null = null;
   private inFlight: Promise<void> | null = null;
   private openConversationId: string | null = null;
@@ -214,7 +214,7 @@ export class ASKGConversationListStore extends SidebarWidthSnapshotStore<ASKGCon
 export const askgConversationListStore = new ASKGConversationListStore();
 
 /** What a row with no title of its own is called. */
-export const UNTITLED_ASKG_CONVERSATION = "New conversation";
+const UNTITLED_ASKG_CONVERSATION = "New conversation";
 
 export function askgConversationLabel(
   conversation: ASKGConversationSummary,

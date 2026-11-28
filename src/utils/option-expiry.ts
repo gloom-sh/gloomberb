@@ -177,7 +177,7 @@ function expiryLastSession(expiration: number, exchange: string | undefined): { 
  * 08:00 UTC on its own date, a Saturday or Sunday too. Null for a stamp that
  * is not a date.
  */
-export function optionExpiryCloseMs(expiration: number, exchange?: string): number | null {
+function optionExpiryCloseMs(expiration: number, exchange?: string): number | null {
   return expiryLastSession(expiration, exchange)?.close ?? null;
 }
 

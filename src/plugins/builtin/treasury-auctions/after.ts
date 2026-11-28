@@ -172,7 +172,7 @@ const REAL_TENORS: ReadonlyArray<[string, number]> = [["5Y", 1826], ["7Y", 2557]
 const UNIT_DAYS = { day: 1, week: 7, month: 30.44, year: 365.25 } as const;
 
 /** The curve and tenor whose yield matches an auction's: the nearest stored tenor to its benchmark; null for an FRN. */
-export function cmtFor(auction: TreasuryAuction): { curve: CloudCurveId; tenor: string } | null {
+function cmtFor(auction: TreasuryAuction): { curve: CloudCurveId; tenor: string } | null {
   if (auction.secType === "FRN") return null;
   const benchmark = auctionBenchmark(auction.securityTerm);
   if (!benchmark) return null;
@@ -240,10 +240,6 @@ const curveKey = (cmt: { curve: CloudCurveId; tenor: string }) => `${cmt.curve}:
  * alone, so a list that changes reads again only when it needs older closes.
  */
 const curveCache = createTtlCache<{ from: string | null; history: CloudCurveHistory }>({ ttlMs: 10 * 60_000, maxEntries: 64 });
-
-export function resetAuctionCurvesForTests(): void {
-  curveCache.clear();
-}
 
 type CurveRead = (curve: CloudCurveId, tenor: string, from: string | null) => Promise<CloudCurveHistory>;
 

@@ -28,7 +28,7 @@ const COMMAND_BAR_HIT_LIMIT = 4;
 const NEWS_DOC_TYPES: CloudSearchDocType[] = ["news"];
 const FILING_DOC_TYPES: CloudSearchDocType[] = ["transcript", "filing"];
 
-export function hitResultDef(
+function hitResultDef(
   hit: CloudSearchHit,
   openHit: (hit: CloudSearchHit) => void,
   now = Date.now(),

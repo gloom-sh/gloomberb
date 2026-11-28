@@ -3,7 +3,7 @@ import type { QuoteSubscriptionTarget } from "../../../types/data-provider";
 import type { HeatmapBoardAsset } from "./portfolio";
 
 /** The board never asks to stream more than this; the server caps lower for most tiers. */
-export const HEATMAP_MAX_QUOTE_TARGETS = 500;
+const HEATMAP_MAX_QUOTE_TARGETS = 500;
 
 /**
  * Stream priority by market-cap rank. A connection over its tier's symbol cap

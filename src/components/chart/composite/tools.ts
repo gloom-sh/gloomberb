@@ -18,7 +18,7 @@ import { CHART_PALETTE, nextChartPaletteColor } from "../../../theme/chart-palet
 export type ChartToolKind = "measure" | "zoom" | "line" | "pencil" | "level" | "rect" | "fib" | "ray";
 
 /** How a saved drawing is drawn from its points. */
-export type ChartDrawingShape = "line" | "rect" | "fib" | "ray";
+type ChartDrawingShape = "line" | "rect" | "fib" | "ray";
 const SHAPED_TOOLS = ["rect", "fib", "ray"] as const;
 
 /** Retracement ratios, measured back from the drag's end toward its start. */
@@ -166,7 +166,7 @@ export function shareableChartDrawings(drawings: readonly ChartDrawing[]): Chart
  * build refuses a saved drawing with a key it does not know and would drop every
  * drawing of the pane, while an id it does not know still draws as a line.
  */
-export function chartDrawingShape(drawing: Pick<ChartDrawing, "id" | "points">): ChartDrawingShape {
+function chartDrawingShape(drawing: Pick<ChartDrawing, "id" | "points">): ChartDrawingShape {
   const prefix = drawing.id.slice(0, Math.max(0, drawing.id.indexOf(":")));
   return drawing.points.length === 2 && (SHAPED_TOOLS as readonly string[]).includes(prefix)
     ? prefix as ChartDrawingShape
@@ -514,7 +514,7 @@ export function resolveMeasureValueAt(
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
 
-export function formatMeasureSpan(spanMs: number): string {
+function formatMeasureSpan(spanMs: number): string {
   const span = Math.max(0, Math.round(spanMs));
   if (span < MINUTE_MS) return `${Math.round(span / 1000)}s`;
   if (span < HOUR_MS) return `${Math.round(span / MINUTE_MS)}m`;

@@ -22,7 +22,7 @@ export const estimateRevisionsCache =
     policy: { staleMs: 5 * 60_000, expireMs: 7 * 86_400_000 },
   });
 const currency = (value: unknown) => value === null || isCurrencyCode(value);
-export function validateEstimates(
+function validateEstimates(
   data: EstimateRevisionsPayload,
   symbol: string,
   exchange: string,

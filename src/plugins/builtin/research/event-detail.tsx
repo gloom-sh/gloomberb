@@ -86,7 +86,7 @@ function scoreFilingForEarnings(filing: SecFilingItem, earningsDate: string): nu
   return score;
 }
 
-export function matchEarningsSecFiling(row: { status: string; date: string; dateType?: EventRow["dateType"]; dateEvidence?: EventRow["dateEvidence"] } | null | undefined, filings: readonly SecFilingItem[]): SecFilingItem | null {
+function matchEarningsSecFiling(row: { status: string; date: string; dateType?: EventRow["dateType"]; dateEvidence?: EventRow["dateEvidence"] } | null | undefined, filings: readonly SecFilingItem[]): SecFilingItem | null {
   if (!row || row.status !== "Earnings") return null;
   if (row.dateType === "fiscal-period-end") {
     return row.dateEvidence ? filings.find((filing) => filing.accessionNumber === row.dateEvidence?.accessionNumber) ?? null : null;
@@ -131,7 +131,7 @@ type EventDetailBlock =
   | { kind: "prose"; text: string };
 
 /** One headed group of the event detail: labelled figures, notes, or filing text. */
-export interface EventDetailSection {
+interface EventDetailSection {
   title?: string;
   blocks: EventDetailBlock[];
 }
@@ -145,7 +145,7 @@ function asOfSection(row: EventRow): EventDetailSection {
   return { blocks: [row.fetchedAt ? detailRow("As of", row.fetchedAt) : detailNote("Retrieval time unavailable.")] };
 }
 
-export function buildEventDetail({
+function buildEventDetail({
   row,
   secFilingsLoading,
   filing,

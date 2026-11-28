@@ -149,7 +149,7 @@ function hedgeSpot(position: ScenarioPosition, marketSpot: number | null | undef
 
 const money = (value: number) => value.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-export function sizeHedgeBudget(
+function sizeHedgeBudget(
   position: ScenarioPosition,
   inputs: HedgeBudgetInputs,
   { quotes = new Map(), spot = position.spot }: { quotes?: ReadonlyMap<string, HedgeQuote>; spot?: number } = {},

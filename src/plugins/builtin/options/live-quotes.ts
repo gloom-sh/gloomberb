@@ -141,7 +141,7 @@ export function buildOptionQuoteKey(contractSymbol: string, broker?: OptionQuote
   });
 }
 
-export function overlayOptionContractQuote(
+function overlayOptionContractQuote(
   contract: OptionContract | undefined,
   quote: Quote | null | undefined,
 ): OptionContract | undefined {

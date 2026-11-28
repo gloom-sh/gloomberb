@@ -34,7 +34,7 @@ export const PANE_HEADER_ASK_MIN_WIDTH = 32;
  * a workspace comes as one stack), each strip showed one cut tab and hid the
  * rest behind a chevron.
  */
-export const PANE_HEADER_TWO_STRIPS_MIN_WIDTH = 56;
+const PANE_HEADER_TWO_STRIPS_MIN_WIDTH = 56;
 /** Same width as the close mark, so the header hit areas stay put. */
 export const PANE_HEADER_RESTORE = " - ";
 const PANE_HEADER_LOCK = " 🔒 ";
@@ -333,7 +333,7 @@ function quickSettingTitle(setting: Pick<PaneHeaderQuickSetting, "label" | "acti
  * fits before the frame's corner, else before it, else on the roomier side,
  * cut to fit (`terminalHoverLabelSide`).
  */
-export function terminalQuickSettingLabelPlacement(
+function terminalQuickSettingLabelPlacement(
   label: string,
   { buttonStart, buttonWidth, width, framed }: {
     /** Cells from the header's left edge to the setting's button (its glyph and the space either side). */
@@ -421,7 +421,7 @@ function TerminalPaneButton({
  * Where `symbol` stands in a pane's title as a word of its own ("OMON SPY", "Chart: NVDA  \u29c9
  * Linked to DES"), so the header can draw it as a control. Null when the title does not name it.
  */
-export function findTitleTicker(title: string, symbol: string): { start: number; end: number } | null {
+function findTitleTicker(title: string, symbol: string): { start: number; end: number } | null {
   if (!symbol) return null;
   for (let start = title.indexOf(symbol); start >= 0; start = title.indexOf(symbol, start + 1)) {
     const end = start + symbol.length;

@@ -236,7 +236,7 @@ export interface PluginAutoUpdateSchedule {
  * plugins that failed on a missing host export are checked even when it is
  * not, since a newer version is what would fix them. Passes never overlap.
  */
-export function createPluginAutoUpdateScheduler(schedule: PluginAutoUpdateSchedule): { tick(startup: boolean): Promise<void> } {
+function createPluginAutoUpdateScheduler(schedule: PluginAutoUpdateSchedule): { tick(startup: boolean): Promise<void> } {
   let running = false;
   return {
     async tick(startup) {

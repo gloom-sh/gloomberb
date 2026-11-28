@@ -566,12 +566,6 @@ export function loadFuturesPriceUnit(
   return request;
 }
 
-/** Forgets every remembered price unit (tests). */
-export function resetFuturesPriceUnits(): void {
-  priceUnits.clear();
-  priceUnitsInFlight.clear();
-}
-
 /** A day's settlement lands the morning after its session; the terms change only with a roll. */
 const TERMS_TTL_MS = 30 * 60_000;
 const termsCache = new Map<string, { at: number; ttl: number; terms: FuturesContractTermsPayload | null }>();

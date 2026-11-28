@@ -279,7 +279,7 @@ export function isIpoList(value: unknown): value is IpoList {
  * of its day, in its book, filed, postponed or withdrawn, is upcoming: it has
  * no return to show.
  */
-export function ipoList(deal: IpoDeal, now = new Date()): IpoList {
+function ipoList(deal: IpoDeal, now = new Date()): IpoList {
   if (deal.status === "listed") return "listed";
   if (deal.status !== "priced") return "upcoming";
   if (deal.firstDay || deal.opening) return "listed";
@@ -310,7 +310,7 @@ function calendarGroup(status: IpoStatus): number {
  * building may have its subscription window before a listing date, and a
  * deal priced on a Shenzhen or ASX book may have no listing date yet.
  */
-export function calendarDate(deal: IpoDeal): string | null {
+function calendarDate(deal: IpoDeal): string | null {
   switch (deal.status) {
     case "upcoming": return deal.listingDate ?? deal.subscriptionClose ?? deal.subscriptionOpen;
     case "priced":
@@ -467,7 +467,7 @@ const NARROW_DROP_ORDER_BY_LIST: Record<IpoList, readonly IpoColumnId[]> = {
 };
 
 /** The table's own width for these columns, plus a cell for the scrollbar. */
-export function ipoTableWidth(columns: readonly IpoColumn[]): number {
+function ipoTableWidth(columns: readonly IpoColumn[]): number {
   return getTableWidth(columns) + 1;
 }
 

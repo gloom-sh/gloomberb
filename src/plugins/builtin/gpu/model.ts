@@ -301,7 +301,7 @@ const gpuSeriesLabel = (row: GpuObservation) => `${gpuLabel(row)} / ${gpuSource(
 export const gpuMatches = (row: GpuBoardRow, query: string) => query.split(/\s+/).every((part) => gpuSeriesLabel(row).toLowerCase().includes(part));
 
 /** Observations are dated by their evidence, never by a backdated effective-date label. */
-export function gpuHistorySeries(row: GpuBoardRow, points: readonly GpuObservation[], color: string, archiveColor: string): ResolvedSeries[] {
+function gpuHistorySeries(row: GpuBoardRow, points: readonly GpuObservation[], color: string, archiveColor: string): ResolvedSeries[] {
   const own = points.filter((point) => `${point.source}:${point.skuKey}` === row.id).sort((a, b) => a.observedAt.localeCompare(b.observedAt));
   if (own.length < 3) return [];
   const plotted = (observations: readonly GpuObservation[]) => observations.map((point) => ({

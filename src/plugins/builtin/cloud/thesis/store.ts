@@ -53,7 +53,7 @@ type ThesisStoreClient = Pick<
  * readable offline from the last copy. Writes go through here so every pane
  * showing a thesis sees the saved version at once.
  */
-export class ThesisStore extends SnapshotStore<ThesisStoreSnapshot> {
+class ThesisStore extends SnapshotStore<ThesisStoreSnapshot> {
   constructor(private readonly client: ThesisStoreClient = apiClient) {
     super(EMPTY);
   }

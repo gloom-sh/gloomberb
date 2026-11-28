@@ -104,7 +104,7 @@ function legibleOnRows(colour: string, palette: ThemeColors): string {
 }
 
 /** The colour a bot's name and its icon are drawn in. */
-export function chatBotNameColor(palette: ThemeColors = colors): string {
+function chatBotNameColor(palette: ThemeColors = colors): string {
   return legibleOnRows(roleHues(palette).bot, palette);
 }
 
@@ -134,7 +134,7 @@ function usableOffset(value: number | null | undefined): number | null {
  * it hidden or their app never said. Their offset is the one their app last
  * reported, so it already follows their daylight saving time.
  */
-export function formatChatLocalTime(
+function formatChatLocalTime(
   utcOffsetMinutes: number | null | undefined,
   now = Date.now(),
   readerOffsetMinutes: number | null = null,

@@ -26,7 +26,7 @@ export function requestChatPaneAction(request: ChatPaneRequest, now = Date.now()
   listeners.notify();
 }
 
-export function clearChatPaneRequest(): void {
+function clearChatPaneRequest(): void {
   if (!pending) return;
   pending = null;
   listeners.notify();

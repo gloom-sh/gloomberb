@@ -96,6 +96,17 @@ export const researchWizardFields: Field[] = RESEARCH_FORM_KINDS.flatMap(kind =>
 export function earningsResultsAlertValues(symbol: string): Record<string, string> {
   return { event: "earnings_date", "earnings_date:symbol": symbol, "earnings_date:when": "results" };
 }
+/** A US company rule an app pane offers on the listing it shows: before earnings, or on an SEC filing. */
+export type ListingResearchAlertKind = Extract<ResearchAlertKind, "earnings_date" | "filing_type">;
+/**
+ * The Add Event Alert form filled in for `kind` on a US listing, its venue
+ * included (BHP on NYSE), as `alerts add BHP:NYSE filing` keeps it. Null for
+ * a listing the rule would not read back, which the form would refuse.
+ */
+export function listingResearchAlertValues(kind: ListingResearchAlertKind, listing: { symbol: string; exchange: string }): Record<string, string> | null {
+  if (!normalizeResearchRule(kind, { version: 1, symbol: listing.symbol, exchange: listing.exchange })) return null;
+  return { event: kind, [`${kind}:symbol`]: listing.symbol, [`${kind}:exchange`]: listing.exchange };
+}
 export function createResearchAlert(kind: string, values: Record<string,string>, now = Date.now()): EventAlertRule {
   if (!isResearchAlertKind(kind)) throw new Error("Choose an alert event.");
   const input: Record<string,unknown> = {version:1};

@@ -47,7 +47,7 @@ const MAX_LIMIT = 200;
 /** The route refuses an offset past this; a list stops paging there. */
 const MAX_OFFSET = 2_000;
 
-export function parseLetters(value: unknown): LettersPayload {
+function parseLetters(value: unknown): LettersPayload {
   if (!isObject(value) || !Array.isArray(value.items) || !value.items.every(validLetter)
     || typeof value.hasMore !== "boolean" || !isIntIn(value.limit, 1, MAX_LIMIT) || !isIntIn(value.offset, 0, MAX_OFFSET)
     || value.items.length > value.limit) {
@@ -69,7 +69,7 @@ const UNAVAILABLE = "Letters are not available right now.";
 
 type LettersApi = Pick<HeadlessPaneApiClient, "getPublicLetters">;
 
-export async function fetchLetters(
+async function fetchLetters(
   params: LettersParams,
   client: LettersApi = apiClient,
   signal?: AbortSignal,

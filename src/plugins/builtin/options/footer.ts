@@ -16,7 +16,7 @@ import type { optionSnapshotFreshness } from "../shared/volatility/option-snapsh
  * options. Delayed quotes, all or some, are the footer's clock, its detail on
  * hover.
  */
-export function optionsCoverageSegment(status: OptionQuoteCoverageStatus, delayLabel?: string): PaneFooterSegment | null {
+function optionsCoverageSegment(status: OptionQuoteCoverageStatus, delayLabel?: string): PaneFooterSegment | null {
   const id = "options-access";
   if (status === "live") return { id, parts: [{ text: t("real-time options"), tone: "positive" }] };
   if (status === "mixed") return delayedFooterSegment({ id, detail: t("mixed real-time and delayed options") });
@@ -32,7 +32,7 @@ export function optionsCoverageSegment(status: OptionQuoteCoverageStatus, delayL
  * left is the identity, how stale the two clocks are, and whatever the chain's
  * own columns cannot say about the quote.
  */
-export function optionContractFooterSegments(
+function optionContractFooterSegments(
   reference: OptionMarketReference | undefined,
   spreadColumnVisible = false,
   now = Date.now(),
@@ -76,7 +76,7 @@ export function optionContractFooterSegments(
   ];
 }
 
-export function resolveOptionsDelayLabel(chain: OptionsChain | null | undefined): string {
+function resolveOptionsDelayLabel(chain: OptionsChain | null | undefined): string {
   const delayMinutes = chain?.delayMinutes && chain.delayMinutes > 0
     ? chain.delayMinutes
     : CLOUD_QUOTE_DELAY_MINUTES;

@@ -357,7 +357,7 @@ function alignedCurve(board: readonly VolatilityBoardRow[], fred: FredVolatility
     termState: classifyTermState(spot, threeMonth), warnings };
 }
 
-export type VolatilityLookbackId = "1W" | "1M";
+type VolatilityLookbackId = "1W" | "1M";
 
 /** The curve's tenors on one earlier date: a week or a calendar month before the curve's own. */
 export interface VolatilityCurveLookback {
@@ -367,7 +367,7 @@ export interface VolatilityCurveLookback {
 }
 
 /** A week back is seven calendar days; a month back is the same day of the previous month, or its last day (periodBaseDay). */
-export function volatilityLookbackDate(date: string, id: VolatilityLookbackId): string {
+function volatilityLookbackDate(date: string, id: VolatilityLookbackId): string {
   return periodBaseDay(date, id);
 }
 

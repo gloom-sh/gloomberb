@@ -54,7 +54,7 @@ function validEvent(value: unknown): value is CloudFilingEventPayload {
     && typeof value.read === "boolean";
 }
 
-export function parseDistressFilings(value: unknown): DistressFilingsPayload {
+function parseDistressFilings(value: unknown): DistressFilingsPayload {
   if (!isRecord(value) || !Array.isArray(value.events) || !value.events.every(validEvent)) {
     throw new UnreadableRecords("8-K filings");
   }
@@ -80,7 +80,7 @@ function validPage(value: Json): boolean {
   return typeof value.hasMore === "boolean" && isNonNegativeInt(value.offset) && isNonNegativeInt(value.limit);
 }
 
-export function parseGoingConcern(value: unknown): GoingConcernPayload {
+function parseGoingConcern(value: unknown): GoingConcernPayload {
   if (!isRecord(value) || !validPage(value) || !Array.isArray(value.disclosures) || !value.disclosures.every(validDisclosure)) {
     throw new UnreadableRecords("going-concern disclosures");
   }
@@ -156,7 +156,7 @@ function validDesignation(value: unknown): value is DistressDesignation {
     && (value.date_basis !== "effective" || value.effective_at !== null);
 }
 
-export function parseDesignations(value: unknown): DistressDesignationsPayload {
+function parseDesignations(value: unknown): DistressDesignationsPayload {
   const subject = "listing designations";
   if (!isRecord(value) || !validPage(value) || !Array.isArray(value.designations) || !value.designations.every(validDesignation)) {
     throw new UnreadableRecords(subject);
@@ -187,7 +187,7 @@ function validNotice(value: unknown): value is InsolvencyNotice {
     && isNonEmptyText(value.notice_type) && isNullableString(value.original_notice_id) && isNonEmptyText(value.status);
 }
 
-export function parseInsolvencyNotices(value: unknown): InsolvencyNoticesPayload {
+function parseInsolvencyNotices(value: unknown): InsolvencyNoticesPayload {
   const subject = "insolvency notices";
   if (!isRecord(value) || !validPage(value) || !Array.isArray(value.notices) || !value.notices.every(validNotice)) {
     throw new UnreadableRecords(subject);

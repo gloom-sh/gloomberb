@@ -4,7 +4,6 @@ import {
   type DataTableKeyEvent,
   type TickerListVisibleRange,
 } from "../../../components";
-import { useDataTableSortMenu } from "../../../components/data-table/sort-menu";
 import { followLiveSparklinePrice } from "../../../components/price-sparkline/model";
 import { PRICE_SPARKLINE_COLUMN_ID } from "../../../components/price-sparkline/view";
 import type { QuoteFlashDirection } from "../../../components/quote-flash";
@@ -39,7 +38,7 @@ const BOOK_CURRENCY_COLUMN_IDS: ReadonlySet<string> = new Set(["market_cap", "co
  * names it as the CLI's do (`MKT VAL (CAD)`, `P&L (CAD)`, `MCAP (TRY)`),
  * whatever currency the rows' prices are in, wide enough for it.
  */
-export function bookCurrencyColumn(column: ColumnConfig, currency: string): ColumnConfig {
+function bookCurrencyColumn(column: ColumnConfig, currency: string): ColumnConfig {
   const label = `${column.label} (${currency})`;
   return { ...column, label, width: Math.max(column.width, displayWidth(label)) };
 }
@@ -102,7 +101,7 @@ const NO_COMPANY_DATA_TYPES: ReadonlySet<string> = new Set(["FUTURE", "FUTURES",
  * A stock, a fund or a listing of no stated type waits for that answer, as
  * its dash may still fill in; a future, a currency or an index does not.
  */
-export function companyDataSettled(financials: TickerFinancials | undefined, answered: boolean): boolean {
+function companyDataSettled(financials: TickerFinancials | undefined, answered: boolean): boolean {
   const quote = financials?.quote;
   if (!quote) return false;
   if (financials.fundamentals || answered) return true;
@@ -118,7 +117,7 @@ export function companyDataSettled(financials: TickerFinancials | undefined, ans
  * unless a settled row has a figure for it, so adding a row never brings it
  * back for a moment.
  */
-export function fitPortfolioColumns(
+function fitPortfolioColumns(
   columns: readonly ColumnConfig[],
   rows: readonly { cell: (column: ColumnConfig) => string; settled: boolean }[],
   width: number | undefined,
@@ -410,17 +409,6 @@ export function PortfolioTickerTable({
     ].map(labelled);
     return rows.length > 0 ? rows : undefined;
   }, [allocationRows, displayColumns, periodLines]);
-  // The table offers "Sort by…" while it has a sort column. A watchlist starts
-  // unsorted and a third header click turns sorting off, so the unsorted state
-  // needs its own entry until TickerListTableView takes `sortable`.
-  useDataTableSortMenu({
-    enabled: !!focused && sortColumnId === null,
-    columns: displayColumns,
-    sortColumnId: null,
-    sortDirection,
-    onHeaderClick,
-  });
-
   return (
     <TickerListTableView
       focused={focused}

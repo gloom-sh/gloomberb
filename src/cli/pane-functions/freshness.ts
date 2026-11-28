@@ -858,7 +858,7 @@ function timeText(value: string, local: boolean): string {
  * How long a delay is, in the unit it is stated in: `15 min`, `12 h`, `3 days`.
  * A delay under two hours that is not a whole hour stays in minutes.
  */
-export function delayLength(minutes: number): string {
+function delayLength(minutes: number): string {
   const whole = Math.max(0, Math.round(minutes));
   if (whole >= 2 * MINUTES_PER_DAY && whole % MINUTES_PER_DAY === 0) return `${whole / MINUTES_PER_DAY} days`;
   if (whole >= 60 && whole % 60 === 0) return `${whole / 60} h`;
@@ -1306,14 +1306,6 @@ function shorterSchedules(freshness: ReportFreshness, detail: StatusLineDetail):
   return [{ ...detail, basis: "none" }, ...freshness.scheduleVariants.map((_, index) => ({ ...detail, basis: "none" as const, schedule: index }))];
 }
 
-/**
- * The plain status line of a capture: the longest of `statusLineVariants`,
- * `Fri 9 Oct close · 15 min delayed · markets closed · regular session opens Mon 13:30 UTC, 09:30 ET` for quotes.
- */
-export function formatStatusLine(freshness: ReportFreshness): string {
-  return statusLineVariants(freshness)[0]!;
-}
-
 /** Whether the status line dates the data by its newest observation and lag (a dataset's), not by a market session. */
 function datesObservation(freshness: ReportFreshness): freshness is ReportFreshness & { asOf: string } {
   return (freshness.lagDays != null || freshness.observationAgeMinutes != null) && !!freshness.asOf;
@@ -1387,7 +1379,7 @@ function paneStatusLineDetails(freshness: ReportFreshness): StatusLineDetail[] {
  * (`Gloom Cloud · observed Sun 4 Oct`), and the narrowest line is the date
  * alone (`Observed Sun 4 Oct`): the source goes before the date.
  */
-export function statusLineVariants(freshness: ReportFreshness, { source = false }: { source?: boolean } = {}): string[] {
+function statusLineVariants(freshness: ReportFreshness, { source = false }: { source?: boolean } = {}): string[] {
   if (datesObservation(freshness)) {
     // The lag, relative to the reading, goes before the source and the date; the source before the date.
     const datasetDetails: DatasetLineDetail[] = [

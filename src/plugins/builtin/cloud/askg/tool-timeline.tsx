@@ -101,7 +101,7 @@ function fixedRowWidth(view: ToolRowView, indent: number): number {
   return indent + 2 + view.title.length + 3 + (view.meta ? view.meta.length + 2 : 0) + 2;
 }
 
-export function ToolTimelineRow({
+function ToolTimelineRow({
   row,
   view,
   width,

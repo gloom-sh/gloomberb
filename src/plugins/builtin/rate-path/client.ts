@@ -4,7 +4,7 @@ import { unansweredRefreshError, withSavedCopyMarkOf } from "../../../data/saved
 import { isCalendarDay, isFraction, isNullableFinite } from "../../../utils/guards";
 import { createCloudEndpoint } from "../shared/cloud-resource";
 
-export function validateRatePath(payload: RatePathPayload): RatePathPayload {
+function validateRatePath(payload: RatePathPayload): RatePathPayload {
   if (!payload || !Array.isArray(payload.meetings) || !Array.isArray(payload.fedFunds)
     || !Array.isArray(payload.sofr) || !Array.isArray(payload.ghosts) || !Array.isArray(payload.gaps)
     || !payload.current?.effr || !payload.current.targetLower || !payload.current.targetUpper

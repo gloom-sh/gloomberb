@@ -44,7 +44,7 @@ export interface TrackStep {
 }
 
 /** A scan's alerts sound and reach the desktop at most this often. */
-export const LOUD_ALERT_EVERY_MS = 60_000;
+const LOUD_ALERT_EVERY_MS = 60_000;
 
 /**
  * Folds one refresh into the track. The first refresh of a scan and session

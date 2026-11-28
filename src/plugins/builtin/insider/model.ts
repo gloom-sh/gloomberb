@@ -154,7 +154,7 @@ const SECURITY_FILLER_WORDS = new Set(["stock", "stocks", "share", "shares"]);
  * "Common Stock, Class A". Class A and Class B, common and preferred, Series A
  * and Series B stay apart.
  */
-export function securityClassKey(title: string): string {
+function securityClassKey(title: string): string {
   const words = title.toLowerCase()
     // A par or nominal value tail names the same shares: ", par value $0.0001 per share", "$.01 par value".
     .replace(/(?:[$€£]?\s*\d*\.?\d+\s*)?\b(?:par(?:\s+value)?|nominal\s+value|stated\s+value)\b.*$/, " ")

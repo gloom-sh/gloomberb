@@ -123,7 +123,7 @@ function landingPageOf(url: URL): string {
 }
 
 /** The stored touches that are still inside their windows; nothing is invented here. */
-export function readStoredAttribution(stored: string | null, now = Date.now()): Record<string, string> {
+function readStoredAttribution(stored: string | null, now = Date.now()): Record<string, string> {
   let saved: Record<string, unknown> = {};
   try {
     const parsed: unknown = JSON.parse(stored ?? "{}");
@@ -168,7 +168,7 @@ function incomingFirstTouch(url: URL, now: number): Record<string, string> | nul
 }
 
 /** Whether a URL carries anything the website hands over: an id, a campaign, or a first touch. */
-export function carriesHandoff(href: string): boolean {
+function carriesHandoff(href: string): boolean {
   try {
     const params = new URL(href).searchParams;
     return (
@@ -191,7 +191,7 @@ export function carriesHandoff(href: string): boolean {
  * campaign replaces the old click id instead of inheriting it. Both parts
  * expire independently.
  */
-export function resolveBrowserAttribution({
+function resolveBrowserAttribution({
   href,
   now = Date.now(),
   referrer,
@@ -287,7 +287,7 @@ export function initializeDesktopResearchActivity(storage: StorageLike = localSt
   }
 }
 
-export function adoptDesktopHandoff(href: string, storage: StorageLike = localStorage, now = Date.now()): boolean {
+function adoptDesktopHandoff(href: string, storage: StorageLike = localStorage, now = Date.now()): boolean {
   if (!researchTelemetryAllowed()) return false;
   if (!carriesHandoff(href)) return false;
   try {

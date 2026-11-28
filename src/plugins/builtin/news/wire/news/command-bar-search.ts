@@ -35,7 +35,7 @@ function storyWords(article: NewsArticle): string[] {
  * starts with every word of the query, newest first. Prefixes rather than
  * substrings, so "hor" finds Hormuz but not every "author" and "shortage".
  */
-export function matchLoadedStories(
+function matchLoadedStories(
   articles: readonly NewsArticle[],
   query: string,
   limit = STORY_ROW_LIMIT,

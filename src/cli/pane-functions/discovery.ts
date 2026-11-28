@@ -15,7 +15,7 @@ import type { MarketContext } from "../types";
 import { createCommandPluginPersistence } from "../saved-copy-persistence";
 import type { PaneFunctionCatalog } from "./catalog";
 
-export interface PaneDiscoveryOptions {
+interface PaneDiscoveryOptions {
   getConfig: () => AppConfig;
   marketData?: DataProvider;
   tickerRepository?: TickerRepository;
@@ -39,7 +39,7 @@ function unavailable<T>(name: string): T {
  * exhaustively typed so additions to GloomPluginContext fail at compile time
  * instead of crashing `gloom catalog` at runtime.
  */
-export function createPaneDiscoveryContext(options: PaneDiscoveryOptions): GloomPluginContext & {
+function createPaneDiscoveryContext(options: PaneDiscoveryOptions): GloomPluginContext & {
   panes: Map<string, PaneDef>;
   paneTemplates: Map<string, PaneTemplateDef>;
 } {

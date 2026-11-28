@@ -88,7 +88,7 @@ const isRatioLine = (row: RatioTableViewRow) => row.kind !== "period-end";
  * (`contentWidth`), so the table fits the column to it whole. The desktop draws the disclosure as a
  * path, not a glyph.
  */
-export function ratioNameCell(
+function ratioNameCell(
   row: Extract<RatioTableRow, { kind: "ratio" }>,
   color: string,
 ): Pick<DataTableCell, "text" | "contentWidth" | "content"> {

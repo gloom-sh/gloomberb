@@ -287,7 +287,7 @@ function amendmentNote(entry: ParsedInsiderFiling): string {
   return [original ? `Original filed ${original}` : "", ...buildInsiderDisclosureText(entry, { byLine: false }).split("\n")].filter(Boolean).join("\n");
 }
 
-export interface InsiderHeadlessDependencies {
+interface InsiderHeadlessDependencies {
   /** Daily FX closes for values in a base currency other than USD; the report's API client unless a test stands in. */
   fxHistory?: FxHistoryClient;
   loadSignals?(query: InsiderSignalsQuery, limit: number, ctx: HeadlessPaneContext): Promise<InsiderSignalsPayload>;
@@ -583,7 +583,7 @@ async function severalTickers(
   };
 }
 
-export function createInsiderHeadless(
+function createInsiderHeadless(
   dependencies: InsiderHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

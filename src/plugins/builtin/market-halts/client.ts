@@ -3,7 +3,7 @@ import { decodeHtmlEntities } from "../../../utils/html-entities";
 import { httpFetch } from "../../../utils/http-transport";
 import { describeHaltReason, parseEtDateTime, type HaltRecord } from "./model";
 
-export const NASDAQ_HALTS_CONNECTION_ID = "nasdaq-trade-halts";
+const NASDAQ_HALTS_CONNECTION_ID = "nasdaq-trade-halts";
 
 const HALTS_FEED_URL = "https://www.nasdaqtrader.com/rss.aspx?feed=tradehalts";
 const FETCH_TIMEOUT_MS = 15_000;
@@ -49,13 +49,13 @@ function fieldValue(item: string, tag: string): string {
   return match ? decodeHtmlEntities(match[1]!).trim() : "";
 }
 
-export interface HaltFeedParseResult {
+interface HaltFeedParseResult {
   records: HaltRecord[];
   /** `<item>` blocks seen, so an unparseable feed is not mistaken for a quiet day. */
   itemCount: number;
 }
 
-export function parseHaltFeed(xml: string): HaltFeedParseResult {
+function parseHaltFeed(xml: string): HaltFeedParseResult {
   const items = xml.match(/<item>[\s\S]*?<\/item>/gi) ?? [];
   const records: HaltRecord[] = [];
 

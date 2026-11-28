@@ -39,7 +39,7 @@ function activeExporter(paneId: string): RegisteredExporter {
   return [...paneExporters.values()][0]!;
 }
 
-export async function exportPaneTable(paneId: string, filename: string): Promise<string> {
+async function exportPaneTable(paneId: string, filename: string): Promise<string> {
   return activeExporter(paneId).exporter(filename);
 }
 

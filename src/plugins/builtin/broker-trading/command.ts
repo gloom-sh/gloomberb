@@ -73,7 +73,7 @@ function positiveDecimal(value: string | undefined, label: string): number {
   return Number(value);
 }
 
-export function parseTradeShortcut(arg: string): Record<string, string> {
+function parseTradeShortcut(arg: string): Record<string, string> {
   const parts = arg.trim().split(/\s+/);
   if (parts.length < 2 || parts.length > 3) throw new Error("Use BUY or SELL followed by ticker, quantity, and an optional limit price.");
   const symbol = parts[0]!.toUpperCase();

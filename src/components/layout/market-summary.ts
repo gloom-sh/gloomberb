@@ -133,7 +133,7 @@ function headerPriceText(quote: Quote, price: number): string {
  * on, as `ticker` headlines them. A percent slot as wide as "+0.53%" keeps a
  * tick from sliding the market state.
  */
-export function headerQuoteSummary(
+function headerQuoteSummary(
   quote: Quote | null | undefined,
   colors: ThemeColors,
 ): Pick<MarketSummary, "quoteColor" | "quotePriceText" | "quoteText"> {
@@ -251,7 +251,7 @@ function quotedPhase(state: MarketState | undefined): VenueSessionPhase | null {
  * Nothing for a market that trades around the clock, or with no fresh quote
  * to ask.
  */
-export function headerMarketState(
+function headerMarketState(
   target: Pick<HeaderMarketTarget, "venue" | "exchange">,
   quote: Quote | null | undefined,
   now: number,

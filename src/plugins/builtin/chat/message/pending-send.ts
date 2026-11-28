@@ -6,7 +6,7 @@ import { toTimestampMillis } from "../../../../utils/timestamp";
  * A message you just sent looks sent. Only when the send is still pending after this long does it
  * fall back to the dim "sending..." state, so a dead connection stays visible.
  */
-export const SLOW_SEND_THRESHOLD_MS = 8_000;
+const SLOW_SEND_THRESHOLD_MS = 8_000;
 
 function isSlowPendingSend(msg: ChatMessage, now: number): boolean {
   if (msg.clientStatus !== "sending") return false;

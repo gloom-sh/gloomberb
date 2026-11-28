@@ -41,7 +41,7 @@ import { assessPaneScreenshot, shotLoadedNothing } from "./screenshot-assessment
  * state. A capture that loaded nothing gives the row back later
  * (`shotLoadedNothing`).
  */
-export function shotHasStatusLine(resolved: Pick<ResolvedPaneFunction, "pane" | "template">): boolean {
+function shotHasStatusLine(resolved: Pick<ResolvedPaneFunction, "pane" | "template">): boolean {
   return !declaredReportFreshness(resolved).local;
 }
 
@@ -81,7 +81,7 @@ function recordBridgedQuotes(bridge: DesktopPaneShotBridge, onSavedCopy?: (saved
  * view of a pane hosting several declares it on its template (DDIS in Fixed
  * Income), so its filings, not the issuer's stock quote, date the capture.
  */
-export function shotFreshness(
+function shotFreshness(
   resolved: Pick<ResolvedPaneFunction, "pane" | "template">,
   payload: Pick<DesktopPaneShotPayload, "financials" | "instrumentFinancials">,
   render: Pick<DesktopPaneShotRenderResult, "semanticUi" | "footerText" | "rows">,
@@ -147,7 +147,7 @@ async function reportShotFreshness(
 }
 
 /** What a capture's report says about its own completeness (`fn`'s `complete`), as `reportCoverage` derives it. */
-export interface ShotReportCoverage {
+interface ShotReportCoverage {
   complete: boolean;
   unavailableSymbols: string[];
   gaps?: string;
@@ -158,7 +158,7 @@ export interface ShotReportCoverage {
  * capture's other uses of it. Undefined for a pane without a report, or when
  * it did not load.
  */
-export async function reportShotCoverage(
+async function reportShotCoverage(
   resolved: Pick<ResolvedPaneFunction, "headless">,
   loadModel: () => Promise<LoadedHeadlessPaneModel>,
 ): Promise<ShotReportCoverage | undefined> {
@@ -179,7 +179,7 @@ export async function reportShotCoverage(
  * report is partial too, whatever the rendered view shows. Whether the image
  * is fit to use stays what the render says.
  */
-export function withReportCoverage(result: PaneScreenshotResult, coverage: ShotReportCoverage | undefined): PaneScreenshotResult {
+function withReportCoverage(result: PaneScreenshotResult, coverage: ShotReportCoverage | undefined): PaneScreenshotResult {
   if (!coverage || coverage.complete) return result;
   return {
     ...result,
@@ -198,7 +198,7 @@ const SHOT_REPORT_WAIT_MS = 20_000;
  * says it stands in (`renderedReportOptions`: OVDV's stored close while the
  * chain is closed). Undefined when it shows what was asked.
  */
-export function shownReportOptions(
+function shownReportOptions(
   resolved: Pick<ResolvedPaneFunction, "headless" | "options">,
   semanticUi: readonly RemoteUiNodeSnapshot[],
 ): Record<string, string> | undefined {
@@ -214,7 +214,7 @@ export function shownReportOptions(
  * Wednesday's petroleum report, not by Thursday's gas storage. Undefined when
  * it shows the tab asked for.
  */
-export function shownReportTab(
+function shownReportTab(
   resolved: Pick<ResolvedPaneFunction, "headless" | "options">,
   semanticUi: readonly RemoteUiNodeSnapshot[],
 ): string | undefined {
@@ -400,7 +400,7 @@ export async function renderDesktopShot({
 }
 
 /** "FRC did not load": a list's rows whose read failed, as the capture's status line marks them. */
-export function unreadRowsNote(rows: readonly string[] | undefined): string | null {
+function unreadRowsNote(rows: readonly string[] | undefined): string | null {
   if (!rows?.length) return null;
   const named = rows.length > 3 ? `${rows.slice(0, 3).join(", ")} and ${rows.length - 3} more` : rows.join(", ");
   return `${named} did not load`;

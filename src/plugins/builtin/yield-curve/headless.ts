@@ -80,7 +80,7 @@ const SWAP_COLUMNS = [
   numCol("tradeCount", "Trades", (value, row) => `${value}${row.quality === "thin" ? " Thin" : ""}`),
 ];
 
-export interface YieldCurveHeadlessDependencies {
+interface YieldCurveHeadlessDependencies {
   load(curve: CurveId, requestedDate: string, context: HeadlessPaneContext): Promise<CurveData>;
   compare?(curve: CurveId, date: string, context: HeadlessPaneContext): Promise<YieldPoint[]>;
   /** The 1D, 1W and 1M curves of a session, for a curve loaded without them (the FRED fallback). */
@@ -132,7 +132,7 @@ const CURVE_MARKETS: Record<CurveId, string> = {
   br: "Brazil",
 };
 
-export function createYieldCurveHeadless(
+function createYieldCurveHeadless(
   dependencies: YieldCurveHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   const loadCompare = dependencies.compare ?? defaultDependencies.compare;

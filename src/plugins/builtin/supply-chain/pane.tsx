@@ -95,7 +95,7 @@ const PERIOD_DATE_CELLS = 11;
  * Value shows only when some row discloses a value, retaining its original
  * currency and units.
  */
-export function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: BasisForms, periodWidth = PERIOD_DATE_CELLS, nameCells = 0): DataTableColumn[] {
+function tableColumns(width: number, desktop: boolean, locked: boolean, valueWidth: number | null, bases: BasisForms, periodWidth = PERIOD_DATE_CELLS, nameCells = 0): DataTableColumn[] {
   const wide = width >= 150, medium = width >= 110;
   const name: DataTableColumn = { id: "name", label: "Counterparty", width: Math.max(locked && !desktop ? 34 : 0, wide ? 30 : medium ? 26 : 20), flexGrow: 1, align: "left" };
   // Wide enough for the longest whole wording beside its bar and figure ("27% of total revenue (gold sales)"), within a cap;

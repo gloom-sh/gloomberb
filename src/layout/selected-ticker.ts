@@ -3,7 +3,7 @@ import type { AppState } from "../core/state/app/types";
 import { isPaneInLayout } from "./pane-manager";
 import { findPaneInstance, type PaneInstanceConfig } from "../types/config";
 
-export interface SelectedLayoutTicker {
+interface SelectedLayoutTicker {
   rootInstanceId: string;
   symbol: string;
   /** Visible panes that show this symbol, including the root. */
@@ -27,7 +27,7 @@ export function commandPromptTicker(state: AppState): { symbol: string; rootInst
  * it is focused, so a news pane does not hide a linked desk, and an unlinked
  * desk does not invent a group.
  */
-export function selectedLayoutTicker(state: AppState): SelectedLayoutTicker | null {
+function selectedLayoutTicker(state: AppState): SelectedLayoutTicker | null {
   const groups = new Map<string, { symbol: string; count: number; order: number }>();
   state.config.layout.instances.forEach((instance, order) => {
     const rootId = tickerRootId(state, instance.instanceId);

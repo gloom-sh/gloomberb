@@ -83,7 +83,7 @@ function etParts(utcMs: number) {
   return zonedDateTimeParts(utcMs, EXCHANGE_TIME_ZONE);
 }
 
-export function etWallClockToUtcMs(
+function etWallClockToUtcMs(
   year: number,
   month: number,
   day: number,

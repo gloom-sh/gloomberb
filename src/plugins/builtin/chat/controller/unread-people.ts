@@ -71,22 +71,6 @@ function peopleOf(facts: Iterable<UnreadFact>, everyMessageForYou: boolean): Cha
   return { senders: [...senders], mentioners: [...mentioners], latestForYou, forYouCount };
 }
 
-/**
- * The people behind unread messages: who sent them, who mentioned or replied
- * to `reader`, and the newest message for them. Your own messages are never
- * unread.
- */
-export function summarizeUnreadMessages(
-  messages: readonly ChatMessage[],
-  reader: { id: string; username: string | null },
-  { everyMessageForYou = false }: { everyMessageForYou?: boolean } = {},
-): ChannelUnreadPeople {
-  return peopleOf(
-    messages.filter((message) => message.user.id !== reader.id).map((message) => unreadFact(message, reader)),
-    everyMessageForYou,
-  );
-}
-
 /** Messages read from the server for a channel whose unread messages are not all on this device. */
 interface LoadedUnread {
   userId: string;

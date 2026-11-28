@@ -14,7 +14,7 @@ export interface TeamPaneView {
 }
 
 const viewRequests = createPaneRequestChannel<TeamPaneView>();
-export const requestTeamPaneView = viewRequests.request;
+const requestTeamPaneView = viewRequests.request;
 export const subscribeRequestedTeamPaneView = viewRequests.subscribe;
 
 export const TEAM_PANE_ID = "team";

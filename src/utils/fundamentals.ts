@@ -28,12 +28,12 @@ export function redactUnavailableFundamentals(value: Fundamentals | undefined): 
  * its funding, not debt, so market cap + debt - cash measures nothing of it.
  * Its reported cash flow stays as reported.
  */
-export const BANK_ENTERPRISE_VALUE = "n/m for banks";
+const BANK_ENTERPRISE_VALUE = "n/m for banks";
 /**
  * An insurer's: its float (the policyholders' money it invests) is its business, not debt or spare cash, so market
  * cap + debt - cash says nothing of what the business is worth.
  */
-export const INSURER_ENTERPRISE_VALUE = "n/m for insurers";
+const INSURER_ENTERPRISE_VALUE = "n/m for insurers";
 const FINANCIAL_ENTERPRISE_VALUES: ReadonlySet<string> = new Set([BANK_ENTERPRISE_VALUE, INSURER_ENTERPRISE_VALUE]);
 
 /**
@@ -43,7 +43,7 @@ const FINANCIAL_ENTERPRISE_VALUES: ReadonlySet<string> = new Set([BANK_ENTERPRIS
  * advisers, trading venues and bitcoin miners whose EV measures their business (Evercore, Houlihan Lokey,
  * MarketAxess, Tradeweb, Riot Platforms), so their EV is shown as the source serves it.
  */
-export function financialEnterpriseValueReason(industry: string | null | undefined): string | null {
+function financialEnterpriseValueReason(industry: string | null | undefined): string | null {
   const text = industry ?? "";
   if (/\bbanks?\b/i.test(text)) return BANK_ENTERPRISE_VALUE;
   if (/\b(?:insurance|reinsurance|insurers?)\b/i.test(text) && !/\bbrokers?\b/i.test(text)) return INSURER_ENTERPRISE_VALUE;

@@ -96,7 +96,7 @@ const TRANSCRIPT_COLUMNS = [
   { key: "text", header: "Text" },
 ];
 
-export interface EarningsCallsHeadlessDependencies {
+interface EarningsCallsHeadlessDependencies {
   loadCalls(
     ticker: string | null,
     limit: number,
@@ -164,7 +164,7 @@ function availabilityMatches(call: CloudEarningsCallPayload, availability: strin
 }
 
 /** The next call as its own line above a company's calls: "Next call Thu Oct 22 22:30 (16:30 ET), in 3h." */
-export function nextCallNotice(call: CloudEarningsCallPayload, now: number): string {
+function nextCallNotice(call: CloudEarningsCallPayload, now: number): string {
   const { start, newYork } = callStartText(call, now);
   const away = callAway(call, now);
   return `Next call ${start}${newYork ? ` (${newYork})` : ""}${away ? `, ${away}` : ""}.`;
@@ -360,7 +360,7 @@ function readsTranscript(args: HeadlessPaneLoadArgs): boolean {
     && (String(args.options.quarter ?? "").trim().length > 0 || String(args.options.section ?? "").trim().length > 0);
 }
 
-export function createEarningsCallsHeadless(
+function createEarningsCallsHeadless(
   dependencies: EarningsCallsHeadlessDependencies = defaultDependencies,
 ): HeadlessPaneDefinition<"rows"> {
   return {

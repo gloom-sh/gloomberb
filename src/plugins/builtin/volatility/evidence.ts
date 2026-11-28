@@ -32,7 +32,7 @@ const seriesFrom = (id: string, points: readonly ProjectedChartPoint[], unit: Ev
 });
 
 /** These are the same projections passed to the active StaticChartSurface views. */
-export function volatilitySemanticEvidence(result: VolatilityLoadResult | null | undefined, view: string,
+function volatilitySemanticEvidence(result: VolatilityLoadResult | null | undefined, view: string,
   selected: VolatilityBoardRow | null, loading: boolean): VolatilityEvidence {
   const data = result?.data;
   const activeView = view === "history" || view === "board" ? view : "curve";
@@ -90,7 +90,7 @@ export function useVolatilityEvidence(result: VolatilityLoadResult | null | unde
 }
 
 /** Recount finite projections and check the plotted ratio against its dated legs. */
-export function readVolatilityEvidence(value: unknown): VolatilityEvidence | null {
+function readVolatilityEvidence(value: unknown): VolatilityEvidence | null {
   if (!isRecord(value) || value.kind !== "volatility-indices" || value.version !== 2
     || !["curve", "history", "board"].includes(String(value.view)) || typeof value.loading !== "boolean"
     || typeof value.stale !== "boolean" || typeof value.complete !== "boolean"
