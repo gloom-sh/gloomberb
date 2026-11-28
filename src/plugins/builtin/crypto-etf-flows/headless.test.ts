@@ -18,7 +18,7 @@ test("a revised ETF price statistic does not change or inherit the flow snapshot
       signal: new AbortController().signal,
       config: {} as HeadlessPaneContext["config"],
       marketData: createTestDataProvider(),
-      apiClient: { getCloudCryptoEtfFlows: async () => payload } as HeadlessPaneContext["apiClient"],
+      apiClient: { getCloudCryptoEtfFlows: async () => payload } as Pick<HeadlessPaneContext["apiClient"], "getCloudCryptoEtfFlows"> as HeadlessPaneContext["apiClient"],
     });
   };
   const before = await report(-0.61), after = await report(-0.63);

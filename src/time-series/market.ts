@@ -17,7 +17,7 @@ import { calendarBarStart, isUsCashListing } from "./chart-data";
 import { isRoundTheClockCoin } from "../utils/crypto-pair";
 
 type DailyReadingSeries = Partial<Pick<ResolvedSeries, "historyResolution" | "listing" | "timeBasis">> & {
-  points: readonly { date: Date | string; partial?: boolean }[];
+  points: readonly { date: Date | string | number; partial?: boolean }[];
 };
 
 export function mixedDailyReadings(series: readonly DailyReadingSeries[], now = Date.now()) {
