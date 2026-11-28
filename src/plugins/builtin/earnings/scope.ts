@@ -38,7 +38,7 @@ export interface EarningsScopeOption {
 
 /** The value that lists the market; also what an unknown or removed choice reads as. */
 export const ALL_SCOPE = "all";
-export const MINE_SCOPE = "mine";
+const MINE_SCOPE = "mine";
 
 /**
  * The pane setting PF's Earnings Calendar opens a board with: the Names value of the portfolio or watchlist on screen
@@ -60,7 +60,7 @@ function collectionOf(value: unknown): { kind: CollectionKind; id: string } | nu
 }
 
 /** Whether a Names value is one of the person's portfolios or watchlists. */
-export function isCollectionScope(value: unknown): value is string {
+function isCollectionScope(value: unknown): value is string {
   return collectionOf(value) !== null;
 }
 
