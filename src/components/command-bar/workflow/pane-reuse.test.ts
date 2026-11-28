@@ -302,4 +302,35 @@ describe("every function opens once", () => {
       }
     });
   }
+
+  // PF's Earnings Calendar opens ERN on one list: an ERN window already open keeps its Names, and the list's window
+  // stays that list's.
+  test("PF's Earnings Calendar opens a window per list, and ERN, EVTS and other lists never take each other's", async () => {
+    const catalog = await createPaneCatalog({ config: createDefaultConfig("/tmp/gloomberb-pane-reuse-catalog") } as never, getLoadablePlugins());
+    try {
+      const market = createPaneInstance("earnings-calendar", { instanceId: "earnings-calendar:market", settings: { liveStreaming: false } });
+      const host = await openFunctions(catalog, [market]);
+      const list = (value: string) => ({ preset: { collection: value } });
+      await host.open("earnings-calendar-pane", list("portfolio:core"));
+      await host.open("earnings-calendar-pane", list("watchlist:core"));
+      expect(host.added).toHaveLength(2);
+      expect(host.focused).toEqual([]);
+      const settings = () => host.layout().instances.map((entry) => entry.settings ?? {});
+      expect(settings()).toEqual([{ liveStreaming: false }, { collection: "portfolio:core" }, { collection: "watchlist:core" }]);
+
+      // Each again focuses its own.
+      await host.open("earnings-calendar-pane", list("watchlist:core"));
+      await host.open("earnings-calendar-pane", list("portfolio:core"));
+      expect(host.focused).toEqual([host.added[1], host.added[0]]);
+
+      // ERN and EVTS never take a list's window, even with none of their own open.
+      const lists = await openFunctions(catalog, host.layout().instances.slice(1));
+      await lists.open("earnings-calendar-pane");
+      await lists.open("earnings-board-pane");
+      expect(lists.focused).toEqual([]);
+      expect(lists.added).toHaveLength(2);
+    } finally {
+      catalog.destroy();
+    }
+  });
 });

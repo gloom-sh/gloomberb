@@ -590,7 +590,11 @@ function publishableLayout(
     // publishing from here never drops a teammate's pane.
     const params = sanitizeRecord(instance.params, privacy?.params);
     const settings = sanitizeRecord(instance.settings, privacy?.settings);
-    const state = sanitizeRecord(paneState[sourceInstance.instanceId], privacy?.state);
+    const sourceState = paneState[sourceInstance.instanceId];
+    const state = sanitizeRecord(
+      sourceState && def?.portableShare?.prepareState ? def.portableShare.prepareState(sourceState) : sourceState,
+      privacy?.state,
+    );
     if (state) projectedState[instanceId] = state as PaneRuntimeState;
     const title = !privacy?.title ? instance.title?.trim() : undefined;
     return {

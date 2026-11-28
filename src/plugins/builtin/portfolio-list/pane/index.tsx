@@ -137,6 +137,7 @@ import { groupIdOfRowKey, groupRowKey } from "../../../../components/ticker/list
 import { withoutWatchlistGroupSymbols } from "../../../../portfolio/watchlist-groups";
 import { scheduleConfigSave } from "../../../../state/config-save-scheduler";
 import { buildWatchlistTableGroups, toggleCollapsedGroup, useWatchlistGroupActions, type CollapsedGroup } from "./groups";
+import { useCollectionEarningsMenu } from "./earnings-calendar";
 
 /** Columns that need the portfolio's total. */
 const ALLOCATION_COLUMN_IDS = new Set(["weight", "drift", "trade", "trade_value"]);
@@ -839,6 +840,13 @@ export function PortfolioListPane({ focused, width, height }: PaneProps) {
   usePaneMenuItems("portfolio-list-import", () => offersImport ? null : [
     { id: "import-positions", label: t("Import Positions…"), onSelect: positionsImport.start },
   ], [offersImport, positionsImport.start]);
+  useCollectionEarningsMenu({
+    portfolio: currentPortfolio,
+    watchlist: currentWatchlist,
+    tickerCount: collectionTickers.length,
+    setupDone,
+    disabledPlugins: config.disabledPlugins,
+  });
 
   // The cursor row's perpetual, for the keyboard: the pane menu opens what clicking its cell opens. A row that is a
   // perpetual market opens its own, as Enter does.
