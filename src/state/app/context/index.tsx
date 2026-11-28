@@ -47,7 +47,6 @@ import type { AppAction, AppState } from "../../../core/state/app/state";
 import { scheduleConfigSave } from "../../config-save-scheduler";
 import { LOW_PRIORITY_CONFIG_SAVE_DEBOUNCE_MS } from "../../persist-scheduler";
 import { fireAndForget } from "../../../utils/fire-and-forget";
-import { debugLog } from "../../../utils/debug-log";
 
 export {
   appReducer,
@@ -642,22 +641,18 @@ export function AppProvider({
     if (signature === lastMainSyncRef.current) return;
     lastMainSyncRef.current = signature;
     latestMainStateRevisionRef.current += 1;
-    // A failed or rejected sync does not count as sent. Forget it unless a
-    // newer one has replaced it, so the next effect can send it again.
-    const forgetSync = () => {
-      if (lastMainSyncRef.current === signature) lastMainSyncRef.current = null;
-    };
+    // A snapshot that did not arrive must not count as sent. Forget it, unless
+    // a newer one has replaced it, so the next effect run sends it again. The
+    // two syncs below dedupe the same way.
     fireAndForget(
       desktopBridge.syncMainState(
         { ...snapshot, mainStateRevision: latestMainStateRevisionRef.current },
         lastTakenStateSeqRef.current,
-      ).then((result) => {
-        if (result !== false) return;
-        forgetSync();
-        debugLog.createLogger("desktop-rpc").warn("Desktop changes were not synced because their base is no longer available.");
-      }),
+      ),
       "desktop.syncMainState",
-      forgetSync,
+      () => {
+        if (lastMainSyncRef.current === signature) lastMainSyncRef.current = null;
+      },
     );
   }, [
     buildDesktopSnapshot,

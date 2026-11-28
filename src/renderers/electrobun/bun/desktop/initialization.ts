@@ -69,6 +69,7 @@ function buildInitializationPayload(
   config: AppConfig,
   services: AppServices,
   windowTarget: DesktopWindowTarget,
+  windowKey: string | undefined,
 ): ElectrobunBackendInit {
   const mainWindow = windowTarget.windowId === MAIN_WINDOW_RPC_KEY;
   // The main window brings in the plugins the launch restores as they land,
@@ -79,7 +80,7 @@ function buildInitializationPayload(
   // merged against it.
   const projected = backend.workspace?.getWindowSnapshot(windowTarget.windowId ?? MAIN_WINDOW_RPC_KEY) ?? null;
   const desktopSnapshot = projected ? backend.stateBroadcaster.stamp(projected) : null;
-  if (desktopSnapshot && windowTarget.windowId) backend.workspace?.noteDelivered(windowTarget.windowId, desktopSnapshot.stateSeq!, desktopSnapshot);
+  if (desktopSnapshot && windowKey) backend.workspace?.noteDelivered(windowKey, desktopSnapshot.stateSeq!, desktopSnapshot);
   return {
     config: desktopSnapshot?.config ?? config,
     sessionSnapshot: backend.getSessionSnapshot(),
@@ -215,7 +216,7 @@ export async function initializeDesktopBackend(
   }
   // A window that loads again starts from this state: nothing sent before counts.
   if (windowKey) backend.workspace.forgetWindow(windowKey);
-  const init = buildInitializationPayload(backend, config, services, windowTarget);
+  const init = buildInitializationPayload(backend, config, services, windowTarget, windowKey);
   // The main window has what it needs to draw: this process is up, and the
   // popped-out panes and extra windows open next.
   if (windowTarget.windowId === MAIN_WINDOW_RPC_KEY) {

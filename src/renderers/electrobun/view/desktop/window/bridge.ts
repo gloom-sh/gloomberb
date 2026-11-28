@@ -78,7 +78,7 @@ export function createDesktopWindowBridge(kind: "main" | "detached", paneId?: st
     windows: windowId ? createDesktopWindowsBridge(windowId, init?.windows ?? [], init?.otherWindowTabs ?? []) : undefined,
     syncMainState: kind === "main"
       ? async (snapshot: DesktopSharedStateSnapshot, baseSeq?: number | null) => {
-        if (await backendRequest("desktop.syncMainState", { snapshot, baseSeq }) === false) return false as const;
+        await backendRequest("desktop.syncMainState", { snapshot, baseSeq });
       }
       : undefined,
     // The theme preview reaches every window from the one with Settings open.

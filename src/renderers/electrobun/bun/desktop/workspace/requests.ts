@@ -50,15 +50,13 @@ export async function handleDesktopWorkspaceRequest(
       // Any full window sends its whole state; a popped-out pane's never does.
       const windowId = backend.fullWindowKey(rpc);
       if (!windowId) return null;
-      const { baseSeq, snapshot: incoming } = request.payload;
-      if (typeof baseSeq === "number" && !workspace.hasSyncBase(windowId, baseSeq)) return false;
-      const snapshot = workspace.syncWindowState(windowId, incoming, baseSeq);
+      const snapshot = workspace.syncWindowState(windowId, request.payload.snapshot, request.payload.baseSeq);
       backend.setConfig(snapshot.config);
       backend.reconcileWindows();
       // The window holds what it sent. It gets the state back only when this
       // process changed it: another window's edit, a popped-out window's
       // frame, a stale revision.
-      stateBroadcaster.noteWindowState(rpc, incoming);
+      stateBroadcaster.noteWindowState(rpc, request.payload.snapshot);
       stateBroadcaster.sendDesktopState(snapshot);
       return null;
     }

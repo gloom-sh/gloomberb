@@ -3,11 +3,7 @@ import type {
   DesktopSharedStateSnapshot,
   DesktopThemePreviewState,
 } from "../../../../types/desktop-window";
-import { MAIN_WINDOW_ID } from "../../../desktop/screen-setup";
 import { encodeRpcValue } from "../../shared/rpc-codec";
-import { paneIdFromDetachedRpcKey } from "../window/focus";
-import type { DesktopRpcRegistry } from "./rpc-registry";
-import type { DesktopWorkspace } from "./workspace";
 
 export interface DesktopStateRpc {
   send: {
@@ -34,29 +30,6 @@ interface ProjectedState {
   snapshot: DesktopSharedStateSnapshot | null;
   key?: string;
   encoded?: DesktopSharedStateSnapshot;
-}
-
-export function createWorkspaceStateBroadcaster<Rpc extends DesktopStateRpc>(
-  rpcs: DesktopRpcRegistry<Rpc>,
-  getWorkspace: () => DesktopWorkspace | null,
-): DesktopStateBroadcaster<Rpc> {
-  return new DesktopStateBroadcaster({
-    forEachReadyWindowRpc: rpcs.forEachReadyWindowRpc,
-    viewKey: (rpc) => {
-      const key = rpcs.getRpcWindowKey(rpc) ?? MAIN_WINDOW_ID;
-      return paneIdFromDetachedRpcKey(key) ? MAIN_WINDOW_ID : key;
-    },
-    project: (viewKey, shared) => {
-      const workspace = getWorkspace();
-      return workspace && workspace.windowIds().length > 1 ? workspace.peekWindowSnapshot(viewKey) ?? shared : shared;
-    },
-    delivered: (rpc, snapshot) => {
-      const workspace = getWorkspace();
-      const key = rpcs.getRpcWindowKey(rpc);
-      if (!workspace || !key || paneIdFromDetachedRpcKey(key) || typeof snapshot.stateSeq !== "number") return;
-      workspace.noteDelivered(key, snapshot.stateSeq, snapshot);
-    },
-  });
 }
 
 /**

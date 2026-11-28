@@ -355,36 +355,6 @@ describe("pane selectors", () => {
     }
   });
 
-  test("a rejected desktop base does not mark the renderer's edit as synced", async () => {
-    const edits: DesktopSharedStateSnapshot[] = [];
-    const bridge: DesktopWindowBridge = {
-      ...createDesktopBridge("main"),
-      syncMainState: async (snapshot) => {
-        if (snapshot.config.theme !== "green") return;
-        edits.push(snapshot);
-        if (edits.length === 1) return false;
-      },
-    };
-    await tui.render(
-      <AppProvider config={createTickerDetailConfig("AAPL")} desktopBridge={bridge}>
-        <DispatchCapture />
-        <ConfigCapture />
-      </AppProvider>,
-      { width: 24, height: 4 },
-    );
-    await tui.setup().renderOnce();
-
-    await act(() => capturedDispatch?.({ type: "SET_THEME", theme: "green" }));
-    await tui.setup().renderOnce();
-    expect(capturedConfig?.theme).toBe("green");
-    expect(edits).toHaveLength(1);
-
-    await act(() => capturedDispatch?.({ type: "SET_CONFIG", config: { ...capturedConfig! } }));
-    await tui.setup().renderOnce();
-    expect(edits).toHaveLength(2);
-    expect(edits[1]?.config).toEqual(edits[0]?.config);
-  });
-
   test("does not hydrate a stale desktop echo after a newer layout switch", async () => {
     const mainSnapshots: DesktopSharedStateSnapshot[] = [];
     let stateListener: ((snapshot: DesktopSharedStateSnapshot) => void) | null = null;

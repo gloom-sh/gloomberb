@@ -80,7 +80,7 @@ import { handleDesktopViewResourceRequest } from "./view-resources";
 import { scheduleDesktopRelaunch } from "./relaunch";
 import { createDesktopRpcRegistry } from "./rpc-registry";
 import { measureRpcTraffic } from "./rpc-timing";
-import { createWorkspaceStateBroadcaster } from "./state-broadcaster";
+import { DesktopStateBroadcaster } from "./state-broadcaster";
 import {
   commitDesktopSnapshot,
   commitDesktopSnapshotInBackground,
@@ -137,7 +137,25 @@ export class DesktopBackend {
   private nativeWindows: ElectrobunWindowHost | null = null;
 
   readonly rpcs = createDesktopRpcRegistry<DesktopRpc>();
-  readonly stateBroadcaster = createWorkspaceStateBroadcaster(this.rpcs, () => this.workspace);
+  readonly stateBroadcaster = new DesktopStateBroadcaster<DesktopRpc>({
+    forEachReadyWindowRpc: this.rpcs.forEachReadyWindowRpc,
+    // A full window draws its own tabs; a popped-out pane's window draws the main window's.
+    viewKey: (rpc) => {
+      const key = this.rpcs.getRpcWindowKey(rpc) ?? MAIN_WINDOW_ID;
+      return paneIdFromDetachedRpcKey(key) ? MAIN_WINDOW_ID : key;
+    },
+    // With one window its view is the shared state: nothing to project or keep.
+    project: (viewKey, shared) => {
+      const workspace = this.workspace;
+      return workspace && workspace.windowIds().length > 1 ? workspace.peekWindowSnapshot(viewKey) ?? shared : shared;
+    },
+    delivered: (rpc, snapshot) => {
+      const workspace = this.workspace;
+      const key = this.rpcs.getRpcWindowKey(rpc);
+      if (!workspace || !key || typeof snapshot.stateSeq !== "number" || workspace.windowIds().length <= 1) return;
+      workspace.noteDelivered(key, snapshot.stateSeq, snapshot);
+    },
+  });
   readonly capabilityBridge = new DesktopCapabilityBridge<DesktopRpc>({
     getRegistry: () => this.requireServices().pluginRegistry.capabilities,
     getWindowKey: this.rpcs.getRpcWindowKey,

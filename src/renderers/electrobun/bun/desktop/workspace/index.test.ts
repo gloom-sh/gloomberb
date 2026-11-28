@@ -72,6 +72,24 @@ describe("desktop workspace", () => {
     expect(createDesktopWorkspace(reloaded, null).getSnapshot().focusedPaneId).toBe(moved);
   });
 
+  test("opening Layouts from a held snapshot keeps a concurrent ordinary pane move", () => {
+    const config = tabConfig();
+    const moved = getDockedPaneIds(config.layouts[1]!.layout)[0]!;
+    const workspace = createDesktopWorkspace(config, null, [{ id: SECOND, layoutIds: ["tab:monitor"] }]);
+    const initial = workspace.getSnapshot();
+    workspace.syncMainState(reduceSnapshot(initial, { type: "FOCUS_PANE", paneId: getDockedPaneIds(initial.config.layout)[0]! }));
+    const held = workspace.getWindowSnapshot(MAIN)!;
+    workspace.noteDelivered(MAIN, 1, held);
+    const movedSnapshot = workspace.movePaneToWindow(moved, MAIN)!;
+    const expectedOrder = getDockedPaneIds(movedSnapshot.config.layout);
+
+    const opened = workspace.syncMainState(openLayouts(held), 1);
+    expect(opened.focusedPaneId).toBe(LAY);
+    expect(getDockedPaneIds(opened.config.layout)).toEqual(expectedOrder);
+    expect(getDockedPaneIds(opened.config.layouts[opened.config.activeLayoutIndex]!.layout)).toEqual(expectedOrder);
+    expect(findPaneInstance(opened.config.layout, moved)).toEqual(findPaneInstance(movedSnapshot.config.layout, moved));
+  });
+
   test("a secondary renderer keeps Layouts live, closes and reopens it, and saves neither window's Layouts pane", () => {
     const workspace = createDesktopWorkspace(tabConfig(), null, [{ id: SECOND, layoutIds: ["tab:monitor"] }]);
     const mainLay = "layout-marketplace:main-test";
