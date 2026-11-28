@@ -478,9 +478,9 @@ const US_PRE_MARKET_OPEN_MINUTES = 4 * 60;
 
 /**
  * When a US listing's late (after-hours) session on `date` (its New York
- * `YYYY-MM-DD`) ended: the published late close (17:00 after an early close,
- * usEquityLateClose), else 20:00 on a day the venue had a regular session.
- * Null for any other venue and on a day without a session.
+ * `YYYY-MM-DD`) ended: 17:00 after an early close where the listing's tape
+ * documents it (usEquityLateClose), else 20:00 on a day the venue had a
+ * regular session. Null for any other venue and on a day without a session.
  */
 export function usLateSessionCloseOn(exchange: string | undefined, date: string): number | null {
   const venue = canonicalExchange(exchange);
@@ -710,7 +710,7 @@ function formatUsSessionState(timestampMs: number, venue: string): UsSessionStat
   if (totalMinutes < US_PRE_MARKET_OPEN_MINUTES) return "PREPRE";
   if (published ? timestampMs < published.open : totalMinutes < 9 * 60 + 30) return "PRE";
   if (published ? timestampMs < published.close : totalMinutes < 16 * 60) return "REGULAR";
-  // The published late close (17:00 after an early close); without published hours, 20:00.
+  // The documented late close (17:00 after some early closes, usEquityLateClose); otherwise 20:00.
   const lateClose = published ? usEquityLateClose(venue, date) : null;
   if (lateClose != null ? timestampMs < lateClose : totalMinutes < 20 * 60) return "POST";
   return "POSTPOST";

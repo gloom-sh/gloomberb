@@ -199,11 +199,12 @@ describe("quote freshness", () => {
 
   // Fri 2026-11-27: the cash session closed at 13:00 New York (18:00Z) and the late sessions at 17:00 (22:00Z).
   // The fields are Gloom Cloud's COHR quote read at 19:24 New York that evening.
-  test("after an early close the late session ends at its published 17:00, and only a print from it stands", () => {
+  test("after an early close the late session ends at 17:00 where the listing's tape documents it, and only a print from it stands", () => {
     const at = (stamp: string) => Date.parse(stamp);
     const printed = at("2026-11-27T21:59:58.499Z");
     const evening = at("2026-11-28T00:24:00Z");
-    for (const listingExchangeName of ["NYSE", "NASDAQ", "ARCA"]) {
+    // CTA's abbreviated-day schedule covers NYSE, Arca and Cboe listings; UTP2026-34 covers Nasdaq's on this day.
+    for (const listingExchangeName of ["NYSE", "NASDAQ", "ARCA", "BATS"]) {
       const cohr = quote({ symbol: "COHR", currency: "USD", listingExchangeName, exchangeName: listingExchangeName, price: 225.25,
         regularClose: 223.79, lastTradePrice: 225.25, lastTradeTime: printed, lastUpdated: printed, marketState: "POSTPOST",
         regularCloseSessionDate: "2026-11-27", changeSessionDate: "2026-11-27", stale: false });
@@ -228,6 +229,18 @@ describe("quote freshness", () => {
       // A feed that stopped after 17:00 has missed nothing; one that stopped at 16:30 has.
       expect(couldQuoteHavePrintedSince({ ...cohr, dataSource: "live" }, at("2026-11-27T22:30:00Z"), evening)).toBe(false);
       expect(couldQuoteHavePrintedSince({ ...cohr, dataSource: "live" }, at("2026-11-27T21:30:00Z"), evening)).toBe(true);
+    }
+    // Where no tape documents a shortened late session, it is expected to run to 20:00 as before: Nasdaq listings on
+    // Christmas Eve 2026 (no UTP notice) and NYSE listings on 28 Nov 2025 (before CTA's abbreviated-day schedule).
+    // CTA's schedule does cover the NYSE listing on Christmas Eve 2026.
+    for (const [listingExchangeName, day, shortened] of [["NASDAQ", "2026-12-24", false], ["NYSE", "2025-11-28", false], ["NYSE", "2026-12-24", true]] as const) {
+      const late = quote({ symbol: "LATE", currency: "USD", listingExchangeName, exchangeName: listingExchangeName, price: 101,
+        regularClose: 100, lastTradePrice: 101, lastTradeTime: at(`${day}T21:59:00Z`), lastUpdated: at(`${day}T21:59:00Z`), marketState: "POSTPOST",
+        regularCloseSessionDate: day, changeSessionDate: day, stale: false });
+      const label = `${listingExchangeName} ${day}`;
+      expect(isQuoteStaleForCurrentSession(late, at(`${day}T23:00:00Z`)), label).toBe(!shortened);
+      expect(venueSessionNow(listingExchangeName, at(`${day}T22:30:00Z`))?.phase, label).toBe(shortened ? "closed" : "after-hours");
+      expect(couldQuoteHavePrintedSince({ ...late, dataSource: "live" }, at(`${day}T22:30:00Z`), at(`${day}T23:00:00Z`)), label).toBe(!shortened);
     }
   });
 
