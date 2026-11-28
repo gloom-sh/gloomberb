@@ -6,9 +6,9 @@ import { CHART_RESOLUTION_STEP_MS, chartBarSizeSource, getChartResolutionLabel, 
 import type { TimeRange } from "./range";
 import { zonedDateTimeParts } from "../utils/zoned-date-time";
 import { isCurrencyCode } from "../utils/currency-pair";
-import { priceComparisonCloseTimes } from "./coin-session-close";
+import { isRoundTheClockLeg, priceComparisonCloseTimes, sessionVenueOf, type SessionCloseSample } from "./coin-session-close";
 import { barLastSession } from "../market-data/market/bar-period";
-import { latestRegularSessionClose, regularSessionCloseOn, isAlwaysOpenExchange } from "../market-data/market/freshness";
+import { latestRegularSessionClose, regularSessionCloseOn } from "../market-data/market/freshness";
 import { isUsCashListing } from "./chart-data";
 import { priceBasisBreaks, priceBasisFactor } from "../market-data/market/split-price-basis";
 import {
@@ -45,10 +45,14 @@ function comparisonBasis(spec: ChartSpec, legs: ReadonlyArray<{ label: string; e
     fallbackReasons.set(reason, [...fallbackReasons.get(reason) ?? [], label]);
   }
   const converted = convertedText(legs);
-  const basis = !target ? total ? TOTAL_COMPARISON_BASIS : PRICE_COMPARISON_BASIS
-    : `${total ? "Total" : "Price"} returns in ${target}${converted ? `, ${converted} at each day's FX close` : ""}; ${
+  const loaded = legs.filter(({ entry }) => entry?.points.length);
+  const unconverted = target ? loaded.filter(({ entry }) => !entry?.convertedFrom && entry?.unitGroup !== `price:${target}`) : [];
+  const basis = !target || (unconverted.length > 0 && unconverted.length === loaded.length)
+    ? total ? TOTAL_COMPARISON_BASIS : PRICE_COMPARISON_BASIS
+    : `${total ? "Total" : "Price"} returns in ${target}${unconverted.length ? " where available" : ""}${converted ? `, ${converted} at each day's FX close` : ""}; ${
     total ? "cash distributions reinvested at the ex-date close." : "cash distributions excluded."}`;
-  return [basis, ...[...fallbackReasons].map(([reason, labels]) => `Price return for ${labels.join(", ")}: ${reason}.`)].join(" ");
+  const fxFallback = unconverted.length ? [`${listLabels(unconverted.map(({ label }) => label))} not converted to ${target}.`] : [];
+  return [basis, ...fxFallback, ...[...fallbackReasons].map(([reason, labels]) => `Price return for ${labels.join(", ")}: ${reason}.`)].join(" ");
 }
 
 const closedPartialDays = Symbol("closedPartialDays");
@@ -82,10 +86,10 @@ export interface PriceComparisonOptions {
    */
   preset?: TimeRange | null;
   now?: number;
-  /** Coin legs whose daily closes were taken at the session venue's close (coinLegsAtSessionClose). */
-  atSessionClose?: ReadonlySet<string>;
-  /** Of those, the legs whose newest day ends at a session close that has passed: not a price still moving. */
-  closedEnds?: ReadonlySet<string>;
+  /** Verified hourly replacements, usable only for their sampled span. */
+  sessionCloseSamples?: ReadonlyMap<string, SessionCloseSample>;
+  /** Find the candidate end for hourly coin sampling, not an endpoint to display. */
+  sampleCoinClose?: boolean;
 }
 
 export function observationDate(time: number, series: Pick<ResolvedSeries, "timeBasis">): string {
@@ -408,17 +412,26 @@ export function resolvePriceComparison(
     return legs.length ? keys(legs[0]!).filter((key) => sets.every((set) => set.has(key))) : [];
   };
   const sharedWindow = shared((leg) => leg.window);
-  const isForming = (leg: ComparedLeg, key: string): boolean => calendarBars && !options.closedEnds?.has(leg.id)
+  const isForming = (leg: ComparedLeg, key: string): boolean => calendarBars
+    && !options.sessionCloseSamples?.get(leg.id)?.closes.has(leg.points.get(key)!)
     && (leg.points.get(key)?.partial === true || isIntradayDailyBar(sessionDay(key), legVenue(leg.entry), now));
+  const samplingVenue = options.sampleCoinClose ? legs.map((leg) => sessionVenueOf(leg.entry)).find(Boolean) : null;
+  const comparableEnd = (key: string) => {
+    const forming = legs.filter((leg) => isForming(leg, key));
+    return forming.length === 0 || forming.length === legs.length || (!!samplingVenue
+      && (regularSessionCloseOn(samplingVenue, key) ?? Infinity) <= now
+      && forming.every((leg) => isRoundTheClockLeg(leg.entry)));
+  };
   const sharedEnd = resolution === "1d"
-    ? sharedWindow.findLast((key) => legs.every((leg) => isForming(leg, key) === isForming(legs[0]!, key)))
+    ? sharedWindow.findLast(comparableEnd)
     : sharedWindow.at(-1);
-  const requestedClose = resolution === "1d" && dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end)
-    && requestedLegs.some(({ venue }) => isAlwaysOpenExchange(venue)) ? requestedLegs.flatMap(({ id, label, venue, entry }) => {
+  const intendedEnd = dateWindow && /^\d{4}-\d{2}-\d{2}$/.test(dateWindow.end)
+    ? Math.min(now, Date.parse(`${dateWindow.end}T23:59:59.999Z`)) : preset ? now : null;
+  const requestedClose = resolution === "1d" && intendedEnd !== null ? requestedLegs.flatMap(({ id, label, venue, entry }) => {
       if (!isDailyCashLeg(resolution, venue, label, entry)) return [];
-      const closed = latestRegularSessionClose(venue, Math.min(now, Date.parse(`${dateWindow.end}T23:59:59.999Z`)));
+      const closed = latestRegularSessionClose(venue, intendedEnd);
       const leg = legs.find((candidate) => candidate.id === id);
-      if (!closed || closed.date < dateWindow.start.slice(0, 10) || (leg && sharedEnd && sharedEnd >= closed.date)) return [];
+      if (!closed || (dateWindow && closed.date < dateWindow.start.slice(0, 10)) || (leg && sharedEnd && sharedEnd >= closed.date)) return [];
       const at = regularSessionCloseOn(venue, closed.date);
       if (at === null) return [];
       const reason = leg?.window.includes(closed.date) ? "daily comparison unavailable"
@@ -480,6 +493,9 @@ export function resolvePriceComparison(
     start: leg.points.get(start)!.date.getTime(),
     end: leg.points.get(end)!.date.getTime(),
   }]));
+  for (const [id, sample] of options.sessionCloseSamples ?? []) {
+    if (sourceBounds[id]?.start !== sample.start || sourceBounds[id]?.end !== sample.end) return null;
+  }
   const currentYear = new Date(now).getUTCFullYear();
   const legDays = Object.fromEntries(compared.map(({ leg, start, end }) => {
     const endDay = calendarBars ? sessionDay(end) : dayOf(leg, end);
@@ -494,7 +510,7 @@ export function resolvePriceComparison(
         : `${periodDayText(legDays[leg.id]!.endDay, currentYear)} close` })));
       // A coin beside a listing that closes each day says when it is measured: at that close, or at 00:00 UTC.
       const timing = priceComparisonCloseTimes({ legs: legDays }, compared.map(({ leg }) => leg.entry),
-        new Map(compared.map(({ leg }) => [leg.id, leg.label])), options.atSessionClose);
+        new Map(compared.map(({ leg }) => [leg.id, leg.label])), new Set(options.sessionCloseSamples?.keys()));
       return `From ${from} to ${to}; ${timing ?? "market session times may differ"}.`;
     })()
     : baseDay && sharedBase !== undefined

@@ -19,6 +19,7 @@ import { maxStudyWarmupPoints } from "./studies/resolve";
 import type { PriceComparison } from "./price-comparison";
 import { resolutionForExplicitMarketPeriods } from "./market-resolution";
 import { latestSessionStart, latestTradingSessionOpen, priorSessionClose } from "../market-data/market/trading-sessions";
+import { currentFxClosureStart, isCurrencyPairListing } from "../utils/fx-market-hours";
 import type {
   ChartSpec,
   ResolvedSeries,
@@ -235,8 +236,11 @@ export function filterPoints(points: readonly TimeSeriesPoint[], bounds: DateBou
   });
 }
 
-export function comparisonDisplayBounds(bounds: DateBounds, comparison: PriceComparison | null): DateBounds {
+export function comparisonDisplayBounds(bounds: DateBounds, comparison: PriceComparison | null, fitIntraday = false): DateBounds {
   if (!comparison || comparison.start === null || comparison.end === null) return bounds;
+  if (fitIntraday && comparison.alignment === "timestamp" && comparison.start < comparison.end) {
+    return { start: comparison.start, end: comparison.end };
+  }
   // A date-only selection can include a local session that began on the prior
   // UTC day, and a preset range's base close can be before its window (a month
   // before a Monday is a Sunday, so the Friday). Keep both visible.
@@ -351,16 +355,17 @@ export function endAtNewestObservation(bounds: DateBounds, series: readonly Reso
 /**
  * 1D shows the latest trading session of the chart's first market listing,
  * from its open to the newest bar, with the close before it as a reference.
- * Null keeps the rolling day: crypto, FX and venues without known hours.
+ * Null keeps the rolling day: crypto, open FX and venues without known hours.
  * The reference is the quote's previous close when the quote is from the
  * session shown, as the legend's change is; otherwise the last bar of the
  * session before.
  */
 export function latestSessionView(
   primary: ResolvedSeries | undefined,
-  marketSeries: readonly ResolvedSeries[],
+  series: readonly ResolvedSeries[],
   extendedHours: boolean,
   quoteReference: { close: number; time: number } | undefined,
+  now: number,
 ): { bounds: DateBounds; priorClose: number | null } | null {
   if (!primary?.listing) return null;
   const bars = primary.points.flatMap((point) => {
@@ -371,13 +376,20 @@ export function latestSessionView(
   const latest = bars.at(-1)?.time;
   if (latest === undefined) return null;
   const { symbol, exchange } = primary.listing;
+  if (isCurrencyPairListing(symbol, exchange)) {
+    const closedAt = currentFxClosureStart(now);
+    if (closedAt === null || latest > closedAt || series.some((entry) => (entry.points.at(-1)?.date.getTime() ?? -Infinity) > latest)) return null;
+    const start = bars.find((bar) => bar.time >= latest - DAY_MS && bar.time < latest)?.time ?? latest - DAY_MS;
+    return { bounds: { start, end: latest }, priorClose: null };
+  }
   const open = latestSessionStart(symbol, exchange, latest, { extendedHours });
   if (open === null) return null;
   // The axis starts at the session's first bar, which a quiet pre-market can leave well after the open.
   const start = bars.find((bar) => bar.time >= open)?.time ?? open;
   // Another listing on the chart can trade later than the primary one.
   let end = latest;
-  for (const entry of marketSeries) {
+  for (const entry of series) {
+    if (entry.observationKind !== "market") continue;
     const last = entry.points.at(-1)?.date.getTime();
     if (last !== undefined && Number.isFinite(last) && last > end) end = last;
   }

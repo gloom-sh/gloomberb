@@ -183,7 +183,7 @@ export const zhCN: Record<string, string> = {
   "New pane": "新面板",
 
   // ── Core command descriptions ────────────────────────────────
-  "Show or hide the keyboard shortcuts bar": "显示或隐藏快捷键状态栏",
+  "Show or hide the status bar": "显示或隐藏状态栏",
   "Turn quote update flashing on or off": "开启或关闭行情闪烁",
   "Check GitHub releases for a newer version": "从 GitHub Releases 检查新版本",
   "Turn automatic crash reports on or off": "开启或关闭自动崩溃报告",

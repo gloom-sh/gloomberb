@@ -69,7 +69,7 @@ import { parsePublicTickerKey } from "../../../utils/exchanges";
 import { isPastPriceWindow, loadPriceWindowHistory, priceWindowInterval, priceWindowText, readPriceWindow, type PriceWindow } from "../../../utils/price-window";
 import { historyCoverageNotice } from "../../../sources/history-coverage";
 import { getChartResolutionLabel, isIntradayResolution, RANGE_HISTORY_RESOLUTION, type ManualChartResolution } from "../../../time-series/resolution";
-import { DAY_SO_FAR_TEXT, requestedSessionBarSize, withSessionBar } from "../../../time-series/session-bar";
+import { DAY_SO_FAR_TEXT, reconcileUsDailyClose, requestedSessionBarSize, withSessionBar } from "../../../time-series/session-bar";
 import { buildReturnRows, closedMarketNote, defaultReturnInterval, isTodayReturnRow, returnBaseCloseDay, type ReturnRange } from "./data-panes/returns-model";
 import { barCloseSession } from "../../../market-data/market/bar-period";
 import { periodBaseText } from "../../../market-data/market/period-return";
@@ -810,7 +810,7 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const [loaded, quote] = await Promise.all([
       window ? loadPriceWindowHistory(ctx.marketData, listing, exchange ?? "", window).then((result) => result.points)
         : loadHeadlessPriceHistory(ctx, symbol, range),
-      pastWindow || (!window && isIntradayResolution(RANGE_HISTORY_RESOLUTION[range])) ? null
+      (pastWindow && priceWindowInterval(window) !== "1d") || (!window && isIntradayResolution(RANGE_HISTORY_RESOLUTION[range])) ? null
         : ctx.marketData.getQuote(listing, exchange ?? "").catch(logFailure("ticker-detail.headless", "Load historical prices quote failed", null)),
     ]);
     // The venue whose sessions say whether a day, week or month is still running: the key's, or for a bare symbol its quote's.
@@ -818,7 +818,10 @@ export const historicalPricesHeadless: HeadlessPaneDefinition<"rows"> = {
     const now = Date.now();
     // The bars the range or window asks for: a thin listing's daily bars a week or two apart are still daily.
     const requested = window ? priceWindowInterval(window) : RANGE_HISTORY_RESOLUTION[range];
-    const points = withSessionBar(loaded, quote, { now, venue, ...requestedSessionBarSize(loaded, requested) });
+    const barOptions = { now, venue, ...requestedSessionBarSize(loaded, requested) };
+    const points = pastWindow
+      ? barOptions.barSize === "1d" ? reconcileUsDailyClose(loaded, quote, barOptions) : loaded
+      : withSessionBar(loaded, quote, barOptions);
     // Providers serve float32 prices (4013.39990234 for 4013.4): the rows hold the decimal each is, as `history` does,
     // a London line's cleaned in the pence it was priced in.
     const priceDivisor = quotedPriceDivisor(quote);

@@ -1,6 +1,6 @@
 import type { PricePoint, Quote } from "../types/financials";
 import { classifyInstrumentType, kindFromListingSyntax } from "../tickers/instrument-kind";
-import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose, sessionCalendarTimeZone } from "../market-data/market/freshness";
+import { isAlwaysOpenExchange, isRegularSessionTime, latestRegularSessionClose, regularSessionCloseOn, sessionCalendarTimeZone } from "../market-data/market/freshness";
 import { DAILY_BAR_CLOSE_VENUES } from "../market-data/market/dated-previous-close";
 import { quoteTradingDay } from "../market-data/quotes/day-range";
 import { canonicalExchange } from "../utils/exchanges";
@@ -9,7 +9,7 @@ import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { pricePointIntegrity, pricePointOpenWithheld } from "../utils/price-history-integrity";
 import { zonedDateKey } from "../utils/zoned-date-time";
 import { barSizeFromGap, medianBarGap, requestedBarSize } from "./bar-spacing";
-import { calendarBarStart, liveQuoteObservation } from "./chart-data";
+import { calendarBarStart, intradayQuoteMembership, isUsCashListing, liveQuoteObservation } from "./chart-data";
 
 const DAY_MS = 24 * 60 * 60_000;
 /** Bars spaced closer than this are intraday, whatever else their dates look like. */
@@ -123,15 +123,15 @@ function sessionBar(prior: PricePoint | undefined, date: Date, quote: Quote, pri
  * out: a snapshot of unknown age is not today's row. A weekly or monthly bar
  * covering today takes the quote's price and extremes, its volume as served.
  *
- * Daily bars of a listing that trades in sessions only; anything else, and a
- * session that is closed, is returned as served (the same array).
+ * Outside a trading session, an existing daily row is only reconciled with
+ * the matching session's close; no live row is added.
  */
 export function withSessionBar(
   points: PricePoint[],
   quote: Quote | null | undefined,
   options: SessionBarOptions,
 ): PricePoint[] {
-  const last = points.at(-1);
+  let last = points.at(-1);
   if (!last || (points.length < 2 && !options.barSize)) return points;
   const times = points.map(barTime);
   const lastTime = times.at(-1)!;
@@ -142,12 +142,20 @@ export function withSessionBar(
   const venue = options.venue || quote?.listingExchangeName || quote?.exchangeName || undefined;
   if (venue && isAlwaysOpenExchange(venue)) return points;
   if (quote && !tradesInSessions(quote, venue)) return points;
-  const settled = quote ? settledSessionBar(points, last, lastTime, size, quote, venue, options.now) : null;
+  const usCash = size === "1d" && !!quote && isUsCashListing(venue, quote.instrumentType || options.assetCategory)
+    && !quote.symbol.startsWith("^");
+  const settled = quote && !usCash ? settledSessionBar(points, last, lastTime, size, quote, venue, options.now) : null;
   if (settled) return settled;
+  if (usCash) {
+    points = reconcileUsDailyClose(points, quote, { ...options, venue });
+    last = points.at(-1)!;
+  }
 
   // A quote that does not say its session is read by the venue's calendar.
   const trading = quote?.marketState === "REGULAR" || (quote?.marketState == null && isRegularSessionTime(venue, options.now) === true);
-  const observation = quote && trading ? liveQuoteObservation(quote, options.now, options.assetCategory, "regular") : null;
+  const observation = quote && trading && (!usCash || (isRegularSessionTime(venue, options.now) === true
+    && intradayQuoteMembership(quote, venue, false)))
+    ? liveQuoteObservation(quote, options.now, options.assetCategory, "regular") : null;
   const sessionDay = quote && observation ? quoteTradingDay(quote) : null;
   if (quote && observation && sessionDay) {
     const dayTime = Date.parse(`${sessionDay}T00:00:00Z`);
@@ -176,6 +184,24 @@ export function withSessionBar(
     return points.slice(0, -1);
   }
   return points;
+}
+
+/** Verify only a daily cash row's close: today's history has no regular-session provenance for its other fields. */
+export function reconcileUsDailyClose(points: PricePoint[], quote: Quote | null | undefined, options: SessionBarOptions): PricePoint[] {
+  const last = points.at(-1);
+  const venue = options.venue || quote?.listingExchangeName || quote?.exchangeName;
+  if (!last || !quote || !isUsCashListing(venue, quote.instrumentType || options.assetCategory) || quote.symbol.startsWith("^")) return points;
+  const time = barTime(last);
+  if (!Number.isFinite(time) || !Number.isFinite(quote.lastUpdated) || quote.lastUpdated > options.now) return points;
+  const day = calendarBarStart(time, "1d", venue);
+  const bell = regularSessionCloseOn(venue, day);
+  if (bell === null || quote.lastUpdated < bell) return points;
+  const close = quote.regularCloseSessionDate === day && positive(quote.regularClose) ? quote.regularClose
+    : quote.lastUpdated === bell && intradayQuoteMembership(quote, venue, false)?.time === bell - 1 ? quote.price : undefined;
+  if (!positive(close) || hasLikelyQuoteUnitMismatch({ currency: quote.currency, price: last.close }, { currency: quote.currency, price: close })) return points;
+  if (!last.partial && last.close === close && last.open == null && last.high == null && last.low == null
+    && last.volume == null && last.venueVolume == null && last.volumeBasis == null) return points;
+  return [...points.slice(0, -1), { date: last.date, close }];
 }
 
 /**
@@ -211,8 +237,8 @@ function settledSessionBar(
  * too: the bars as served, less the bar of a session still trading
  * (withSessionBar, which `history` rebuilds from the quote and marks partial)
  * and any bar still partial. A bar the source marks partial after its session
- * has settled takes that session's `quote` and is final, as `history` makes
- * it (settledSessionBar); with no quote from its session it stays partial.
+ * has settled takes a verified US cash close or the existing settlement
+ * convention for other session listings; otherwise it stays partial.
  * A close `history` prints without `partial` is final here, and one it prints
  * with it is not.
  */

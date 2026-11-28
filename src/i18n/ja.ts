@@ -183,7 +183,7 @@ export const ja: Record<string, string> = {
   "New pane": "新しいペイン",
 
   // ── Core command descriptions ────────────────────────────────
-  "Show or hide the keyboard shortcuts bar": "キーボードショートカットバーを表示／非表示",
+  "Show or hide the status bar": "ステータスバーを表示／非表示",
   "Turn quote update flashing on or off": "株価更新時の点滅をオン／オフ",
   "Check GitHub releases for a newer version": "GitHub Releases で新しいバージョンを確認",
   "Turn automatic crash reports on or off": "自動クラッシュレポートのオン/オフを切り替え",

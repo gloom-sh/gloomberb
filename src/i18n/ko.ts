@@ -181,7 +181,7 @@ export const ko: Record<string, string> = {
   "New pane": "새 패널",
 
   // ── Core command descriptions ────────────────────────────────
-  "Show or hide the keyboard shortcuts bar": "키보드 단축키 표시줄 표시 또는 숨기기",
+  "Show or hide the status bar": "상태 표시줄 표시 또는 숨기기",
   "Turn quote update flashing on or off": "시세 업데이트 깜박임 켜기/끄기",
   "Check GitHub releases for a newer version": "GitHub 릴리스에서 새 버전 확인",
   "Turn automatic crash reports on or off": "자동 충돌 보고 켜기 또는 끄기",

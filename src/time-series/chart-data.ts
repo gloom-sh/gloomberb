@@ -8,6 +8,7 @@ import { quoteFutureToleranceMs } from "../market-data/quotes/clock";
 import { hasLikelyQuoteUnitMismatch } from "../utils/currency-units";
 import { isUsListingExchange, resolveExchangeTimeZone } from "../utils/exchanges";
 import { zonedDateKey, zonedWallClockToUtcMs } from "../utils/zoned-date-time";
+import { classifyInstrumentType } from "../tickers/instrument-kind";
 import {
   CHART_RESOLUTION_STEP_MS,
   type ManualChartResolution,
@@ -165,7 +166,8 @@ interface LiveQuoteObservation {
 export type LiveQuoteBasis = "latest" | "regular";
 
 export function isUsCashListing(exchange: string | undefined, instrumentType?: string): boolean {
-  return isUsListingExchange(exchange) && (!instrumentType || /^(?:EQUITY|STOCK|STK|ETF|ETN|FUND)$/i.test(instrumentType.trim()));
+  const kind = classifyInstrumentType(instrumentType);
+  return isUsListingExchange(exchange) && (!instrumentType?.trim() || kind === "equity" || kind === "fund");
 }
 
 export function usAfterHoursSessionBell(time: number, exchange: string | undefined): number | undefined {

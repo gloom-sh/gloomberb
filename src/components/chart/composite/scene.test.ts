@@ -11,10 +11,17 @@ import {
   unprojectCompositeValue,
 } from "./scene";
 import { buildCompositeColumnLayout } from "./column-layout";
-import { compositeAxisTicks, compositeGridRatios, formatCompositeAxisValue } from "./format";
+import { compositeAxisTicks, compositeGridRatios, fitCompositeAxisLabel, formatCompositeAxisValue } from "./format";
 import { renderCompositeAxisText } from "./text-renderer";
 import { COMPOSITE_RIGHT_OFFSET_RATIO } from "./time-scale";
 import { createTestResolvedSeries as series, createTestSeriesPoint as point } from "../../../test-support/time-series";
+
+test("a constrained percentage axis keeps a nonzero signed value and its unit", () => {
+  expect(fitCompositeAxisLabel("0.04000001%", 5)).toBe("0.04%");
+  expect(fitCompositeAxisLabel("-0.04000001%", 6)).toBe("-0.04%");
+  expect(fitCompositeAxisLabel("-0.00000042%", 6)).toBe("-4e-7%");
+  expect(fitCompositeAxisLabel("$1,234.56", 6)).toBe("…");
+});
 
 /** Ratio the newest observation lands on once the right offset is reserved. */
 const NEWEST_X_RATIO = 1 / (1 + COMPOSITE_RIGHT_OFFSET_RATIO);

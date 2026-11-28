@@ -1749,8 +1749,8 @@
   {
    "code": "SB",
    "name": "Status bar",
-   "description": "Toggle the shortcuts bar",
-   "detail": "Shows or hides the keyboard shortcuts bar at the bottom.",
+   "description": "Toggle the status bar",
+   "detail": "Shows or hides the status bar at the bottom.",
    "category": "app",
    "lesson": "/academy/terminal-and-workspace/how-the-terminal-works/make-it-yours"
   },

@@ -183,7 +183,7 @@ export const zhTW: Record<string, string> = {
   "New pane": "新面板",
 
   // ── Core command descriptions ────────────────────────────────
-  "Show or hide the keyboard shortcuts bar": "顯示或隱藏快速鍵狀態列",
+  "Show or hide the status bar": "顯示或隱藏狀態列",
   "Turn quote update flashing on or off": "開啟或關閉行情閃爍",
   "Check GitHub releases for a newer version": "從 GitHub Releases 檢查新版本",
   "Turn automatic crash reports on or off": "開啟或關閉自動當機報告",

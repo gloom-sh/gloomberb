@@ -5,13 +5,12 @@ import { clamp } from "../../../utils/math";
 import type { SeriesAxisTag } from "./panel-labels";
 import { placeSeriesAxisTags, SeriesAxisTags } from "./series-axis-tags";
 import type { ChartMouseEvent } from "../core/pointer";
+import { fitCompositeAxisLabel } from "./format";
 
 function formatAxisCell(label: string | null, width: number): string {
   if (width <= 0) return "";
   if (!label) return " ".repeat(width);
-  // A clipped numeric prefix can change both magnitude and currency. If a
-  // constrained chart cannot fit the complete label, show no partial value.
-  return ([...label].length > width ? "…" : label).padStart(width);
+  return fitCompositeAxisLabel(label, width).padStart(width);
 }
 
 interface PriceAxisMarker {
