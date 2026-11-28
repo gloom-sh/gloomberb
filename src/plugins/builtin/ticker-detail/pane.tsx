@@ -49,6 +49,7 @@ import { useUtcDay } from "../../../react/auto-refresh";
 import { useRemoteUiNode } from "../../../remote/semantic-tree";
 import { resolveTickerInstrumentKind } from "../../../tickers/instrument-kind";
 import { ResearchTradeWorkspace } from "../broker-trading/dock";
+import { tickerAlertMenuItems } from "./alert-menu";
 
 const TICKER_RESEARCH_TAB_COMMIT_DELAY_MS = 120;
 /** A tab counts as viewed once it stays open this long, not when h/l passes over it. */
@@ -424,6 +425,10 @@ export function TickerResearchPane({ focused, width, height }: PaneProps) {
       },
     }];
   }, [allTabs.length, dialog, groups, resolvedTabId, selectResearchTab, showTabs]);
+  // A reminder on the listing on screen, pinned or linked: SA's and Add Event Alert's forms, filled in.
+  usePaneMenuItems("ticker-research:set-alert", () => (
+    ticker ? tickerAlertMenuItems({ ticker, financials, registry, disabledPlugins }) : null
+  ), [disabledPlugins, financials, registry, ticker]);
   // Which tabs people stay on. A pane pinned to one tab has no strip; opening
   // it is a function open, counted with those.
   useEffect(() => {

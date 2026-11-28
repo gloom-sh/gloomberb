@@ -221,14 +221,22 @@ function appContextMenuItems(
 }
 
 /** Add Alert (SA), the alerts plugin's command. */
-const ADD_ALERT_COMMAND_ID = "set-alert";
+export const ADD_ALERT_COMMAND_ID = "set-alert";
 
-/** Whether Add Alert can be offered: its command is there, not hidden, and its plugin is on (a disabled plugin keeps it registered). */
-function addAlertAvailable(registry: PluginRegistry): boolean {
-  const command = registry.commands?.get(ADD_ALERT_COMMAND_ID);
+/**
+ * Whether a menu can offer a plugin command: it is there, not hidden, and its
+ * plugin is on (a disabled plugin keeps it registered). A pane passes the
+ * disabled plugins from the config it renders with.
+ */
+export function pluginCommandAvailable(
+  registry: Pick<PluginRegistry, "commands" | "getCommandPluginId" | "getConfig">,
+  commandId: string,
+  disabledPlugins?: readonly string[],
+): boolean {
+  const command = registry.commands?.get(commandId);
   if (!command || command.hidden?.()) return false;
-  const owner = registry.getCommandPluginId?.(ADD_ALERT_COMMAND_ID);
-  return !owner || !registry.getConfig().disabledPlugins.includes(owner);
+  const owner = registry.getCommandPluginId?.(commandId);
+  return !owner || !(disabledPlugins ?? registry.getConfig().disabledPlugins).includes(owner);
 }
 
 /**
@@ -238,17 +246,23 @@ function addAlertAvailable(registry: PluginRegistry): boolean {
  * and Santander's NYSE ADRs) even when the row abroad is saved under it; a
  * key saved under its venue's code (BHP:XASX) by the venue's own (BHP:ASX).
  */
-function alertListingOfTicker(ticker: TickerRecord): string {
+export function alertListingOfTicker(ticker: TickerRecord): string {
   return canonicalTickerKey(ticker.metadata.ticker, ticker.metadata.exchange);
 }
 
 /**
- * Add Alert's form, as SA opens it, filled in with the row's listing. Nothing
- * is added until the form is sent. Forms open in the main window only.
+ * A plugin command's form, as the command bar opens it, filled in with
+ * `values`. Nothing runs until the form is sent. Forms open in the main
+ * window only; anywhere else this says so.
  */
-function openAddAlertForm(ticker: TickerRecord, registry: Pick<PluginRegistry, "notify">): void {
-  const opened = openFormModal({ kind: "plugin-command", commandId: ADD_ALERT_COMMAND_ID, values: { symbol: alertListingOfTicker(ticker) } });
+export function openPluginCommandForm(commandId: string, values: Record<string, string>, registry: Pick<PluginRegistry, "notify">): void {
+  const opened = openFormModal({ kind: "plugin-command", commandId, values });
   if (!opened) registry.notify({ body: t("Open this from the main window."), type: "info" });
+}
+
+/** Add Alert's form, as SA opens it, filled in with the row's listing. */
+function openAddAlertForm(ticker: TickerRecord, registry: Pick<PluginRegistry, "notify">): void {
+  openPluginCommandForm(ADD_ALERT_COMMAND_ID, { symbol: alertListingOfTicker(ticker) }, registry);
 }
 
 export function tickerContextMenuItems({
@@ -294,7 +308,7 @@ export function tickerContextMenuItems({
     },
   ];
 
-  if (registry && addAlertAvailable(registry)) {
+  if (registry && pluginCommandAvailable(registry, ADD_ALERT_COMMAND_ID)) {
     items.push({
       id: "ticker:add-alert",
       label: "Add Alert...",
