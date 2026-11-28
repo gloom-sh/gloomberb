@@ -631,14 +631,15 @@ describe("a fund compared with a coin", () => {
   const coinCloses = (result: Awaited<ReturnType<typeof resolveChartSpecData>>) => result.series[1]!.points.map((point) => point.rawValue);
   const span = (from: string, to: string) => days.filter((day) => day >= from && day <= to);
 
-  test("a verified early cash close can compare to the coin's hourly mark while its UTC day is still forming", async () => {
-    const earlyChart = chart({ start: "2026-11-27", end: "2026-11-27" });
+  test("a forming coin day requires its own hourly close even when the earlier comparison is fully sampled", async () => {
+    const earlyChart = chart({ start: "2026-11-25", end: "2026-11-27" });
     earlyChart.series[0] = { ...earlyChart.series[0]!, id: "AAPL", source: { kind: "security",
       instrument: { symbol: "AAPL", exchange: "NASDAQ" }, fieldId: "market.close" } };
-    const equity = rows([["2026-11-25", 355.58], ["2026-11-27", 359.25]]);
-    const coin = rows([["2026-11-25", 60_010], ["2026-11-26", 60_020], ["2026-11-27", 60_030]]);
+    const equity = rows([["2026-11-24", 351.44], ["2026-11-25", 355.58], ["2026-11-27", 359.25]]);
+    const coin = rows([["2026-11-24", 59_510], ["2026-11-25", 60_010], ["2026-11-26", 60_020], ["2026-11-27", 60_030]]);
     coin.at(-1)!.partial = true;
-    const hourly = rows([["2026-11-25T20:00:00Z", 60_000], ["2026-11-26T20:00:00Z", 60_100], ["2026-11-27T17:00:00Z", 59_800]]);
+    const hourly = rows([["2026-11-24T20:00:00Z", 59_500], ["2026-11-25T20:00:00Z", 60_000],
+      ["2026-11-26T20:00:00Z", 60_100], ["2026-11-27T17:00:00Z", 59_800]]);
     const now = date("2026-11-27T22:05:00Z");
     for (const hasHour of [true, false]) {
       const inputs = coinSources(() => [], { AAPL: equity, "BTC-USD": coin });
@@ -646,18 +647,27 @@ describe("a fund compared with a coin", () => {
         change: 0, changePercent: 0, lastUpdated: Date.parse("2026-11-27T21:59:00Z"),
         ...(symbol === "AAPL" ? { marketState: "CLOSED" as const, instrumentType: "Common Stock", regularClose: 358.54, regularCloseSessionDate: "2026-11-27" }
           : { instrumentType: "Cryptocurrency" }) });
-      inputs.dataProvider.getDetailedPriceHistoryWithMetadata = async (symbol, _exchange, _start, _end, interval) => ({
-        points: interval === "1d" ? symbol === "AAPL" ? equity : coin : hasHour ? hourly : hourly.slice(0, -1),
+      inputs.dataProvider.getDetailedPriceHistoryWithMetadata = async (symbol, _exchange, start, end, interval) => ({
+        points: interval === "1d" ? symbol === "AAPL" ? equity : coin
+          : (hasHour ? hourly : hourly.slice(0, -1)).filter((point) => point.date >= start && point.date <= end),
         resolution: interval === "1d" ? "1d" : "1h",
       });
       const quoteOverrides = new Map(await Promise.all(earlyChart.series.map(async (entry) => [
         chartQuoteOverrideKeyForSource(entry.source), await inputs.dataProvider.getQuote(entry.id, entry.id === "AAPL" ? "NASDAQ" : "CCC"),
       ] as const)));
       const result = await resolveChartSpecData(earlyChart, { ...inputs, now, quoteOverrides });
+      const endDay = hasHour ? "2026-11-27" : "2026-11-25";
+      expect(result.priceComparison?.legs).toEqual({
+        AAPL: { baseDay: "2026-11-24", endDay, intraday: false },
+        "BTC-USD": { baseDay: "2026-11-24", endDay, intraday: false },
+      });
+      expect(result.priceComparison?.notice).toContain(`to ${hasHour ? "Fri 27" : "Wed 25"} Nov close; BTC-USD at the US close.`);
       if (hasHour) {
         expect(result.series.map((entry) => entry.points.at(-1)?.rawValue)).toEqual([358.54, 59_800]);
-        expect(result.priceComparison?.notice).toContain("BTC-USD at the US close");
+        expect(coinCloses(result)).toEqual([59_500, 60_000, 60_100, 59_800]);
+        expect(result.priceComparison?.incompleteSessions).toBeUndefined();
       } else {
+        expect(coinCloses(result)).toEqual([59_500, 60_000]);
         expect(result.priceComparison?.incompleteSessions).toContain("AAPL 2026-11-27 18:00 UTC: daily comparison unavailable");
       }
     }

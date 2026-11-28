@@ -186,7 +186,7 @@ export function withSessionBar(
   return points;
 }
 
-/** Reconcile an existing daily cash row without treating a last trade or a day range as a closing auction result. */
+/** Verify only a daily cash row's close: today's history has no regular-session provenance for its other fields. */
 export function reconcileUsDailyClose(points: PricePoint[], quote: Quote | null | undefined, options: SessionBarOptions): PricePoint[] {
   const last = points.at(-1);
   const venue = options.venue || quote?.listingExchangeName || quote?.exchangeName;
@@ -199,7 +199,8 @@ export function reconcileUsDailyClose(points: PricePoint[], quote: Quote | null 
   const close = quote.regularCloseSessionDate === day && positive(quote.regularClose) ? quote.regularClose
     : quote.lastUpdated === bell && intradayQuoteMembership(quote, venue, false)?.time === bell - 1 ? quote.price : undefined;
   if (!positive(close) || hasLikelyQuoteUnitMismatch({ currency: quote.currency, price: last.close }, { currency: quote.currency, price: close })) return points;
-  if (!last.partial && Math.abs(last.close - close) <= close * 1e-7) return points;
+  if (!last.partial && last.close === close && last.open == null && last.high == null && last.low == null
+    && last.volume == null && last.venueVolume == null && last.volumeBasis == null) return points;
   return [...points.slice(0, -1), { date: last.date, close }];
 }
 

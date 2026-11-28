@@ -6,7 +6,7 @@ import { canonicalExchange, isUsListingExchange } from "../utils/exchanges";
 import { logFailure } from "../utils/log-failure";
 import { zonedDateTimeParts, zonedWallClockToUtcMs } from "../utils/zoned-date-time";
 import type { PriceComparison } from "./price-comparison";
-import type { ResolvedSeries } from "./types";
+import type { ResolvedSeries, TimeSeriesPoint } from "./types";
 
 const HOUR_MS = 60 * 60_000;
 const DAY_MS = 24 * HOUR_MS;
@@ -87,13 +87,12 @@ function hourlyBars(
   return read;
 }
 
-export interface SessionCloseTiming {
-  /** The venue whose close the coins are compared against: the first compared leg that trades in sessions. */
-  venue: string;
-  /** Coin legs measured at that venue's close on each of their days, from hourly bars. */
-  atSessionClose: ReadonlySet<string>;
-  /** Of those, the legs whose newest day's session has closed: their end is that close, not a price still moving. */
-  closedEnds: ReadonlySet<string>;
+export interface SessionCloseSample {
+  /** The source bounds for which the coin's hourly coverage was checked. */
+  start: number;
+  end: number;
+  /** Only the replacement observations are known closes, not the untouched portion of the series. */
+  closes: ReadonlySet<TimeSeriesPoint>;
 }
 
 /** The venue's wall clock of `time` in its zone, to measure a day without a session at its usual close. */
@@ -115,15 +114,15 @@ function wallClock(time: number, zone: string): { hour: number; minute: number }
  * throughout, and the comparison names each close time instead
  * (priceComparisonCloseTimes): the line and its total never mix the two.
  *
- * Null when the comparison has no such pair of legs; otherwise the venue and
- * the series, with the coin legs that could be measured at its close.
+ * Null when the comparison has no such pair of legs; otherwise the series and
+ * the observations that could be measured at the venue's close.
  */
 export async function coinLegsAtSessionClose(
   comparison: PriceComparison | null,
   series: readonly ResolvedSeries[],
   provider: HourlyProvider,
   now: number,
-): Promise<{ timing: SessionCloseTiming; series: ResolvedSeries[] } | null> {
+): Promise<{ samples: ReadonlyMap<string, SessionCloseSample>; series: ResolvedSeries[] } | null> {
   if (comparison?.alignment !== "session-date" || !comparison.legs) return null;
   const byId = new Map(series.map((entry) => [entry.id, entry]));
   const compared = Object.keys(comparison.legs);
@@ -131,26 +130,27 @@ export async function coinLegsAtSessionClose(
   const coins = compared.filter((id) => isRoundTheClockLeg(byId.get(id)) && byId.get(id)!.historyResolution === "1d");
   const zone = venue ? sessionCalendarTimeZone(venue) : null;
   if (!venue || !zone || coins.length === 0) return null;
-  const atSessionClose = new Set<string>();
-  const closedEnds = new Set<string>();
+  const samples = new Map<string, SessionCloseSample>();
   const next = [...series];
   await Promise.all(coins.map(async (id) => {
     const entry = byId.get(id)!;
     const leg = comparison.legs![id]!;
+    const bounds = comparison.sourceBounds?.[id];
     const symbol = entry.listing?.symbol;
     const baseClose = regularSessionCloseOn(venue, leg.baseDay);
     // A coin's newest day still running is its latest price; measured at the close only once the venue has closed.
     const endClose = regularSessionCloseOn(venue, leg.endDay);
     const endTime = endClose !== null && endClose <= now ? endClose : leg.intraday ? null : endClose;
-    if (!symbol || baseClose === null || (endTime === null && !leg.intraday)) return;
+    if (!bounds || !symbol || baseClose === null || (endTime === null && !leg.intraday)) return;
     // The instant each of the coin's days is measured at: the venue's close that day, or on a day it does not trade,
     // the clock time of its last close before.
     const instants = new Map<number, number>();
     let clock = wallClock(baseClose, zone);
     entry.points.forEach((point, index) => {
+      const time = point.date.getTime();
+      if (!Number.isFinite(time) || time < bounds.start || time > bounds.end) return;
+      if (time === bounds.end && endTime === null) return;
       const day = point.date.toISOString().slice(0, 10);
-      if (day < leg.baseDay || day > leg.endDay) return;
-      if (day === leg.endDay && endTime === null) return;
       const close = regularSessionCloseOn(venue, day);
       if (close !== null) clock = wallClock(close, zone);
       instants.set(index, close ?? zonedWallClockToUtcMs(zone, Number(day.slice(0, 4)), Number(day.slice(5, 7)), Number(day.slice(8, 10)),
@@ -169,15 +169,18 @@ export async function coinLegsAtSessionClose(
     }
     // Every day or none: a line of closes at the venue's close with a few UTC closes between would be neither.
     if (!closes.has(baseClose) || times.some((time) => !closes.has(time))) return;
+    const sampledCloses = new Set<TimeSeriesPoint>();
     const points = entry.points.map((point, index) => {
       const price = instants.has(index) ? closes.get(instants.get(index)!)! : undefined;
-      return price === undefined ? point : { ...point, value: price, close: price, rawValue: price, partial: undefined };
+      if (price === undefined) return point;
+      const sampled = { ...point, value: price, close: price, rawValue: price, partial: undefined };
+      sampledCloses.add(sampled);
+      return sampled;
     });
     next[next.indexOf(entry)] = { ...entry, points };
-    atSessionClose.add(id);
-    if (endTime !== null) closedEnds.add(id);
+    samples.set(id, { ...bounds, closes: sampledCloses });
   }));
-  return { timing: { venue, atSessionClose, closedEnds }, series: next };
+  return { samples, series: next };
 }
 
 /**

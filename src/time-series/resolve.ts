@@ -1258,18 +1258,25 @@ async function resolveChartSpecPass(
   const comparisonWindow = requestBounds ? null : spec.viewport.dateWindow;
   let priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, comparisonWindow, comparisonOptions);
   // A coin compared in daily closes with a listing that closes each day is measured at that close when its hourly bars reach.
-  if (sources.dataProvider && priceComparison && comparisonResolution === "1d"
+  const comparisonProvider = sources.dataProvider;
+  if (comparisonProvider && priceComparison && comparisonResolution === "1d"
     && rawSeries.some((entry) => comparedSeriesIds.has(entry.id) && isRoundTheClockLeg(entry))) {
     const candidate = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, comparisonWindow,
       { ...comparisonOptions, sampleCoinClose: true });
-    let timed = await coinLegsAtSessionClose(candidate, rawSeries, sources.dataProvider, comparisonOptions.now);
-    if (!timed?.timing.atSessionClose.size && candidate?.end !== priceComparison.end) {
-      timed = await coinLegsAtSessionClose(priceComparison, rawSeries, sources.dataProvider, comparisonOptions.now);
+    const sampleComparison = async (selection: PriceComparison | null) => {
+      const timed = await coinLegsAtSessionClose(selection, rawSeries, comparisonProvider, comparisonOptions.now);
+      if (!timed?.samples.size) return null;
+      const comparison = resolvePriceComparison(spec, timed.series, bounds, comparisonResolution, comparisonWindow,
+        { ...comparisonOptions, sessionCloseSamples: timed.samples });
+      return comparison?.sourceBounds ? { comparison, series: timed.series } : null;
+    };
+    let timed = await sampleComparison(candidate);
+    if (!timed && candidate?.end !== priceComparison.end) {
+      timed = await sampleComparison(priceComparison);
     }
-    if (timed?.timing.atSessionClose.size) {
+    if (timed) {
       rawSeries.splice(0, rawSeries.length, ...timed.series);
-      priceComparison = resolvePriceComparison(spec, rawSeries, bounds, comparisonResolution, comparisonWindow,
-        { ...comparisonOptions, atSessionClose: timed.timing.atSessionClose, closedEnds: timed.timing.closedEnds });
+      priceComparison = timed.comparison;
     }
   }
   const splitAssessment = priceComparison?.legs

@@ -14,14 +14,15 @@ const apple: Quote = {
 const options = { now: saturday, barSize: "1d" as const };
 
 test("history and completed-close consumers keep only the verified cash close from either kind of suspect daily row", () => {
-  const prior = { date: new Date("2026-11-25"), close: 355.58 };
+  const prior = { date: new Date("2026-11-25"), open: 353.48, high: 356.75, low: 345.13, close: 355.58, volume: 54_285_300 };
   for (const { quote, row } of [
     { quote: apple, row: { date: day, open: 358.21, high: 359.5, low: 355.64, close: 359.25, volume: 22_825_593 } },
     { quote: { ...apple, symbol: "SPY", listingExchangeName: "ARCA", instrumentType: "ETF", price: 731.3, regularClose: 728.32 },
       row: { date: day, open: 725.86, high: 731.3, low: 719.61, close: 731.3, volume: 40_502_032 } },
   ]) {
     const expected = [prior, { date: day, close: quote.regularClose }];
-    for (const latest of [row, { ...row, partial: true }, { date: day, close: quote.regularClose!, partial: true }]) {
+    for (const latest of [row, { ...row, close: quote.regularClose! }, { ...row, partial: true },
+      { date: day, close: quote.regularClose!, partial: true }]) {
       expect(withSessionBar([prior, latest], quote, options)).toEqual(expected);
       expect(finalDailyBars([prior, latest], options, quote)).toEqual(expected);
     }
@@ -38,7 +39,7 @@ test("a close from another date or a stale regular label cannot finalize a US pa
     expect(withSessionBar(points, quote, options)).toBe(points);
     expect(finalDailyBars(points, options, quote)).toEqual([]);
   }
-  const consistent = [{ date: day, close: 358.540008544921875, open: 358.21, high: 358.7, low: 355.64, volume: 12_000_000 }];
+  const consistent = [{ date: day, close: 358.54, sessionClose: true }];
   expect(withSessionBar(consistent, apple, options)).toBe(consistent);
 });
 
