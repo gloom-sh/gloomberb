@@ -88,13 +88,15 @@ function keepMainDetachedFrames(state: WindowLayouts, current: LayoutConfig): Wi
   if (current.detached.length === 0) return state;
   const layout = keepDetachedFrames(state.config.layout, current);
   if (layout === state.config.layout) return state;
+  const view = state.views[MAIN_WINDOW_ID]!;
   return {
     ...state,
+    views: { ...state.views, [MAIN_WINDOW_ID]: { ...view, liveLayout: view.liveLayout ? layout : undefined } },
     config: {
       ...state.config,
       layout,
       layouts: state.config.layouts.map((entry, index) => (
-        index === state.config.activeLayoutIndex ? { ...entry, layout: cloneLayout(layout) } : entry
+        index === state.config.activeLayoutIndex ? { ...entry, layout: keepDetachedFrames(entry.layout, current) } : entry
       )),
     },
   };
